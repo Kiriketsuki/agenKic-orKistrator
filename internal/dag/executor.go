@@ -1,0 +1,111 @@
+package dag
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
+	"github.com/google/uuid"
+)
+
+// Executor validates a DAGSpec, builds the execution plan, and runs tasks
+// level-by-level with parallel fan-out within each level. On any task
+// failure the executor cancels all in-flight work (fail-fast).
+type Executor struct {
+	submitter TaskSubmitter
+	tracker   *StatusTracker
+}
+
+// NewExecutor returns an Executor that delegates individual task execution
+// to the provided TaskSubmitter.
+func NewExecutor(submitter TaskSubmitter) *Executor {
+	return &Executor{
+		submitter: submitter,
+		tracker:   NewStatusTracker(nil),
+	}
+}
+
+// Execute validates spec, registers the execution synchronously, then
+// launches the level-by-level fan-out in a background goroutine.
+// Returns (execID, nil) on success or ("", err) for validation errors.
+func (e *Executor) Execute(ctx context.Context, spec *pb.DAGSpec) (string, error) {
+	graph, err := NewGraph(spec)
+	if err != nil {
+		return "", err
+	}
+
+	levels, err := TopologicalSort(graph)
+	if err != nil {
+		return "", err
+	}
+
+	execID := uuid.New().String()
+
+	// CreateExecution must happen synchronously so Status() works
+	// immediately after Execute() returns.
+	e.tracker.CreateExecution(execID, graph.DAGID(), graph.Nodes())
+
+	go e.run(ctx, execID, graph, levels)
+
+	return execID, nil
+}
+
+// Status returns the current execution state as a proto response.
+// Returns an error if the execID is unknown.
+func (e *Executor) Status(_ context.Context, execID string) (*pb.GetDAGStatusResponse, error) {
+	snap := e.tracker.Snapshot(execID)
+	if snap.State == 0 {
+		return nil, fmt.Errorf("execution %s not found", execID)
+	}
+	resp := ToProtoResponse(snap)
+	return resp, nil
+}
+
+// run processes levels sequentially, fanning out goroutines for each node
+// within a level. It cancels remaining work on the first failure.
+func (e *Executor) run(ctx context.Context, execID string, graph *Graph, levels [][]string) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for _, level := range levels {
+		var wg sync.WaitGroup
+
+		for _, nodeID := range level {
+			wg.Add(1)
+			go func(nID string) {
+				defer wg.Done()
+				e.executeNode(ctx, execID, graph, nID, cancel)
+			}(nodeID)
+		}
+
+		wg.Wait()
+
+		if ctx.Err() != nil {
+			break
+		}
+	}
+}
+
+// executeNode runs a single node: marks it running, submits the task,
+// then marks it completed or failed.
+func (e *Executor) executeNode(
+	ctx context.Context,
+	execID string,
+	graph *Graph,
+	nodeID string,
+	cancel context.CancelFunc,
+) {
+	e.tracker.MarkNodeRunning(execID, nodeID)
+
+	ts := graph.TaskSpec(nodeID)
+
+	err := e.submitter.SubmitTask(ctx, ts.TaskId, ts.Prompt, ts.ModelTier, ts.Priority)
+	if err != nil {
+		e.tracker.MarkNodeFailed(execID, nodeID, err.Error())
+		cancel()
+		return
+	}
+
+	e.tracker.MarkNodeCompleted(execID, nodeID)
+}
