@@ -27,7 +27,7 @@ func setupTestServer(t *testing.T) (pb.OrchestratorServiceClient, func()) {
 	sv := supervisor.NewSupervisor(machine, store, policy)
 
 	submitter := dag.NewStoreSubmitter(store)
-	executor := dag.NewExecutor(submitter)
+	executor := dag.NewExecutor(context.Background(), submitter)
 	server := NewOrchestratorServer(sv, store, executor)
 
 	buf := 1024 * 1024

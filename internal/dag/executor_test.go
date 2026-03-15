@@ -86,7 +86,7 @@ func makeSpec(dagID string, nodes ...*pb.DAGNode) *pb.DAGSpec {
 func TestExecutor_LinearExecution(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	spec := makeSpec("lin",
 		makeNode("A"),
@@ -127,7 +127,7 @@ func TestExecutor_ParallelFork(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
 	sub.delay = 20 * time.Millisecond
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	// A -> B, C  (B and C run in parallel)
 	spec := makeSpec("fork",
@@ -169,7 +169,7 @@ func TestExecutor_FailFast(t *testing.T) {
 	sub := newMockSubmitter()
 	sub.delay = 10 * time.Millisecond
 	sub.failIDs["B-task"] = errors.New("B failed")
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	// A -> B, C  (B fails, C may or may not run)
 	spec := makeSpec("fail",
@@ -192,7 +192,7 @@ func TestExecutor_FailFast(t *testing.T) {
 func TestExecutor_EmptyDAG(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	spec := &pb.DAGSpec{DagId: "empty"}
 	_, err := e.Execute(context.Background(), spec)
@@ -204,7 +204,7 @@ func TestExecutor_EmptyDAG(t *testing.T) {
 func TestExecutor_SingleNode(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	spec := makeSpec("single", makeNode("A"))
 	execID, err := e.Execute(context.Background(), spec)
@@ -226,7 +226,7 @@ func TestExecutor_SingleNode(t *testing.T) {
 func TestExecutor_Status(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(sub)
+	e := dag.NewExecutor(context.Background(), sub)
 
 	spec := makeSpec("status-test", makeNode("A"))
 	execID, err := e.Execute(context.Background(), spec)
@@ -250,16 +250,16 @@ func TestExecutor_Status(t *testing.T) {
 	}
 }
 
-func TestExecutor_ContextCancellation(t *testing.T) {
+func TestExecutor_ShutdownCancelsRunning(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
 	sub.delay = 100 * time.Millisecond
-	e := dag.NewExecutor(sub)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
+	e := dag.NewExecutor(ctx, sub)
 
 	// A -> B, C (B and C take 100ms each)
-	spec := makeSpec("cancel",
+	spec := makeSpec("shutdown",
 		makeNode("A"),
 		makeNode("B", "A"),
 		makeNode("C", "A"),
@@ -270,14 +270,15 @@ func TestExecutor_ContextCancellation(t *testing.T) {
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	// Cancel after A completes but while B,C are still running.
+	// Shutdown after A completes but while B,C are still running.
 	time.Sleep(25 * time.Millisecond)
-	cancel()
+	e.Shutdown()
 
-	resp := waitForCompletion(t, e, execID, 2*time.Second)
-	// With cancellation, the execution should end in FAILED state.
-	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED &&
-		resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED {
-		t.Errorf("State = %v after cancel, want FAILED or COMPLETED", resp.State)
+	resp, err := e.Status(ctx, execID)
+	if err != nil {
+		t.Fatalf("Status() error: %v", err)
+	}
+	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
+		t.Errorf("State = %v after Shutdown, want FAILED", resp.State)
 	}
 }

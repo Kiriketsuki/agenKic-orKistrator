@@ -26,12 +26,12 @@ func main() {
 	policy := supervisor.NewRestartPolicy()
 	sv := supervisor.NewSupervisor(machine, store, policy)
 
-	submitter := dag.NewStoreSubmitter(store)
-	executor := dag.NewExecutor(submitter)
-	server := ipc.NewOrchestratorServer(sv, store, executor)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	submitter := dag.NewStoreSubmitter(store)
+	executor := dag.NewExecutor(ctx, submitter)
+	server := ipc.NewOrchestratorServer(sv, store, executor)
 
 	// Run supervisor loops in background.
 	go func() {
@@ -47,6 +47,7 @@ func main() {
 		<-sigCh
 		fmt.Println("shutting down...")
 		sv.Stop()
+		executor.Shutdown()
 		server.GracefulStop()
 		cancel()
 	}()
