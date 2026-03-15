@@ -207,7 +207,17 @@ func TestExecutor_OrphanedNodesMarkedFailed(t *testing.T) {
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	resp := waitForCompletion(t, e, execID, 2*time.Second)
+	waitForCompletion(t, e, execID, 2*time.Second)
+
+	// Shutdown waits for the run() goroutine to finish, ensuring the
+	// orphaned-node loop at executor.go:103-110 has completed before
+	// we snapshot per-node states.
+	e.Shutdown()
+
+	resp, err2 := e.Status(context.Background(), execID)
+	if err2 != nil {
+		t.Fatalf("Status() error: %v", err2)
+	}
 	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
 		t.Fatalf("State = %v, want FAILED", resp.State)
 	}
