@@ -45,6 +45,12 @@ jobs:
                           core.setOutput('pr_title_verb', 'Fixing');
                       }
 
+                      // Normalize issue title — strip any existing verb prefix to prevent
+                      // "Adding Adding [Feature]:" if title was manually prefixed.
+                      const rawTitle = context.payload.issue.title || '';
+                      const normalizedTitle = rawTitle.replace(/^(Adding|Implementing|Fixing)\s+/i, '');
+                      core.setOutput('normalized_title', normalizedTitle);
+
                       console.log(`Detected prefix: ${prefix}, PR label: ${prLabel}`);
                       core.setOutput('prefix', prefix);
                       core.setOutput('pr_label', prLabel);
@@ -80,7 +86,7 @@ jobs:
                         const parents = result.repository.issue.trackedInIssues.nodes;
                         if (parents.length > 0) {
                           const parent = parents[0];
-                          console.log(`Found parent issue: #${parent.number} - ${parent.title}`);
+                          console.log(`Found parent issue (trackedInIssues): #${parent.number} - ${parent.title}`);
 
                           const parentLabels = parent.labels.nodes.map(l => l.name);
                           let parentPrefix = 'feature';
@@ -95,8 +101,37 @@ jobs:
                           core.setOutput('parent_title', parent.title);
                           core.setOutput('parent_prefix', parentPrefix);
                         } else {
-                          console.log('No parent issue found.');
-                          core.setOutput('parent_exists', 'false');
+                          // Fallback: parse "Parent: #N" from issue body for issues not
+                          // linked via GitHub's native sub-issue tracking UI.
+                          const issueBody = context.payload.issue.body || '';
+                          const parentMatch = issueBody.match(/Parent:\s*#(\d+)/i);
+                          if (parentMatch) {
+                            const parentNumber = parseInt(parentMatch[1]);
+                            console.log(`Found parent issue (body fallback): #${parentNumber}`);
+                            try {
+                              const parentData = await github.rest.issues.get({
+                                owner: context.repo.owner,
+                                repo: context.repo.repo,
+                                issue_number: parentNumber
+                              });
+                              const parentIssue = parentData.data;
+                              const parentLabels = parentIssue.labels.map(l => l.name);
+                              let parentPrefix = 'feature';
+                              if (parentLabels.includes('task')) parentPrefix = 'task';
+                              else if (parentLabels.includes('feature')) parentPrefix = 'feature';
+
+                              core.setOutput('parent_exists', 'true');
+                              core.setOutput('parent_number', parentNumber);
+                              core.setOutput('parent_title', parentIssue.title);
+                              core.setOutput('parent_prefix', parentPrefix);
+                            } catch (fetchErr) {
+                              console.log(`Could not fetch parent #${parentNumber}:`, fetchErr.message);
+                              core.setOutput('parent_exists', 'false');
+                            }
+                          } else {
+                            console.log('No parent issue found.');
+                            core.setOutput('parent_exists', 'false');
+                          }
                         }
                       } catch (error) {
                         console.log('Error querying parent issue:', error.message);
@@ -252,7 +287,7 @@ jobs:
                         const pr = await github.rest.pulls.create({
                           owner: context.repo.owner,
                           repo: context.repo.repo,
-                          title: `${{ steps.config.outputs.pr_title_verb }} ${context.payload.issue.title}`,
+                          title: `${{ steps.config.outputs.pr_title_verb }} ${{ steps.config.outputs.normalized_title }}`,
                           head: branchName,
                           base: baseBranch,
                           body: prBody,
