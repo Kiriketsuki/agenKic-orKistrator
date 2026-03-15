@@ -28,6 +28,15 @@ func NewMachine(store state.StateStore) *Machine {
 //   - state.ErrAgentNotFound if the agent has no record in the store.
 //   - *InvalidTransitionError if the (current, event) pair is not valid.
 //   - Any storage error from the underlying StateStore.
+//
+// Concurrency: callers must serialize ApplyEvent calls per agentID.
+// The supervisor (F2) enforces this invariant; concurrent calls for the
+// same agent produce undefined results.
+//
+// Event publishing: the Machine handles only state transitions. Callers
+// are responsible for publishing domain events via StateStore.PublishEvent
+// with full context (TaskID, Payload). The returned AgentSnapshot includes
+// PreviousState and Event to support this pattern.
 func (m *Machine) ApplyEvent(ctx context.Context, agentID string, event AgentEvent) (AgentSnapshot, error) {
 	rawState, err := m.store.GetAgentState(ctx, agentID)
 	if err != nil {
@@ -48,5 +57,10 @@ func (m *Machine) ApplyEvent(ctx context.Context, agentID string, event AgentEve
 		return AgentSnapshot{}, fmt.Errorf("persist state for agent %s: %w", agentID, err)
 	}
 
-	return AgentSnapshot{AgentID: agentID, State: next}, nil
+	return AgentSnapshot{
+		AgentID:       agentID,
+		PreviousState: current,
+		State:         next,
+		Event:         event,
+	}, nil
 }

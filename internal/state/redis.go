@@ -86,7 +86,7 @@ func (r *RedisStore) agentKey(agentID string) string {
 // ── Agent state ───────────────────────────────────────────────────────────────
 
 func (r *RedisStore) SetAgentState(ctx context.Context, agentID string, state string) error {
-	pipe := r.client.Pipeline()
+	pipe := r.client.TxPipeline()
 	pipe.HSet(ctx, r.agentKey(agentID), fieldState, state)
 	pipe.SAdd(ctx, r.key(agentSetKey), agentID)
 	_, err := pipe.Exec(ctx)
@@ -110,7 +110,7 @@ func (r *RedisStore) GetAgentState(ctx context.Context, agentID string) (string,
 // ── Agent full record ─────────────────────────────────────────────────────────
 
 func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
-	pipe := r.client.Pipeline()
+	pipe := r.client.TxPipeline()
 	pipe.HSet(ctx, r.agentKey(agentID),
 		fieldState, fields.State,
 		fieldLastHeartbeat, strconv.FormatInt(fields.LastHeartbeat, 10),
@@ -134,8 +134,14 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 		return AgentFields{}, ErrAgentNotFound
 	}
 
-	lhb, _ := strconv.ParseInt(vals[fieldLastHeartbeat], 10, 64)
-	ra, _ := strconv.ParseInt(vals[fieldRegisteredAt], 10, 64)
+	lhb, err := strconv.ParseInt(vals[fieldLastHeartbeat], 10, 64)
+	if err != nil {
+		return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldLastHeartbeat, err)
+	}
+	ra, err := strconv.ParseInt(vals[fieldRegisteredAt], 10, 64)
+	if err != nil {
+		return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldRegisteredAt, err)
+	}
 
 	return AgentFields{
 		State:         vals[fieldState],
@@ -146,7 +152,7 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 }
 
 func (r *RedisStore) DeleteAgent(ctx context.Context, agentID string) error {
-	pipe := r.client.Pipeline()
+	pipe := r.client.TxPipeline()
 	pipe.Del(ctx, r.agentKey(agentID))
 	pipe.SRem(ctx, r.key(agentSetKey), agentID)
 	_, err := pipe.Exec(ctx)
@@ -211,7 +217,11 @@ func (r *RedisStore) DequeueTask(ctx context.Context) (string, error) {
 	if len(results) == 0 {
 		return "", ErrQueueEmpty
 	}
-	return fmt.Sprintf("%v", results[0].Member), nil
+	member, ok := results[0].Member.(string)
+	if !ok {
+		return "", fmt.Errorf("DequeueTask: unexpected member type %T", results[0].Member)
+	}
+	return member, nil
 }
 
 func (r *RedisStore) QueueLength(ctx context.Context) (int64, error) {

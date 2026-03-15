@@ -26,13 +26,14 @@ func TestMachine_FullLifecycleRoundtrip(t *testing.T) {
 	}
 
 	steps := []struct {
-		event agent.AgentEvent
-		want  agent.AgentState
+		event    agent.AgentEvent
+		prevWant agent.AgentState
+		want     agent.AgentState
 	}{
-		{agent.EventTaskAssigned, agent.StateAssigned},
-		{agent.EventWorkStarted, agent.StateWorking},
-		{agent.EventOutputReady, agent.StateReporting},
-		{agent.EventOutputDelivered, agent.StateIdle},
+		{agent.EventTaskAssigned, agent.StateIdle, agent.StateAssigned},
+		{agent.EventWorkStarted, agent.StateAssigned, agent.StateWorking},
+		{agent.EventOutputReady, agent.StateWorking, agent.StateReporting},
+		{agent.EventOutputDelivered, agent.StateReporting, agent.StateIdle},
 	}
 
 	for _, step := range steps {
@@ -42,6 +43,12 @@ func TestMachine_FullLifecycleRoundtrip(t *testing.T) {
 		}
 		if snap.State != step.want {
 			t.Fatalf("after %s: want state=%s, got %s", step.event, step.want, snap.State)
+		}
+		if snap.PreviousState != step.prevWant {
+			t.Fatalf("after %s: want prevState=%s, got %s", step.event, step.prevWant, snap.PreviousState)
+		}
+		if snap.Event != step.event {
+			t.Fatalf("after %s: want event=%s, got %s", step.event, step.event, snap.Event)
 		}
 		if snap.AgentID != id {
 			t.Fatalf("snapshot AgentID: want %s, got %s", id, snap.AgentID)
@@ -72,6 +79,12 @@ func TestMachine_AgentFailed_ResetsToIdle(t *testing.T) {
 	}
 	if snap.State != agent.StateIdle {
 		t.Fatalf("want idle, got %s", snap.State)
+	}
+	if snap.PreviousState != agent.StateWorking {
+		t.Fatalf("want prevState=working, got %s", snap.PreviousState)
+	}
+	if snap.Event != agent.EventAgentFailed {
+		t.Fatalf("want event=AgentFailed, got %s", snap.Event)
 	}
 }
 
