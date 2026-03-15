@@ -1,0 +1,356 @@
+name: Issue Branch Handler
+
+on:
+    issues:
+        types: [opened, labeled, closed]
+
+jobs:
+    handle-issue-branch:
+        if: contains(github.event.issue.labels.*.name, 'task') || contains(github.event.issue.labels.*.name, 'feature') || contains(github.event.issue.labels.*.name, 'bug')
+        runs-on: ubuntu-latest
+        permissions:
+            issues: write
+            contents: write
+            pull-requests: write
+
+        steps:
+            - name: Checkout repository
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Determine Branch Configuration
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              id: config
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const labels = context.payload.issue.labels.map(l => l.name);
+
+                      let prefix = 'feature';
+                      let prLabel = 'addition';
+
+                      if (labels.includes('task')) {
+                          prefix = 'task';
+                          prLabel = 'implementation';
+                          core.setOutput('pr_title_verb', 'Implementing');
+                      } else if (labels.includes('feature')) {
+                          prefix = 'feature';
+                          prLabel = 'addition';
+                          core.setOutput('pr_title_verb', 'Adding');
+                      } else if (labels.includes('bug')) {
+                          prefix = 'bug';
+                          prLabel = 'fix';
+                          core.setOutput('pr_title_verb', 'Fixing');
+                      }
+
+                      console.log(`Detected prefix: ${prefix}, PR label: ${prLabel}`);
+                      core.setOutput('prefix', prefix);
+                      core.setOutput('pr_label', prLabel);
+
+                      // Check for Parent Issue (Sub-issue tracking)
+                      const query = `
+                        query($owner: String!, $repo: String!, $number: Int!) {
+                          repository(owner: $owner, name: $repo) {
+                            issue(number: $number) {
+                              trackedInIssues(first: 1) {
+                                nodes {
+                                  number
+                                  title
+                                  labels(first: 10) {
+                                    nodes {
+                                      name
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      `;
+
+                      try {
+                        const result = await github.graphql(query, {
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          number: context.issue.number
+                        });
+
+                        const parents = result.repository.issue.trackedInIssues.nodes;
+                        if (parents.length > 0) {
+                          const parent = parents[0];
+                          console.log(`Found parent issue: #${parent.number} - ${parent.title}`);
+
+                          const parentLabels = parent.labels.nodes.map(l => l.name);
+                          let parentPrefix = 'feature';
+                          if (parentLabels.includes('task')) {
+                              parentPrefix = 'task';
+                          } else if (parentLabels.includes('feature')) {
+                              parentPrefix = 'feature';
+                          }
+
+                          core.setOutput('parent_exists', 'true');
+                          core.setOutput('parent_number', parent.number);
+                          core.setOutput('parent_title', parent.title);
+                          core.setOutput('parent_prefix', parentPrefix);
+                        } else {
+                          console.log('No parent issue found.');
+                          core.setOutput('parent_exists', 'false');
+                        }
+                      } catch (error) {
+                        console.log('Error querying parent issue:', error.message);
+                        core.setOutput('parent_exists', 'false');
+                      }
+
+            - name: Sanitize Parent Branch Name
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.config.outputs.parent_exists == 'true'
+              id: sanitize-parent
+              uses: ./.github/actions/sanitize-branch-name
+              with:
+                  issue-number: ${{ steps.config.outputs.parent_number }}
+                  issue-title: ${{ steps.config.outputs.parent_title }}
+                  prefix: ${{ steps.config.outputs.parent_prefix }}
+
+            - name: Calculate Base Branch
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              id: base-branch
+              env:
+                  PARENT_EXISTS: ${{ steps.config.outputs.parent_exists }}
+                  PARENT_BRANCH_NAME: ${{ steps.sanitize-parent.outputs.branch-name }}
+              run: |
+                  if [ "$PARENT_EXISTS" == "true" ]; then
+                    PARENT_BRANCH="$PARENT_BRANCH_NAME"
+                    echo "Calculated parent branch: $PARENT_BRANCH"
+
+                    git fetch origin --quiet
+                    if git ls-remote --heads origin "$PARENT_BRANCH" | grep -q "$PARENT_BRANCH"; then
+                      echo "Parent branch exists."
+                      echo "BASE_BRANCH=$PARENT_BRANCH" >> $GITHUB_ENV
+                    else
+                      echo "Parent branch $PARENT_BRANCH does not exist. Falling back to main."
+                      echo "BASE_BRANCH=main" >> $GITHUB_ENV
+                    fi
+                  else
+                    echo "No parent issue. Base branch is main."
+                    echo "BASE_BRANCH=main" >> $GITHUB_ENV
+                  fi
+
+            - name: Sanitize branch name
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              id: sanitize
+              uses: ./.github/actions/sanitize-branch-name
+              with:
+                  issue-number: ${{ github.event.issue.number }}
+                  issue-title: ${{ github.event.issue.title }}
+                  prefix: ${{ steps.config.outputs.prefix }}
+
+            - name: Create branch
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              id: create-branch
+              run: |
+                  BRANCH_NAME="${{ steps.sanitize.outputs.branch-name }}"
+                  BASE_BRANCH="${{ env.BASE_BRANCH }}"
+
+                  echo "Creating $BRANCH_NAME from $BASE_BRANCH"
+
+                  git fetch origin --quiet
+
+                  if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+                    echo "Branch $BRANCH_NAME already exists, skipping creation"
+                    echo "BRANCH_EXISTS=true" >> $GITHUB_ENV
+                    echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+                    exit 0
+                  fi
+
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+
+                  git checkout "$BASE_BRANCH"
+                  git checkout -b "$BRANCH_NAME"
+                  git commit --allow-empty -m "Initial commit from $BASE_BRANCH"
+
+                  if git push origin "$BRANCH_NAME"; then
+                    echo "Branch created successfully"
+                    echo "BRANCH_EXISTS=false" >> $GITHUB_ENV
+                  else
+                    git fetch origin --quiet
+                    if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+                      echo "Branch was created by another run"
+                      echo "BRANCH_EXISTS=true" >> $GITHUB_ENV
+                    else
+                      echo "Failed to create branch"
+                      exit 1
+                    fi
+                  fi
+
+                  echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+            - name: Create pull request
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && env.BRANCH_EXISTS == 'false'
+              id: create-pr
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const branchName = process.env.BRANCH_NAME;
+                      const baseBranch = process.env.BASE_BRANCH;
+
+                      try {
+                        const { data: existingPRs } = await github.rest.pulls.list({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          head: `${context.repo.owner}:${branchName}`,
+                          state: 'all'
+                        });
+
+                        if (existingPRs.length > 0) {
+                          console.log(`PR already exists: #${existingPRs[0].number}`);
+                          core.setOutput('pr_number', existingPRs[0].number);
+                          return existingPRs[0].number;
+                        }
+
+                        const issueBody = context.payload.issue.body || '_No description provided._';
+                        const prBody = [
+                          '## Summary',
+                          '',
+                          `Closes #${context.issue.number}`,
+                          '',
+                          `> Draft auto-created from [#${context.issue.number}](${context.payload.issue.html_url}). Base branch: \`${baseBranch}\`. Fill in the sections below before requesting review.`,
+                          '',
+                          '<details>',
+                          '<summary>Original issue description</summary>',
+                          '',
+                          issueBody,
+                          '',
+                          '</details>',
+                          '',
+                          '---',
+                          '',
+                          '## Changes',
+                          '',
+                          '<!-- Brief bullet list of what was changed and why. -->',
+                          '',
+                          '-',
+                          '',
+                          '---',
+                          '',
+                          '## Testing',
+                          '',
+                          '### Pre-PR checklist',
+                          '',
+                          '- [ ] Tests pass locally',
+                          '- [ ] No regressions introduced',
+                          '- [ ] Documentation updated if needed',
+                          '',
+                          '---',
+                          '',
+                          '## Notes for reviewers',
+                          '',
+                          '<!-- Anything a reviewer should pay special attention to, or known limitations. -->',
+                        ].join('\n');
+
+                        const pr = await github.rest.pulls.create({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          title: `${{ steps.config.outputs.pr_title_verb }} ${context.payload.issue.title}`,
+                          head: branchName,
+                          base: baseBranch,
+                          body: prBody,
+                          draft: true
+                        });
+
+                        console.log(`PR #${pr.data.number} created`);
+                        core.setOutput('pr_number', pr.data.number);
+                        return pr.data.number;
+                      } catch (error) {
+                        console.error('Error creating PR:', error.message);
+                        return null;
+                      }
+
+            - name: Add PR label
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.create-pr.outputs.pr_number
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const prNumber = ${{ steps.create-pr.outputs.pr_number }};
+                      const prLabel = '${{ steps.config.outputs.pr_label }}';
+
+                      if (!prNumber || !prLabel) return;
+
+                      try {
+                        await github.rest.issues.addLabels({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: prNumber,
+                          labels: [prLabel]
+                        });
+                        console.log(`Added label '${prLabel}' to PR #${prNumber}`);
+                      } catch (error) {
+                        console.error('Error adding label to PR:', error.message);
+                      }
+
+            - name: Comment on issue
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.create-pr.outputs.result != 'null'
+              uses: actions/github-script@v7
+              env:
+                  BRANCH_NAME: ${{ env.BRANCH_NAME }}
+                  BASE_BRANCH: ${{ env.BASE_BRANCH }}
+                  PR_NUMBER: ${{ steps.create-pr.outputs.result }}
+              with:
+                  script: |
+                      const branchName = process.env.BRANCH_NAME;
+                      const baseBranch = process.env.BASE_BRANCH;
+                      const prNumber = process.env.PR_NUMBER;
+
+                      if (!prNumber || prNumber === 'null') return;
+
+                      await github.rest.issues.createComment({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        body: `A branch (\`${branchName}\`) and pull request (#${prNumber}) have been created for this issue.\n\n- **Branch**: \`${branchName}\`\n- **Pull Request**: [#${prNumber}](https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${prNumber})\n\n<!-- branch-name: ${branchName} -->`
+                      });
+
+            - name: Comment on issue close
+              if: github.event.action == 'closed'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      try {
+                        const issueNumber = context.issue.number;
+                        const comments = await github.rest.issues.listComments({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: issueNumber
+                        });
+
+                        let branchName = null;
+                        for (const comment of comments.data) {
+                          const match = comment.body.match(/<!-- branch-name:\s*([^\s]+)\s*-->/);
+                          if (match) {
+                            branchName = match[1];
+                            break;
+                          }
+                        }
+
+                        if (branchName) {
+                          try {
+                            await github.rest.repos.getBranch({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              branch: branchName
+                            });
+
+                            await github.rest.issues.createComment({
+                              issue_number: context.issue.number,
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              body: `Issue closed. Branch \`${branchName}\` can be deleted:\n\`\`\`bash\ngit push origin --delete ${branchName}\n\`\`\``
+                            });
+                          } catch (e) {
+                            console.log('Branch check failed (branch might already be deleted):', e.message);
+                          }
+                        }
+                      } catch (error) {
+                        console.log('Error in issue close handler:', error.message);
+                      }

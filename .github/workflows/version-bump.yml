@@ -1,0 +1,157 @@
+name: Automatic Version Bump
+
+on:
+    pull_request:
+        branches:
+            - main
+        types: [closed]
+    push:
+        branches:
+            - main
+
+jobs:
+    bump-version:
+        if: github.event.pull_request.merged == true || github.event_name == 'push'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+                  fetch-depth: 0
+
+            - name: Determine version bump type
+              id: bump_type
+              run: |
+                  BUMP_TYPE="none"
+
+                  if [ "${{ github.event_name }}" == "pull_request" ]; then
+                    BRANCH_NAME="${{ github.head_ref }}"
+                    echo "Source Branch: $BRANCH_NAME"
+
+                    if [[ $BRANCH_NAME == task/* || $BRANCH_NAME == feature/* ]]; then
+                      BUMP_TYPE="major"
+                      echo "Detected task/feature branch. Bump: Major (3rd digit)."
+                    elif [[ $BRANCH_NAME == bug/* || $BRANCH_NAME == hotfix/* ]]; then
+                      BUMP_TYPE="minor"
+                      echo "Detected bug/hotfix branch. Bump: Minor (4th digit)."
+                    fi
+
+                  elif [ "${{ github.event_name }}" == "push" ]; then
+                    COMMIT_MSG="${{ github.event.head_commit.message }}"
+                    echo "Commit message: $COMMIT_MSG"
+
+                    if [[ "$COMMIT_MSG" == *"hotfix:"* ]]; then
+                      BUMP_TYPE="hotfix"
+                      echo "Detected hotfix commit message. Bump: Suffix."
+                    else
+                      echo "Push to main without hotfix tag. No bump."
+                    fi
+                  fi
+
+                  echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+
+            - name: Read current version
+              id: current_version
+              if: steps.bump_type.outputs.bump_type != 'none'
+              run: |
+                  if [ -f VERSION ]; then
+                    CURRENT_VERSION=$(cat VERSION)
+                    echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+                    echo "Current version: $CURRENT_VERSION"
+                  else
+                    echo "Error: No VERSION file found"
+                    exit 1
+                  fi
+
+            - name: Calculate new version
+              id: new_version
+              if: steps.bump_type.outputs.bump_type != 'none'
+              run: |
+                  CURRENT="${{ steps.current_version.outputs.current }}"
+                  BUMP_TYPE="${{ steps.bump_type.outputs.bump_type }}"
+
+                  if [[ $CURRENT =~ ^([0-9]{2})\.([0-9]{2})\.([0-9]+)\.([0-9]+)([a-zA-Z]*)$ ]]; then
+                    YY="${BASH_REMATCH[1]}"
+                    MM="${BASH_REMATCH[2]}"
+                    MAJOR="${BASH_REMATCH[3]}"
+                    MINOR="${BASH_REMATCH[4]}"
+                    SUFFIX="${BASH_REMATCH[5]}"
+                  else
+                    echo "Error: Invalid version format: $CURRENT"
+                    echo "Expected: YY.MM.Major.Minor[Suffix] (e.g. 26.03.1.0)"
+                    exit 1
+                  fi
+
+                  CURRENT_YY=$(date +%y)
+                  CURRENT_MM=$(date +%m)
+
+                  if [ "$YY" != "$CURRENT_YY" ]; then
+                    echo "New Year detected. Resetting version."
+                    NEW_VERSION="$CURRENT_YY.$CURRENT_MM.0.0"
+                  elif [ "$MM" != "$CURRENT_MM" ]; then
+                    echo "New Month detected. Preserving Major, resetting Minor."
+                    NEW_VERSION="$CURRENT_YY.$CURRENT_MM.$MAJOR.0"
+                  else
+                    if [ "$BUMP_TYPE" = "major" ]; then
+                      MAJOR=$((MAJOR + 1))
+                      MINOR=0
+                      SUFFIX=""
+                    elif [ "$BUMP_TYPE" = "minor" ]; then
+                      MINOR=$((MINOR + 1))
+                      SUFFIX=""
+                    elif [ "$BUMP_TYPE" = "hotfix" ]; then
+                      if [ -z "$SUFFIX" ]; then
+                        SUFFIX="a"
+                      else
+                        LAST_CHAR="${SUFFIX: -1}"
+                        if [ "$LAST_CHAR" == "z" ]; then
+                          NEXT_CHAR="A"
+                        elif [ "$LAST_CHAR" == "Z" ]; then
+                          echo "Error: Cannot increment suffix beyond 'Z'"
+                          exit 1
+                        else
+                          NEXT_CHAR=$(echo "$LAST_CHAR" | tr "a-yA-Y" "b-zB-Z")
+                        fi
+                        SUFFIX="${SUFFIX%?}$NEXT_CHAR"
+                      fi
+                    fi
+                    NEW_VERSION="$YY.$MM.$MAJOR.$MINOR$SUFFIX"
+                  fi
+
+                  echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+                  echo "New version: $NEW_VERSION"
+
+            - name: Update VERSION file
+              if: steps.bump_type.outputs.bump_type != 'none'
+              run: |
+                  echo "${{ steps.new_version.outputs.new }}" > VERSION
+
+            - name: Commit and Push
+              if: steps.bump_type.outputs.bump_type != 'none'
+              run: |
+                  NEW_VERSION="${{ steps.new_version.outputs.new }}"
+                  BUMP_TYPE="${{ steps.bump_type.outputs.bump_type }}"
+
+                  if [ "${{ github.event_name }}" == "pull_request" ]; then
+                    TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+                  else
+                    TARGET_BRANCH="${{ github.ref_name }}"
+                  fi
+
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git add VERSION
+                  git commit -m "ci: release version $NEW_VERSION [skip ci]" -m "Automatic $BUMP_TYPE bump on $TARGET_BRANCH"
+                  git push origin $TARGET_BRANCH
+
+            - name: Summary
+              if: steps.bump_type.outputs.bump_type != 'none'
+              run: |
+                  echo "## Version Bump Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- **Bump Type**: ${{ steps.bump_type.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+                  echo "- **Previous Version**: ${{ steps.current_version.outputs.current }}" >> $GITHUB_STEP_SUMMARY
+                  echo "- **New Version**: ${{ steps.new_version.outputs.new }}" >> $GITHUB_STEP_SUMMARY
