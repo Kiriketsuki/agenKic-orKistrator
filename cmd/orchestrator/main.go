@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
@@ -25,7 +26,9 @@ func main() {
 	policy := supervisor.NewRestartPolicy()
 	sv := supervisor.NewSupervisor(machine, store, policy)
 
-	server := ipc.NewOrchestratorServer(sv, store)
+	submitter := dag.NewStoreSubmitter(store)
+	executor := dag.NewExecutor(submitter)
+	server := ipc.NewOrchestratorServer(sv, store, executor)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

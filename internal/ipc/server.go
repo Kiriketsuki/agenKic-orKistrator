@@ -11,21 +11,20 @@ import (
 )
 
 // OrchestratorServer implements the gRPC OrchestratorService.
-// DAG methods (SubmitDAG, GetDAGStatus) return Unimplemented via the embedded type
-// and will be wired in the F3 integration PR.
 type OrchestratorServer struct {
 	pb.UnimplementedOrchestratorServiceServer
 	supervisor *supervisor.Supervisor
 	store      state.StateStore
-	dag        DAGEngine // nil until integration — unused in F2
+	dag        DAGEngine
 	grpcServer *grpc.Server
 }
 
-// NewOrchestratorServer creates a server wired to the given supervisor and store.
-func NewOrchestratorServer(sv *supervisor.Supervisor, store state.StateStore) *OrchestratorServer {
+// NewOrchestratorServer creates a server wired to the given supervisor, store, and DAG engine.
+func NewOrchestratorServer(sv *supervisor.Supervisor, store state.StateStore, dag DAGEngine) *OrchestratorServer {
 	return &OrchestratorServer{
 		supervisor: sv,
 		store:      store,
+		dag:        dag,
 	}
 }
 

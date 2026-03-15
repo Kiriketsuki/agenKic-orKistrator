@@ -13,3 +13,6 @@ var ErrNodeNotFound = errors.New("dag: node not found")
 
 // ErrDuplicateNode is returned when the DAG has two nodes with the same ID.
 var ErrDuplicateNode = errors.New("dag: duplicate node ID")
+
+// ErrExecutionNotFound is returned when a status query references an unknown execution.
+var ErrExecutionNotFound = errors.New("dag: execution not found")

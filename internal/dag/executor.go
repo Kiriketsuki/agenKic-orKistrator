@@ -46,7 +46,8 @@ func (e *Executor) Execute(ctx context.Context, spec *pb.DAGSpec) (string, error
 	// immediately after Execute() returns.
 	e.tracker.CreateExecution(execID, graph.DAGID(), graph.Nodes())
 
-	go e.run(ctx, execID, graph, levels)
+	// Detach from caller's context so the execution outlives the RPC.
+	go e.run(context.Background(), execID, graph, levels)
 
 	return execID, nil
 }
@@ -56,7 +57,7 @@ func (e *Executor) Execute(ctx context.Context, spec *pb.DAGSpec) (string, error
 func (e *Executor) Status(_ context.Context, execID string) (*pb.GetDAGStatusResponse, error) {
 	snap := e.tracker.Snapshot(execID)
 	if snap.State == 0 {
-		return nil, fmt.Errorf("execution %s not found", execID)
+		return nil, fmt.Errorf("%w: %s", ErrExecutionNotFound, execID)
 	}
 	resp := ToProtoResponse(snap)
 	return resp, nil
