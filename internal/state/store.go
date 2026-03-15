@@ -29,6 +29,9 @@ type Event struct {
 //   - GetAgentFields returns ErrAgentNotFound when the agent does not exist.
 //   - DequeueTask returns ErrQueueEmpty when the queue is empty.
 //   - All methods must be safe for concurrent use.
+//   - SetAgentState creates or updates only the state field; numeric fields
+//     (LastHeartbeat, RegisteredAt) default to zero if not previously set via
+//     SetAgentFields. GetAgentFields is safe to call after SetAgentState alone.
 type StateStore interface {
 	// ── Agent state ──────────────────────────────────────────────────────────
 	SetAgentState(ctx context.Context, agentID string, state string) error

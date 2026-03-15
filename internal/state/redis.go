@@ -134,13 +134,19 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 		return AgentFields{}, ErrAgentNotFound
 	}
 
-	lhb, err := strconv.ParseInt(vals[fieldLastHeartbeat], 10, 64)
-	if err != nil {
-		return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldLastHeartbeat, err)
+	var lhb int64
+	if v := vals[fieldLastHeartbeat]; v != "" {
+		lhb, err = strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldLastHeartbeat, err)
+		}
 	}
-	ra, err := strconv.ParseInt(vals[fieldRegisteredAt], 10, 64)
-	if err != nil {
-		return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldRegisteredAt, err)
+	var ra int64
+	if v := vals[fieldRegisteredAt]; v != "" {
+		ra, err = strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldRegisteredAt, err)
+		}
 	}
 
 	return AgentFields{

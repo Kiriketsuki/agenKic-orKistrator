@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
@@ -122,5 +123,54 @@ func TestMachine_UnknownAgent_ReturnsError(t *testing.T) {
 	}
 	if !errors.Is(err, state.ErrAgentNotFound) {
 		t.Fatalf("want ErrAgentNotFound, got %v", err)
+	}
+}
+
+func TestMachine_UnrecognisedState_ReturnsError(t *testing.T) {
+	m, store := newMachine(t)
+	ctx := context.Background()
+	const id = "agent-badstate-01"
+
+	if err := store.SetAgentState(ctx, id, "bogus_state"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+	if err == nil {
+		t.Fatal("expected error for unrecognised state, got nil")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Fatal("expected wrapped error, got unwrapped")
+	}
+	if !strings.Contains(err.Error(), "bogus_state") {
+		t.Fatalf("error should contain seeded state; got: %v", err)
+	}
+}
+
+// TestMachine_AgentFailed_FromIdle documents intentional self-loop behaviour:
+// EventAgentFailed is accepted from any state including StateIdle, producing a
+// snapshot where PreviousState == State. Callers may use this for operational
+// telemetry or choose to filter no-op transitions before publishing domain events.
+func TestMachine_AgentFailed_FromIdle(t *testing.T) {
+	m, store := newMachine(t)
+	ctx := context.Background()
+	const id = "agent-failidle-01"
+
+	if err := store.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	snap, err := m.ApplyEvent(ctx, id, agent.EventAgentFailed)
+	if err != nil {
+		t.Fatalf("ApplyEvent(AgentFailed from Idle): %v", err)
+	}
+	if snap.State != agent.StateIdle {
+		t.Fatalf("want state=idle, got %s", snap.State)
+	}
+	if snap.PreviousState != agent.StateIdle {
+		t.Fatalf("want prevState=idle (self-loop), got %s", snap.PreviousState)
+	}
+	if snap.Event != agent.EventAgentFailed {
+		t.Fatalf("want event=AgentFailed, got %s", snap.Event)
 	}
 }

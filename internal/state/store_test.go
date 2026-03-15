@@ -71,6 +71,26 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		}
 	})
 
+	t.Run("SetAgentState then GetAgentFields returns zero-value numerics", func(t *testing.T) {
+		const agentID = "agent-partial-001"
+		if err := store.SetAgentState(ctx, agentID, "idle"); err != nil {
+			t.Fatalf("SetAgentState: %v", err)
+		}
+		got, err := store.GetAgentFields(ctx, agentID)
+		if err != nil {
+			t.Fatalf("GetAgentFields after SetAgentState: %v", err)
+		}
+		if got.State != "idle" {
+			t.Fatalf("want state=idle, got %q", got.State)
+		}
+		if got.LastHeartbeat != 0 {
+			t.Fatalf("want LastHeartbeat=0 (unset), got %d", got.LastHeartbeat)
+		}
+		if got.RegisteredAt != 0 {
+			t.Fatalf("want RegisteredAt=0 (unset), got %d", got.RegisteredAt)
+		}
+	})
+
 	t.Run("DeleteAgent removes agent", func(t *testing.T) {
 		const agentID = "agent-del-001"
 		if err := store.SetAgentState(ctx, agentID, "idle"); err != nil {
