@@ -18,3 +18,9 @@ Thumbs.db
 /dist/
 /build/
 /out/
+
+# Generated protobuf Go files
+/gen/
+
+# Go
+/vendor/
