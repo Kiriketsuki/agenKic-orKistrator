@@ -4,11 +4,9 @@ import (
 	"context"
 	"net"
 	"testing"
-	"time"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
 	"google.golang.org/grpc"
@@ -26,9 +24,7 @@ func setupTestServer(t *testing.T) (pb.OrchestratorServiceClient, func()) {
 	policy := supervisor.NewRestartPolicy()
 	sv := supervisor.NewSupervisor(machine, store, policy)
 
-	submitter := dag.NewStoreSubmitter(store)
-	executor := dag.NewExecutor(context.Background(), submitter)
-	server := NewOrchestratorServer(sv, store, executor)
+	server := NewOrchestratorServer(sv, store)
 
 	buf := 1024 * 1024
 	lis := bufconn.Listen(buf)
@@ -200,215 +196,5 @@ func TestStreamOutput(t *testing.T) {
 	// Close the send side and verify clean shutdown.
 	if err := stream.CloseSend(); err != nil {
 		t.Fatalf("CloseSend: %v", err)
-	}
-}
-
-// ── SubmitDAG tests ─────────────────────────────────────────────────────────
-
-func twoNodeDAG() *pb.DAGSpec {
-	return &pb.DAGSpec{
-		DagId: "test-dag",
-		Nodes: []*pb.DAGNode{
-			{NodeId: "a", Task: &pb.TaskSpec{TaskId: "task-a", Prompt: "do A", Priority: 1.0}},
-			{NodeId: "b", Task: &pb.TaskSpec{TaskId: "task-b", Prompt: "do B", Priority: 2.0}, DependsOn: []string{"a"}},
-		},
-	}
-}
-
-func TestSubmitDAG_Success(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	resp, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{
-		Dag: twoNodeDAG(),
-	})
-	if err != nil {
-		t.Fatalf("SubmitDAG: %v", err)
-	}
-	if resp.DagExecutionId == "" {
-		t.Fatal("expected non-empty dag_execution_id")
-	}
-}
-
-func TestSubmitDAG_NilSpec(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{})
-	if err == nil {
-		t.Fatal("expected error for nil dag spec")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
-	}
-}
-
-func TestSubmitDAG_NilTaskSpec(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{
-		Dag: &pb.DAGSpec{
-			DagId: "nil-task",
-			Nodes: []*pb.DAGNode{
-				{NodeId: "a"},
-			},
-		},
-	})
-	if err == nil {
-		t.Fatal("expected error for nil task spec in node")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
-	}
-}
-
-func TestSubmitDAG_EmptyNodes(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{
-		Dag: &pb.DAGSpec{DagId: "empty"},
-	})
-	if err == nil {
-		t.Fatal("expected error for empty nodes")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
-	}
-}
-
-func TestSubmitDAG_CycleDetected(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{
-		Dag: &pb.DAGSpec{
-			DagId: "cyclic",
-			Nodes: []*pb.DAGNode{
-				{NodeId: "a", Task: &pb.TaskSpec{TaskId: "t-a", Prompt: "a", Priority: 1.0}, DependsOn: []string{"b"}},
-				{NodeId: "b", Task: &pb.TaskSpec{TaskId: "t-b", Prompt: "b", Priority: 1.0}, DependsOn: []string{"a"}},
-			},
-		},
-	})
-	if err == nil {
-		t.Fatal("expected error for cyclic DAG")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
-	}
-}
-
-// ── GetDAGStatus tests ──────────────────────────────────────────────────────
-
-func TestGetDAGStatus_Success(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	submitResp, err := client.SubmitDAG(ctx, &pb.SubmitDAGRequest{Dag: twoNodeDAG()})
-	if err != nil {
-		t.Fatalf("SubmitDAG: %v", err)
-	}
-
-	statusResp, err := client.GetDAGStatus(ctx, &pb.GetDAGStatusRequest{
-		DagExecutionId: submitResp.DagExecutionId,
-	})
-	if err != nil {
-		t.Fatalf("GetDAGStatus: %v", err)
-	}
-	if statusResp.DagExecutionId != submitResp.DagExecutionId {
-		t.Fatalf("expected id=%s, got %s", submitResp.DagExecutionId, statusResp.DagExecutionId)
-	}
-}
-
-func TestGetDAGStatus_NotFound(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.GetDAGStatus(context.Background(), &pb.GetDAGStatusRequest{
-		DagExecutionId: "nonexistent-execution",
-	})
-	if err == nil {
-		t.Fatal("expected error for nonexistent execution")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.NotFound {
-		t.Fatalf("expected NotFound, got %v", st.Code())
-	}
-}
-
-func TestGetDAGStatus_EmptyID(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	_, err := client.GetDAGStatus(context.Background(), &pb.GetDAGStatusRequest{})
-	if err == nil {
-		t.Fatal("expected error for empty execution id")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	if st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected InvalidArgument, got %v", st.Code())
-	}
-}
-
-func TestSubmitDAG_FullLifecycle(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	submitResp, err := client.SubmitDAG(ctx, &pb.SubmitDAGRequest{Dag: twoNodeDAG()})
-	if err != nil {
-		t.Fatalf("SubmitDAG: %v", err)
-	}
-
-	// Poll until COMPLETED or timeout.
-	deadline := time.Now().Add(5 * time.Second)
-	var statusResp *pb.GetDAGStatusResponse
-	for time.Now().Before(deadline) {
-		statusResp, err = client.GetDAGStatus(ctx, &pb.GetDAGStatusRequest{
-			DagExecutionId: submitResp.DagExecutionId,
-		})
-		if err != nil {
-			t.Fatalf("GetDAGStatus: %v", err)
-		}
-		if statusResp.State == pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED ||
-			statusResp.State == pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	if statusResp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED {
-		t.Fatalf("expected COMPLETED, got %v", statusResp.State)
-	}
-
-	// Verify all nodes completed.
-	for _, ns := range statusResp.NodeStatuses {
-		if ns.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED {
-			t.Fatalf("node %s: expected COMPLETED, got %v", ns.NodeId, ns.State)
-		}
 	}
 }

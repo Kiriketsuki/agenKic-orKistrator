@@ -46,12 +46,7 @@ func WithCrashThreshold(n int) RestartPolicyOption {
 	return func(p *RestartPolicy) { p.crashThreshold = n }
 }
 
-// WithBaseBackoff sets the initial backoff duration (default 1s).
-func WithBaseBackoff(d time.Duration) RestartPolicyOption {
-	return func(p *RestartPolicy) { p.baseBackoff = d }
-}
-
-// RestartPolicy tracks per-agent crash history and returns restart decisions.
+// RestartPolicy tracks crash history and returns restart decisions.
 // Circuit breaker: if > threshold crashes in window -> open -> half-open probe after window expires.
 type RestartPolicy struct {
 	clock          Clock
@@ -60,21 +55,19 @@ type RestartPolicy struct {
 	crashThreshold int
 	crashWindow    time.Duration
 
-	mu               sync.Mutex
-	agentCrashes     map[string][]time.Time // per-agent crash timestamps
-	agentConsecutive map[string]int         // per-agent consecutive crash count
+	mu          sync.Mutex
+	crashes     []time.Time // timestamps of recent crashes
+	consecutive int         // for exponential backoff
 }
 
 // NewRestartPolicy returns a RestartPolicy with sensible defaults.
 func NewRestartPolicy(opts ...RestartPolicyOption) *RestartPolicy {
 	p := &RestartPolicy{
-		clock:            realClock{},
-		baseBackoff:      1 * time.Second,
-		maxBackoff:       30 * time.Second,
-		crashThreshold:   5,
-		crashWindow:      60 * time.Second,
-		agentCrashes:     make(map[string][]time.Time),
-		agentConsecutive: make(map[string]int),
+		clock:          realClock{},
+		baseBackoff:    1 * time.Second,
+		maxBackoff:     30 * time.Second,
+		crashThreshold: 5,
+		crashWindow:    60 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -82,30 +75,29 @@ func NewRestartPolicy(opts ...RestartPolicyOption) *RestartPolicy {
 	return p
 }
 
-// RecordCrash records a crash for the given agent and returns a restart decision.
+// RecordCrash records a crash timestamp and returns a restart decision.
 // It prunes old crashes, checks the circuit breaker, and computes backoff.
-func (p *RestartPolicy) RecordCrash(agentID string) RestartDecision {
+func (p *RestartPolicy) RecordCrash() RestartDecision {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	now := p.clock.Now()
 
 	// Record this crash.
-	p.agentCrashes[agentID] = append(p.agentCrashes[agentID], now)
+	p.crashes = append(p.crashes, now)
 
 	// Prune crashes older than the window.
 	cutoff := now.Add(-p.crashWindow)
-	crashes := p.agentCrashes[agentID]
-	recent := make([]time.Time, 0, len(crashes))
-	for _, t := range crashes {
+	recent := make([]time.Time, 0, len(p.crashes))
+	for _, t := range p.crashes {
 		if !t.Before(cutoff) {
 			recent = append(recent, t)
 		}
 	}
-	p.agentCrashes[agentID] = recent
+	p.crashes = recent
 
 	// Circuit breaker check: > threshold crashes in window opens the circuit.
-	if len(p.agentCrashes[agentID]) > p.crashThreshold {
+	if len(p.crashes) > p.crashThreshold {
 		return RestartDecision{
 			ShouldRestart: false,
 			Reason:        ErrCircuitOpen,
@@ -113,8 +105,8 @@ func (p *RestartPolicy) RecordCrash(agentID string) RestartDecision {
 	}
 
 	// Compute exponential backoff.
-	p.agentConsecutive[agentID]++
-	backoff := p.computeBackoff(p.agentConsecutive[agentID])
+	p.consecutive++
+	backoff := p.computeBackoff(p.consecutive)
 
 	return RestartDecision{
 		ShouldRestart: true,
@@ -122,12 +114,12 @@ func (p *RestartPolicy) RecordCrash(agentID string) RestartDecision {
 	}
 }
 
-// RecordSuccess resets the consecutive crash counter and clears crash history
-// for the given agent, resetting its circuit breaker.
-func (p *RestartPolicy) RecordSuccess(agentID string) {
+// RecordSuccess resets the consecutive crash counter and clears crash history,
+// resetting the circuit breaker.
+func (p *RestartPolicy) RecordSuccess() {
 	p.mu.Lock()
-	p.agentConsecutive[agentID] = 0
-	delete(p.agentCrashes, agentID)
+	p.consecutive = 0
+	p.crashes = p.crashes[:0]
 	p.mu.Unlock()
 }
 
