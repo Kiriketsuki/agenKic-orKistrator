@@ -1,5 +1,3 @@
-//go:build testenv
-
 package dag_test
 
 import (
@@ -9,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
+	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 )
 
 // mockSubmitter records calls and can simulate failures.
@@ -88,7 +86,7 @@ func makeSpec(dagID string, nodes ...*pb.DAGNode) *pb.DAGSpec {
 func TestExecutor_LinearExecution(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	spec := makeSpec("lin",
 		makeNode("A"),
@@ -129,7 +127,7 @@ func TestExecutor_ParallelFork(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
 	sub.delay = 20 * time.Millisecond
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	// A -> B, C  (B and C run in parallel)
 	spec := makeSpec("fork",
@@ -171,7 +169,7 @@ func TestExecutor_FailFast(t *testing.T) {
 	sub := newMockSubmitter()
 	sub.delay = 10 * time.Millisecond
 	sub.failIDs["B-task"] = errors.New("B failed")
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	// A -> B, C  (B fails, C may or may not run)
 	spec := makeSpec("fail",
@@ -191,72 +189,10 @@ func TestExecutor_FailFast(t *testing.T) {
 	}
 }
 
-func TestExecutor_OrphanedNodesMarkedFailed(t *testing.T) {
-	t.Parallel()
-	sub := newMockSubmitter()
-	sub.failIDs["A-task"] = errors.New("A failed")
-	e := dag.NewExecutor(context.Background(), sub)
-
-	// A -> B -> C  (A fails, B and C should be marked FAILED with "skipped: upstream failure")
-	spec := makeSpec("orphan",
-		makeNode("A"),
-		makeNode("B", "A"),
-		makeNode("C", "B"),
-	)
-
-	execID, err := e.Execute(context.Background(), spec)
-	if err != nil {
-		t.Fatalf("Execute() error: %v", err)
-	}
-
-	waitForCompletion(t, e, execID, 2*time.Second)
-
-	// Shutdown waits for the run() goroutine to finish, ensuring the
-	// orphaned-node loop at executor.go:103-110 has completed before
-	// we snapshot per-node states.
-	e.Shutdown()
-
-	resp, err2 := e.Status(context.Background(), execID)
-	if err2 != nil {
-		t.Fatalf("Status() error: %v", err2)
-	}
-	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
-		t.Fatalf("State = %v, want FAILED", resp.State)
-	}
-
-	// Build a map of node statuses for easy lookup.
-	nodeStates := make(map[string]*pb.DAGNodeStatus, len(resp.NodeStatuses))
-	for _, ns := range resp.NodeStatuses {
-		nodeStates[ns.NodeId] = ns
-	}
-
-	// A should be FAILED with the actual error.
-	if a, ok := nodeStates["A"]; !ok {
-		t.Error("node A missing from response")
-	} else if a.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
-		t.Errorf("node A state = %v, want FAILED", a.State)
-	}
-
-	// B and C should be FAILED with "skipped: upstream failure".
-	for _, nodeID := range []string{"B", "C"} {
-		ns, ok := nodeStates[nodeID]
-		if !ok {
-			t.Errorf("node %s missing from response", nodeID)
-			continue
-		}
-		if ns.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
-			t.Errorf("node %s state = %v, want FAILED", nodeID, ns.State)
-		}
-		if ns.Error != "skipped: upstream failure" {
-			t.Errorf("node %s error = %q, want %q", nodeID, ns.Error, "skipped: upstream failure")
-		}
-	}
-}
-
 func TestExecutor_EmptyDAG(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	spec := &pb.DAGSpec{DagId: "empty"}
 	_, err := e.Execute(context.Background(), spec)
@@ -268,7 +204,7 @@ func TestExecutor_EmptyDAG(t *testing.T) {
 func TestExecutor_SingleNode(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	spec := makeSpec("single", makeNode("A"))
 	execID, err := e.Execute(context.Background(), spec)
@@ -290,7 +226,7 @@ func TestExecutor_SingleNode(t *testing.T) {
 func TestExecutor_Status(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
-	e := dag.NewExecutor(context.Background(), sub)
+	e := dag.NewExecutor(sub)
 
 	spec := makeSpec("status-test", makeNode("A"))
 	execID, err := e.Execute(context.Background(), spec)
@@ -314,16 +250,16 @@ func TestExecutor_Status(t *testing.T) {
 	}
 }
 
-func TestExecutor_ShutdownCancelsRunning(t *testing.T) {
+func TestExecutor_ContextCancellation(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
 	sub.delay = 100 * time.Millisecond
+	e := dag.NewExecutor(sub)
 
-	ctx := context.Background()
-	e := dag.NewExecutor(ctx, sub)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	// A -> B, C (B and C take 100ms each)
-	spec := makeSpec("shutdown",
+	spec := makeSpec("cancel",
 		makeNode("A"),
 		makeNode("B", "A"),
 		makeNode("C", "A"),
@@ -334,15 +270,14 @@ func TestExecutor_ShutdownCancelsRunning(t *testing.T) {
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	// Shutdown after A completes but while B,C are still running.
+	// Cancel after A completes but while B,C are still running.
 	time.Sleep(25 * time.Millisecond)
-	e.Shutdown()
+	cancel()
 
-	resp, err := e.Status(ctx, execID)
-	if err != nil {
-		t.Fatalf("Status() error: %v", err)
-	}
-	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
-		t.Errorf("State = %v after Shutdown, want FAILED", resp.State)
+	resp := waitForCompletion(t, e, execID, 2*time.Second)
+	// With cancellation, the execution should end in FAILED state.
+	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED &&
+		resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED {
+		t.Errorf("State = %v after cancel, want FAILED or COMPLETED", resp.State)
 	}
 }

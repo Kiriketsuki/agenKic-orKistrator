@@ -1,7 +1,6 @@
 package dag
 
 import (
-	"sort"
 	"sync"
 	"time"
 
@@ -152,23 +151,7 @@ func (t *StatusTracker) MarkNodeFailed(executionID, nodeID, errMsg string) {
 	node.errorMessage = errMsg
 
 	rec.state = pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED
-	if rec.completedAt.IsZero() {
-		rec.completedAt = now
-	}
-}
-
-// ActiveCount returns the number of executions currently in RUNNING state.
-func (t *StatusTracker) ActiveCount() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	count := 0
-	for _, rec := range t.records {
-		if rec.state == pb.DAGExecutionState_DAG_EXECUTION_STATE_RUNNING {
-			count++
-		}
-	}
-	return count
+	rec.completedAt = now
 }
 
 // Snapshot returns an immutable ExecutionRecord.
@@ -223,9 +206,6 @@ func recordToSnapshot(rec *mutableRecord) ExecutionRecord {
 			ErrorMessage: n.errorMessage,
 		})
 	}
-	sort.Slice(nodeStatuses, func(i, j int) bool {
-		return nodeStatuses[i].NodeID < nodeStatuses[j].NodeID
-	})
 	return ExecutionRecord{
 		ExecutionID:  rec.executionID,
 		DAGID:        rec.dagID,
