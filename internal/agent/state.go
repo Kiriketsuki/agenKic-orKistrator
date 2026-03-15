@@ -1,21 +1,15 @@
 package agent
 
-import (
-	"fmt"
-
-	pkgstate "github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
-)
+import "fmt"
 
 // AgentState represents the lifecycle state of a single agent.
 type AgentState string
 
-// State constants are aliases of the canonical values in the state package so
-// that a value change propagates here at compile time.
 const (
-	StateIdle      AgentState = pkgstate.AgentStateIdle
-	StateAssigned  AgentState = pkgstate.AgentStateAssigned
-	StateWorking   AgentState = pkgstate.AgentStateWorking
-	StateReporting AgentState = pkgstate.AgentStateReporting
+	StateIdle      AgentState = "idle"
+	StateAssigned  AgentState = "assigned"
+	StateWorking   AgentState = "working"
+	StateReporting AgentState = "reporting"
 )
 
 // String implements fmt.Stringer.
