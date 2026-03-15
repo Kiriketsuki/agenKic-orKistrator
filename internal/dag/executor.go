@@ -87,7 +87,7 @@ func (e *Executor) run(ctx context.Context, execID string, graph *Graph, levels 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for _, level := range levels {
+	for levelIdx, level := range levels {
 		var wg sync.WaitGroup
 
 		for _, nodeID := range level {
@@ -101,6 +101,11 @@ func (e *Executor) run(ctx context.Context, execID string, graph *Graph, levels 
 		wg.Wait()
 
 		if ctx.Err() != nil {
+			for _, remaining := range levels[levelIdx+1:] {
+				for _, nodeID := range remaining {
+					e.tracker.MarkNodeFailed(execID, nodeID, "skipped: upstream failure")
+				}
+			}
 			break
 		}
 	}

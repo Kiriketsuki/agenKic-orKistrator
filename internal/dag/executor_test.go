@@ -189,6 +189,58 @@ func TestExecutor_FailFast(t *testing.T) {
 	}
 }
 
+func TestExecutor_OrphanedNodesMarkedFailed(t *testing.T) {
+	t.Parallel()
+	sub := newMockSubmitter()
+	sub.failIDs["A-task"] = errors.New("A failed")
+	e := dag.NewExecutor(context.Background(), sub)
+
+	// A -> B -> C  (A fails, B and C should be marked FAILED with "skipped: upstream failure")
+	spec := makeSpec("orphan",
+		makeNode("A"),
+		makeNode("B", "A"),
+		makeNode("C", "B"),
+	)
+
+	execID, err := e.Execute(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	resp := waitForCompletion(t, e, execID, 2*time.Second)
+	if resp.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
+		t.Fatalf("State = %v, want FAILED", resp.State)
+	}
+
+	// Build a map of node statuses for easy lookup.
+	nodeStates := make(map[string]*pb.DAGNodeStatus, len(resp.NodeStatuses))
+	for _, ns := range resp.NodeStatuses {
+		nodeStates[ns.NodeId] = ns
+	}
+
+	// A should be FAILED with the actual error.
+	if a, ok := nodeStates["A"]; !ok {
+		t.Error("node A missing from response")
+	} else if a.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
+		t.Errorf("node A state = %v, want FAILED", a.State)
+	}
+
+	// B and C should be FAILED with "skipped: upstream failure".
+	for _, nodeID := range []string{"B", "C"} {
+		ns, ok := nodeStates[nodeID]
+		if !ok {
+			t.Errorf("node %s missing from response", nodeID)
+			continue
+		}
+		if ns.State != pb.DAGExecutionState_DAG_EXECUTION_STATE_FAILED {
+			t.Errorf("node %s state = %v, want FAILED", nodeID, ns.State)
+		}
+		if ns.Error != "skipped: upstream failure" {
+			t.Errorf("node %s error = %q, want %q", nodeID, ns.Error, "skipped: upstream failure")
+		}
+	}
+}
+
 func TestExecutor_EmptyDAG(t *testing.T) {
 	t.Parallel()
 	sub := newMockSubmitter()
