@@ -89,7 +89,8 @@ func (s *OrchestratorServer) SubmitDAG(ctx context.Context, req *pb.SubmitDAGReq
 		if errors.Is(err, dag.ErrEmptyDAG) ||
 			errors.Is(err, dag.ErrCycleDetected) ||
 			errors.Is(err, dag.ErrNodeNotFound) ||
-			errors.Is(err, dag.ErrDuplicateNode) {
+			errors.Is(err, dag.ErrDuplicateNode) ||
+			errors.Is(err, dag.ErrMissingTaskSpec) {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid dag: %v", err)
 		}
 		return nil, status.Errorf(codes.Internal, "execute dag: %v", err)

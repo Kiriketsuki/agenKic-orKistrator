@@ -247,6 +247,30 @@ func TestSubmitDAG_NilSpec(t *testing.T) {
 	}
 }
 
+func TestSubmitDAG_NilTaskSpec(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.SubmitDAG(context.Background(), &pb.SubmitDAGRequest{
+		Dag: &pb.DAGSpec{
+			DagId: "nil-task",
+			Nodes: []*pb.DAGNode{
+				{NodeId: "a"},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for nil task spec in node")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", st.Code())
+	}
+}
+
 func TestSubmitDAG_EmptyNodes(t *testing.T) {
 	client, cleanup := setupTestServer(t)
 	defer cleanup()

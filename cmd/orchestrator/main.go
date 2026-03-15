@@ -46,9 +46,9 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 		<-sigCh
 		fmt.Println("shutting down...")
-		sv.Stop()
-		executor.Shutdown()
 		server.GracefulStop()
+		executor.Shutdown()
+		sv.Stop()
 		cancel()
 	}()
 

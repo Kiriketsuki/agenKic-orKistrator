@@ -29,6 +29,9 @@ func NewGraph(spec *pb.DAGSpec) (*Graph, error) {
 		if _, exists := nodes[n.NodeId]; exists {
 			return nil, fmt.Errorf("%w: %s", ErrDuplicateNode, n.NodeId)
 		}
+		if n.Task == nil {
+			return nil, fmt.Errorf("%w: %s", ErrMissingTaskSpec, n.NodeId)
+		}
 		nodes[n.NodeId] = n
 		nodeOrder = append(nodeOrder, n.NodeId)
 	}
