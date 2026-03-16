@@ -57,6 +57,12 @@ func TestAggregator_AllHealthy(t *testing.T) {
 	if !snap.RedisOK {
 		t.Error("expected RedisOK=true")
 	}
+	if !snap.AgentDataValid {
+		t.Error("expected AgentDataValid=true")
+	}
+	if !snap.QueueDataValid {
+		t.Error("expected QueueDataValid=true")
+	}
 }
 
 func TestAggregator_NoAgents(t *testing.T) {
@@ -204,8 +210,8 @@ func TestAggregator_GetAllAgentStatesError(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false when GetAllAgentStates errors")
 	}
-	if snap.RedisOK {
-		t.Error("expected RedisOK=false when store method fails")
+	if !snap.RedisOK {
+		t.Error("expected RedisOK=true: Ping succeeds, only store method failed")
 	}
 	if !strings.Contains(snap.ReadyReason, "agent states unavailable") {
 		t.Errorf("ReadyReason = %q, want to contain 'agent states unavailable'", snap.ReadyReason)
@@ -213,6 +219,9 @@ func TestAggregator_GetAllAgentStatesError(t *testing.T) {
 	// Should not say "no agents registered" — that would be misleading.
 	if strings.Contains(snap.ReadyReason, "no agents") {
 		t.Errorf("ReadyReason = %q, must not mention 'no agents' on store failure", snap.ReadyReason)
+	}
+	if snap.AgentDataValid {
+		t.Error("expected AgentDataValid=false when GetAllAgentStates errors")
 	}
 }
 
@@ -229,14 +238,17 @@ func TestAggregator_QueueLengthError(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false when QueueLength errors")
 	}
-	if snap.RedisOK {
-		t.Error("expected RedisOK=false when store method fails")
+	if !snap.RedisOK {
+		t.Error("expected RedisOK=true: Ping succeeds, only store method failed")
 	}
 	if !strings.Contains(snap.ReadyReason, "queue length unavailable") {
 		t.Errorf("ReadyReason = %q, want to contain 'queue length unavailable'", snap.ReadyReason)
 	}
 	if snap.TasksQueued != 0 {
 		t.Errorf("TasksQueued = %d, want 0 (zero-value fallback on error)", snap.TasksQueued)
+	}
+	if snap.QueueDataValid {
+		t.Error("expected QueueDataValid=false when QueueLength errors")
 	}
 }
 
@@ -258,5 +270,48 @@ func TestAggregator_QueueLengthError_AgentCountPreserved(t *testing.T) {
 	}
 	if !strings.Contains(snap.ReadyReason, "no agents registered") {
 		t.Errorf("ReadyReason = %q, want to contain 'no agents registered'", snap.ReadyReason)
+	}
+}
+
+// TestAggregator_DualStoreFailure exercises the novel interaction where both
+// GetAllAgentStates and QueueLength fail while Ping succeeds.
+// RedisOK must be true (Ping-only), both validity flags false, and the
+// ReadyReason must carry both specific messages without "redis unreachable"
+// or "no agents registered".
+func TestAggregator_DualStoreFailure(t *testing.T) {
+	t.Parallel()
+	store := state.NewMockStore()
+	store.SetGetAllAgentStatesError(errors.New("READONLY replica"))
+	store.SetQueueLengthError(errors.New("sorted set corrupted"))
+	// No Ping error — Redis is reachable; only store operations fail.
+
+	agg := health.NewAggregator(store, &stubDAG{})
+	snap := agg.Check(context.Background())
+
+	if snap.Ready {
+		t.Error("expected Ready=false")
+	}
+	if !snap.RedisOK {
+		t.Error("expected RedisOK=true: Ping succeeds even though store ops fail")
+	}
+	if !strings.Contains(snap.ReadyReason, "agent states unavailable") {
+		t.Errorf("ReadyReason = %q, want to contain 'agent states unavailable'", snap.ReadyReason)
+	}
+	if !strings.Contains(snap.ReadyReason, "queue length unavailable") {
+		t.Errorf("ReadyReason = %q, want to contain 'queue length unavailable'", snap.ReadyReason)
+	}
+	// agentDataValid=false → agent count check skipped.
+	if strings.Contains(snap.ReadyReason, "no agents registered") {
+		t.Errorf("ReadyReason = %q, must not mention 'no agents registered' when agent data unavailable", snap.ReadyReason)
+	}
+	// storeErrors non-empty → generic "redis unreachable" suppressed.
+	if strings.Contains(snap.ReadyReason, "redis unreachable") {
+		t.Errorf("ReadyReason = %q, must not mention 'redis unreachable' when specific store errors exist", snap.ReadyReason)
+	}
+	if snap.AgentDataValid {
+		t.Error("expected AgentDataValid=false")
+	}
+	if snap.QueueDataValid {
+		t.Error("expected QueueDataValid=false")
 	}
 }

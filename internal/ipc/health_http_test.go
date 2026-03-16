@@ -153,6 +153,15 @@ func TestProgress_Counts(t *testing.T) {
 	check("tasks_queued", 3)
 	check("tasks_in_flight", 1)
 	check("dags_in_progress", 0)
+
+	checkBool := func(key string, want bool) {
+		t.Helper()
+		if body[key].(bool) != want {
+			t.Errorf("%s = %v, want %v", key, body[key], want)
+		}
+	}
+	checkBool("agent_data_valid", true)
+	checkBool("queue_data_valid", true)
 }
 
 func TestProgress_Empty(t *testing.T) {
@@ -172,6 +181,11 @@ func TestProgress_Empty(t *testing.T) {
 	for _, key := range []string{"agents_total", "agents_idle", "agents_working", "agents_assigned", "agents_reporting", "agents_unknown", "tasks_queued", "tasks_in_flight", "dags_in_progress"} {
 		if body[key].(float64) != 0 {
 			t.Errorf("%s = %v, want 0", key, body[key])
+		}
+	}
+	for _, key := range []string{"agent_data_valid", "queue_data_valid"} {
+		if body[key].(bool) != true {
+			t.Errorf("%s = %v, want true", key, body[key])
 		}
 	}
 }

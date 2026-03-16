@@ -3,6 +3,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
@@ -29,6 +30,8 @@ type HealthSnapshot struct {
 	TasksInFlight   int // equals AgentsWorking
 	DAGsInProgress  int
 	RedisOK         bool
+	AgentDataValid  bool // true when GetAllAgentStates succeeded
+	QueueDataValid  bool // true when QueueLength succeeded
 }
 
 // AggregatorOption configures an Aggregator.
@@ -66,7 +69,11 @@ func NewAggregator(store state.StateStore, dag DAGStatusProvider, opts ...Aggreg
 // Check gathers current health signals and returns an immutable snapshot.
 // Alive is always true (if the code is running, the process is alive).
 func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
-	redisOK := a.store.Ping(ctx) == nil
+	pingErr := a.store.Ping(ctx)
+	redisOK := pingErr == nil
+	if pingErr != nil {
+		slog.ErrorContext(ctx, "health check: Redis Ping failed", "error", pingErr)
+	}
 
 	// Batch-fetch all agent states; propagate errors to readiness reasons.
 	var storeReasons []string
@@ -74,8 +81,8 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 
 	agentStates, err := a.store.GetAllAgentStates(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "health check: GetAllAgentStates failed", "error", err)
 		storeReasons = append(storeReasons, "agent states unavailable")
-		redisOK = false
 		agentDataValid = false
 		agentStates = map[string]string{}
 	}
@@ -96,10 +103,12 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 		}
 	}
 
+	queueDataValid := true
 	queueLen, err := a.store.QueueLength(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "health check: QueueLength failed", "error", err)
 		storeReasons = append(storeReasons, "queue length unavailable")
-		redisOK = false
+		queueDataValid = false
 	}
 
 	dagsInProgress := a.dagProvider.ActiveExecutionCount()
@@ -121,6 +130,8 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 		TasksInFlight:   working,
 		DAGsInProgress:  dagsInProgress,
 		RedisOK:         redisOK,
+		AgentDataValid:  agentDataValid,
+		QueueDataValid:  queueDataValid,
 	}
 }
 
