@@ -189,3 +189,31 @@ func TestProgress_Empty(t *testing.T) {
 		}
 	}
 }
+
+// TestProgress_SentinelFields_Failure verifies that agent_data_valid and
+// queue_data_valid serialize as false over HTTP when the underlying store
+// calls fail, while the response still returns 200 (data endpoint contract).
+func TestProgress_SentinelFields_Failure(t *testing.T) {
+	store := state.NewMockStore()
+	store.SetGetAllAgentStatesError(errors.New("injected agent error"))
+	store.SetQueueLengthError(errors.New("injected queue error"))
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/progress", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (data endpoint always returns 200)", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+
+	if body["agent_data_valid"].(bool) != false {
+		t.Errorf("agent_data_valid = %v, want false when GetAllAgentStates errors", body["agent_data_valid"])
+	}
+	if body["queue_data_valid"].(bool) != false {
+		t.Errorf("queue_data_valid = %v, want false when QueueLength errors", body["queue_data_valid"])
+	}
+}

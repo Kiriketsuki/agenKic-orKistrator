@@ -64,7 +64,7 @@ func (h *HealthHTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	if snap.Ready {
-		// Ready implies RedisOK; the inner redis-status conditional is dead code.
+		// Ready implies RedisPingOK; the inner redis-status conditional is dead code.
 		w.WriteHeader(http.StatusOK)
 		writeJSON(w, map[string]interface{}{
 			"status": "ready",

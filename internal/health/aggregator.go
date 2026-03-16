@@ -29,7 +29,7 @@ type HealthSnapshot struct {
 	TasksQueued     int64
 	TasksInFlight   int // equals AgentsWorking
 	DAGsInProgress  int
-	RedisOK         bool
+	RedisPingOK     bool
 	AgentDataValid  bool // true when GetAllAgentStates succeeded
 	QueueDataValid  bool // true when QueueLength succeeded
 }
@@ -129,7 +129,7 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 		TasksQueued:     queueLen,
 		TasksInFlight:   working,
 		DAGsInProgress:  dagsInProgress,
-		RedisOK:         redisOK,
+		RedisPingOK:     redisOK,
 		AgentDataValid:  agentDataValid,
 		QueueDataValid:  queueDataValid,
 	}

@@ -54,8 +54,8 @@ func TestAggregator_AllHealthy(t *testing.T) {
 	if snap.DAGsInProgress != 1 {
 		t.Errorf("DAGsInProgress = %d, want 1", snap.DAGsInProgress)
 	}
-	if !snap.RedisOK {
-		t.Error("expected RedisOK=true")
+	if !snap.RedisPingOK {
+		t.Error("expected RedisPingOK=true")
 	}
 	if !snap.AgentDataValid {
 		t.Error("expected AgentDataValid=true")
@@ -98,8 +98,8 @@ func TestAggregator_RedisPingFails(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false when Redis is down")
 	}
-	if snap.RedisOK {
-		t.Error("expected RedisOK=false")
+	if snap.RedisPingOK {
+		t.Error("expected RedisPingOK=false")
 	}
 	if !strings.Contains(snap.ReadyReason, "redis") {
 		t.Errorf("ReadyReason = %q, want to contain 'redis'", snap.ReadyReason)
@@ -210,8 +210,8 @@ func TestAggregator_GetAllAgentStatesError(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false when GetAllAgentStates errors")
 	}
-	if !snap.RedisOK {
-		t.Error("expected RedisOK=true: Ping succeeds, only store method failed")
+	if !snap.RedisPingOK {
+		t.Error("expected RedisPingOK=true: Ping succeeds, only store method failed")
 	}
 	if !strings.Contains(snap.ReadyReason, "agent states unavailable") {
 		t.Errorf("ReadyReason = %q, want to contain 'agent states unavailable'", snap.ReadyReason)
@@ -238,8 +238,8 @@ func TestAggregator_QueueLengthError(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false when QueueLength errors")
 	}
-	if !snap.RedisOK {
-		t.Error("expected RedisOK=true: Ping succeeds, only store method failed")
+	if !snap.RedisPingOK {
+		t.Error("expected RedisPingOK=true: Ping succeeds, only store method failed")
 	}
 	if !strings.Contains(snap.ReadyReason, "queue length unavailable") {
 		t.Errorf("ReadyReason = %q, want to contain 'queue length unavailable'", snap.ReadyReason)
@@ -275,7 +275,7 @@ func TestAggregator_QueueLengthError_AgentCountPreserved(t *testing.T) {
 
 // TestAggregator_DualStoreFailure exercises the novel interaction where both
 // GetAllAgentStates and QueueLength fail while Ping succeeds.
-// RedisOK must be true (Ping-only), both validity flags false, and the
+// RedisPingOK must be true (Ping-only), both validity flags false, and the
 // ReadyReason must carry both specific messages without "redis unreachable"
 // or "no agents registered".
 func TestAggregator_DualStoreFailure(t *testing.T) {
@@ -291,8 +291,8 @@ func TestAggregator_DualStoreFailure(t *testing.T) {
 	if snap.Ready {
 		t.Error("expected Ready=false")
 	}
-	if !snap.RedisOK {
-		t.Error("expected RedisOK=true: Ping succeeds even though store ops fail")
+	if !snap.RedisPingOK {
+		t.Error("expected RedisPingOK=true: Ping succeeds even though store ops fail")
 	}
 	if !strings.Contains(snap.ReadyReason, "agent states unavailable") {
 		t.Errorf("ReadyReason = %q, want to contain 'agent states unavailable'", snap.ReadyReason)
@@ -307,6 +307,9 @@ func TestAggregator_DualStoreFailure(t *testing.T) {
 	// storeErrors non-empty → generic "redis unreachable" suppressed.
 	if strings.Contains(snap.ReadyReason, "redis unreachable") {
 		t.Errorf("ReadyReason = %q, must not mention 'redis unreachable' when specific store errors exist", snap.ReadyReason)
+	}
+	if snap.TasksQueued != 0 {
+		t.Errorf("TasksQueued = %d, want 0 (zero-value fallback on error)", snap.TasksQueued)
 	}
 	if snap.AgentDataValid {
 		t.Error("expected AgentDataValid=false")
