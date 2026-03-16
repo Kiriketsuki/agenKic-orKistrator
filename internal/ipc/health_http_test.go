@@ -1,0 +1,174 @@
+package ipc_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/health"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+)
+
+// newHealthServer creates a HealthHTTPServer using httptest-style handler
+// invocation (no real port binding).
+func newHealthServer(store *state.MockStore, executor *dag.Executor) *ipc.HealthHTTPServer {
+	agg := health.NewAggregator(store, executor)
+	return ipc.NewHealthHTTPServer(":0", agg)
+}
+
+func TestHealthz_Alive(t *testing.T) {
+	store := state.NewMockStore()
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]string
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if body["status"] != "alive" {
+		t.Errorf("status = %q, want 'alive'", body["status"])
+	}
+}
+
+func TestReadyz_NotReady_NoAgents(t *testing.T) {
+	store := state.NewMockStore()
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	var body map[string]string
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if body["status"] != "not_ready" {
+		t.Errorf("status = %q, want 'not_ready'", body["status"])
+	}
+	if body["reason"] == "" {
+		t.Error("expected non-empty reason")
+	}
+}
+
+func TestReadyz_Ready(t *testing.T) {
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+
+	executor := dag.NewExecutor(ctx, dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if body["status"] != "ready" {
+		t.Errorf("status = %q, want 'ready'", body["status"])
+	}
+	if body["agents"].(float64) != 1 {
+		t.Errorf("agents = %v, want 1", body["agents"])
+	}
+	if body["redis"] != "ok" {
+		t.Errorf("redis = %q, want 'ok'", body["redis"])
+	}
+}
+
+func TestReadyz_NotReady_RedisDown(t *testing.T) {
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+	store.SetPingError(errors.New("connection refused"))
+
+	executor := dag.NewExecutor(ctx, dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	var body map[string]string
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	if body["status"] != "not_ready" {
+		t.Errorf("status = %q, want 'not_ready'", body["status"])
+	}
+	if body["reason"] == "" {
+		t.Error("expected non-empty reason mentioning redis")
+	}
+}
+
+func TestProgress_Counts(t *testing.T) {
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+	_ = store.SetAgentState(ctx, "agent-2", "working")
+	_ = store.EnqueueTask(ctx, "task-1", 1.0)
+	_ = store.EnqueueTask(ctx, "task-2", 2.0)
+	_ = store.EnqueueTask(ctx, "task-3", 3.0)
+
+	executor := dag.NewExecutor(ctx, dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/progress", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+
+	check := func(key string, want float64) {
+		t.Helper()
+		if body[key].(float64) != want {
+			t.Errorf("%s = %v, want %v", key, body[key], want)
+		}
+	}
+	check("agents_total", 2)
+	check("agents_idle", 1)
+	check("agents_working", 1)
+	check("tasks_queued", 3)
+	check("tasks_in_flight", 1)
+	check("dags_in_progress", 0)
+}
+
+func TestProgress_Empty(t *testing.T) {
+	store := state.NewMockStore()
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/progress", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+	for _, key := range []string{"agents_total", "agents_idle", "agents_working", "tasks_queued", "tasks_in_flight", "dags_in_progress"} {
+		if body[key].(float64) != 0 {
+			t.Errorf("%s = %v, want 0", key, body[key])
+		}
+	}
+}

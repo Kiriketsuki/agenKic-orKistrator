@@ -10,10 +10,11 @@ import (
 // MockStore is a thread-safe, in-memory StateStore implementation for use in
 // unit tests. It has no external dependencies.
 type MockStore struct {
-	mu     sync.RWMutex
-	agents map[string]*agentRecord // agentID -> record
-	events []Event
-	queue  []queueItem // sorted by priority ascending
+	mu      sync.RWMutex
+	agents  map[string]*agentRecord // agentID -> record
+	events  []Event
+	queue   []queueItem // sorted by priority ascending
+	pingErr error
 }
 
 type agentRecord struct {
@@ -150,5 +151,17 @@ func (m *MockStore) QueueLength(ctx context.Context) (int64, error) {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-func (m *MockStore) Ping(ctx context.Context) error { return nil }
-func (m *MockStore) Close() error                   { return nil }
+// SetPingError configures Ping to return err. Pass nil to reset to healthy.
+func (m *MockStore) SetPingError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pingErr = err
+}
+
+func (m *MockStore) Ping(ctx context.Context) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.pingErr
+}
+
+func (m *MockStore) Close() error { return nil }
