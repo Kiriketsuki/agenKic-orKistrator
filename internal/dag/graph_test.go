@@ -47,6 +47,16 @@ func TestNewGraph(t *testing.T) {
 			wantErr: dag.ErrDuplicateNode,
 		},
 		{
+			name: "nil task spec -> ErrMissingTaskSpec",
+			spec: &pb.DAGSpec{
+				DagId: "d1",
+				Nodes: []*pb.DAGNode{
+					{NodeId: "A", DependsOn: nil},
+				},
+			},
+			wantErr: dag.ErrMissingTaskSpec,
+		},
+		{
 			name: "edge referencing unknown node -> ErrNodeNotFound",
 			spec: &pb.DAGSpec{
 				DagId: "d1",
