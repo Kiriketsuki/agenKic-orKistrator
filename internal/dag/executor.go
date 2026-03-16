@@ -15,15 +15,28 @@ import (
 type Executor struct {
 	submitter TaskSubmitter
 	tracker   *StatusTracker
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 // NewExecutor returns an Executor that delegates individual task execution
-// to the provided TaskSubmitter.
-func NewExecutor(submitter TaskSubmitter) *Executor {
+// to the provided TaskSubmitter. The ctx parameter controls the executor's
+// lifetime — cancelling it aborts all running DAG executions.
+func NewExecutor(ctx context.Context, submitter TaskSubmitter) *Executor {
+	ctx, cancel := context.WithCancel(ctx)
 	return &Executor{
 		submitter: submitter,
 		tracker:   NewStatusTracker(nil),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
+}
+
+// Shutdown cancels all running executions and waits for them to finish.
+func (e *Executor) Shutdown() {
+	e.cancel()
+	e.wg.Wait()
 }
 
 // Execute validates spec, registers the execution synchronously, then
@@ -46,7 +59,13 @@ func (e *Executor) Execute(ctx context.Context, spec *pb.DAGSpec) (string, error
 	// immediately after Execute() returns.
 	e.tracker.CreateExecution(execID, graph.DAGID(), graph.Nodes())
 
-	go e.run(ctx, execID, graph, levels)
+	// Use the executor's server-lifetime context so the execution outlives
+	// the RPC but respects graceful shutdown.
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		e.run(e.ctx, execID, graph, levels)
+	}()
 
 	return execID, nil
 }
@@ -56,7 +75,7 @@ func (e *Executor) Execute(ctx context.Context, spec *pb.DAGSpec) (string, error
 func (e *Executor) Status(_ context.Context, execID string) (*pb.GetDAGStatusResponse, error) {
 	snap := e.tracker.Snapshot(execID)
 	if snap.State == 0 {
-		return nil, fmt.Errorf("execution %s not found", execID)
+		return nil, fmt.Errorf("%w: %s", ErrExecutionNotFound, execID)
 	}
 	resp := ToProtoResponse(snap)
 	return resp, nil
@@ -68,7 +87,7 @@ func (e *Executor) run(ctx context.Context, execID string, graph *Graph, levels 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for _, level := range levels {
+	for levelIdx, level := range levels {
 		var wg sync.WaitGroup
 
 		for _, nodeID := range level {
@@ -82,6 +101,11 @@ func (e *Executor) run(ctx context.Context, execID string, graph *Graph, levels 
 		wg.Wait()
 
 		if ctx.Err() != nil {
+			for _, remaining := range levels[levelIdx+1:] {
+				for _, nodeID := range remaining {
+					e.tracker.MarkNodeFailed(execID, nodeID, "skipped: upstream failure")
+				}
+			}
 			break
 		}
 	}

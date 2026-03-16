@@ -6,7 +6,7 @@ import (
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 )
 
-// Graph is an immutable, validated DAG built from a pb.DAGSpec.
+// Graph is a validated DAG built from a pb.DAGSpec.
 type Graph struct {
 	dagID        string
 	nodes        map[string]*pb.DAGNode
@@ -28,6 +28,9 @@ func NewGraph(spec *pb.DAGSpec) (*Graph, error) {
 	for _, n := range spec.Nodes {
 		if _, exists := nodes[n.NodeId]; exists {
 			return nil, fmt.Errorf("%w: %s", ErrDuplicateNode, n.NodeId)
+		}
+		if n.Task == nil {
+			return nil, fmt.Errorf("%w: %s", ErrMissingTaskSpec, n.NodeId)
 		}
 		nodes[n.NodeId] = n
 		nodeOrder = append(nodeOrder, n.NodeId)
