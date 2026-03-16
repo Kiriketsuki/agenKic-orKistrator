@@ -167,6 +167,36 @@ func TestStatusTracker_ConcurrentAccess(t *testing.T) {
 	}
 }
 
+func TestStatusTracker_ActiveCount(t *testing.T) {
+	t.Parallel()
+	clk := newFixedClock(time.Now())
+	tracker := dag.NewStatusTracker(clk)
+
+	// Empty tracker: zero active.
+	if got := tracker.ActiveCount(); got != 0 {
+		t.Fatalf("empty tracker: ActiveCount = %d, want 0", got)
+	}
+
+	// Create first execution: count = 1.
+	tracker.CreateExecution("exec-ac-1", "dag-ac", []string{"A"})
+	if got := tracker.ActiveCount(); got != 1 {
+		t.Fatalf("after create 1: ActiveCount = %d, want 1", got)
+	}
+
+	// Create second execution: count = 2.
+	tracker.CreateExecution("exec-ac-2", "dag-ac", []string{"B"})
+	if got := tracker.ActiveCount(); got != 2 {
+		t.Fatalf("after create 2: ActiveCount = %d, want 2", got)
+	}
+
+	// Complete all nodes in exec-ac-1: count = 1.
+	tracker.MarkNodeRunning("exec-ac-1", "A")
+	tracker.MarkNodeCompleted("exec-ac-1", "A")
+	if got := tracker.ActiveCount(); got != 1 {
+		t.Fatalf("after completing exec-ac-1: ActiveCount = %d, want 1", got)
+	}
+}
+
 func TestToProtoResponse(t *testing.T) {
 	t.Parallel()
 	clk := newFixedClock(time.Now())

@@ -176,6 +176,38 @@ func (r *RedisStore) ListAgents(ctx context.Context) ([]string, error) {
 	return members, nil
 }
 
+func (r *RedisStore) GetAllAgentStates(ctx context.Context) (map[string]string, error) {
+	members, err := r.client.SMembers(ctx, r.key(agentSetKey)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("GetAllAgentStates: list members: %w", err)
+	}
+	if len(members) == 0 {
+		return map[string]string{}, nil
+	}
+
+	pipe := r.client.Pipeline()
+	cmds := make([]*redis.StringCmd, len(members))
+	for i, id := range members {
+		cmds[i] = pipe.HGet(ctx, r.agentKey(id), fieldState)
+	}
+	if _, err = pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, fmt.Errorf("GetAllAgentStates: pipeline: %w", err)
+	}
+
+	states := make(map[string]string, len(members))
+	for i, id := range members {
+		val, cmdErr := cmds[i].Result()
+		if cmdErr == redis.Nil {
+			continue
+		}
+		if cmdErr != nil {
+			return nil, fmt.Errorf("GetAllAgentStates: get state for %s: %w", id, cmdErr)
+		}
+		states[id] = val
+	}
+	return states, nil
+}
+
 // ── Event stream ──────────────────────────────────────────────────────────────
 
 func (r *RedisStore) PublishEvent(ctx context.Context, event Event) error {

@@ -157,6 +157,20 @@ func (t *StatusTracker) MarkNodeFailed(executionID, nodeID, errMsg string) {
 	}
 }
 
+// ActiveCount returns the number of executions currently in RUNNING state.
+func (t *StatusTracker) ActiveCount() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	count := 0
+	for _, rec := range t.records {
+		if rec.state == pb.DAGExecutionState_DAG_EXECUTION_STATE_RUNNING {
+			count++
+		}
+	}
+	return count
+}
+
 // Snapshot returns an immutable ExecutionRecord.
 // Returns ExecutionRecord with zero State if executionID not found.
 func (t *StatusTracker) Snapshot(executionID string) ExecutionRecord {
