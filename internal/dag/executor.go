@@ -33,6 +33,11 @@ func NewExecutor(ctx context.Context, submitter TaskSubmitter) *Executor {
 	}
 }
 
+// ActiveExecutionCount returns the number of DAG executions currently running.
+func (e *Executor) ActiveExecutionCount() int {
+	return e.tracker.ActiveCount()
+}
+
 // Shutdown cancels all running executions and waits for them to finish.
 func (e *Executor) Shutdown() {
 	e.cancel()

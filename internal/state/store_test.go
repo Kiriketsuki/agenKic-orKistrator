@@ -176,6 +176,29 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		}
 	})
 
+	t.Run("GetAllAgentStates returns all agent states", func(t *testing.T) {
+		const (
+			id1 = "agent-gas-001"
+			id2 = "agent-gas-002"
+		)
+		if err := store.SetAgentState(ctx, id1, "idle"); err != nil {
+			t.Fatalf("SetAgentState: %v", err)
+		}
+		if err := store.SetAgentState(ctx, id2, "working"); err != nil {
+			t.Fatalf("SetAgentState: %v", err)
+		}
+		got, err := store.GetAllAgentStates(ctx)
+		if err != nil {
+			t.Fatalf("GetAllAgentStates: %v", err)
+		}
+		if got[id1] != "idle" {
+			t.Errorf("state[%s] = %q, want 'idle'", id1, got[id1])
+		}
+		if got[id2] != "working" {
+			t.Errorf("state[%s] = %q, want 'working'", id2, got[id2])
+		}
+	})
+
 	t.Run("QueueLength reflects enqueued tasks", func(t *testing.T) {
 		// Drain first.
 		for {
