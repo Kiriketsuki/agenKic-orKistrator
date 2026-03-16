@@ -2,6 +2,16 @@ package state
 
 import "context"
 
+// AgentState* are the canonical lifecycle state strings stored in Redis.
+// Both the state package and any consumer that inspects state strings must use
+// these constants so a value change here is caught at compile time everywhere.
+const (
+	AgentStateIdle      = "idle"
+	AgentStateAssigned  = "assigned"
+	AgentStateWorking   = "working"
+	AgentStateReporting = "reporting"
+)
+
 // AgentFields holds the full set of mutable agent metadata stored in Redis.
 type AgentFields struct {
 	State         string
@@ -42,6 +52,9 @@ type StateStore interface {
 	GetAgentFields(ctx context.Context, agentID string) (AgentFields, error)
 	DeleteAgent(ctx context.Context, agentID string) error
 	ListAgents(ctx context.Context) ([]string, error)
+	// GetAllAgentStates returns a map of agentID → state for all registered
+	// agents in a single batch operation, reducing per-probe round trips.
+	GetAllAgentStates(ctx context.Context) (map[string]string, error)
 
 	// ── Event stream ─────────────────────────────────────────────────────────
 	PublishEvent(ctx context.Context, event Event) error
