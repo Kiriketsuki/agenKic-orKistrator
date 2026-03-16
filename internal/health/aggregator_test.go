@@ -215,3 +215,48 @@ func TestAggregator_GetAllAgentStatesError(t *testing.T) {
 		t.Errorf("ReadyReason = %q, must not mention 'no agents' on store failure", snap.ReadyReason)
 	}
 }
+
+func TestAggregator_QueueLengthError(t *testing.T) {
+	t.Parallel()
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+	store.SetQueueLengthError(errors.New("sorted set error"))
+
+	agg := health.NewAggregator(store, &stubDAG{})
+	snap := agg.Check(ctx)
+
+	if snap.Ready {
+		t.Error("expected Ready=false when QueueLength errors")
+	}
+	if snap.RedisOK {
+		t.Error("expected RedisOK=false when store method fails")
+	}
+	if !strings.Contains(snap.ReadyReason, "queue length unavailable") {
+		t.Errorf("ReadyReason = %q, want to contain 'queue length unavailable'", snap.ReadyReason)
+	}
+	if snap.TasksQueued != 0 {
+		t.Errorf("TasksQueued = %d, want 0 (zero-value fallback on error)", snap.TasksQueued)
+	}
+}
+
+func TestAggregator_QueueLengthError_AgentCountPreserved(t *testing.T) {
+	t.Parallel()
+	store := state.NewMockStore()
+	// No agents registered; only QueueLength fails.
+	store.SetQueueLengthError(errors.New("sorted set error"))
+
+	agg := health.NewAggregator(store, &stubDAG{})
+	snap := agg.Check(context.Background())
+
+	if snap.Ready {
+		t.Error("expected Ready=false")
+	}
+	// Both failures must be reported: agent data is valid so the count check runs.
+	if !strings.Contains(snap.ReadyReason, "queue length unavailable") {
+		t.Errorf("ReadyReason = %q, want to contain 'queue length unavailable'", snap.ReadyReason)
+	}
+	if !strings.Contains(snap.ReadyReason, "no agents registered") {
+		t.Errorf("ReadyReason = %q, want to contain 'no agents registered'", snap.ReadyReason)
+	}
+}

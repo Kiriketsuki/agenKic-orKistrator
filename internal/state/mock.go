@@ -16,6 +16,7 @@ type MockStore struct {
 	queue               []queueItem // sorted by priority ascending
 	pingErr             error
 	getAllAgentStatesErr error
+	queueLenErr         error
 }
 
 type agentRecord struct {
@@ -165,10 +166,21 @@ func (m *MockStore) DequeueTask(ctx context.Context) (string, error) {
 	return item.taskID, nil
 }
 
+// SetQueueLengthError configures QueueLength to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetQueueLengthError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queueLenErr = err
+}
+
 func (m *MockStore) QueueLength(ctx context.Context) (int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	if m.queueLenErr != nil {
+		return 0, m.queueLenErr
+	}
 	return int64(len(m.queue)), nil
 }
 

@@ -70,11 +70,13 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 
 	// Batch-fetch all agent states; propagate errors to readiness reasons.
 	var storeReasons []string
+	agentDataValid := true
 
 	agentStates, err := a.store.GetAllAgentStates(ctx)
 	if err != nil {
 		storeReasons = append(storeReasons, "agent states unavailable")
 		redisOK = false
+		agentDataValid = false
 		agentStates = map[string]string{}
 	}
 
@@ -103,7 +105,7 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 	dagsInProgress := a.dagProvider.ActiveExecutionCount()
 	total := len(agentStates)
 
-	ready, reason := a.readiness(redisOK, total, storeReasons...)
+	ready, reason := a.readiness(redisOK, agentDataValid, total, storeReasons...)
 
 	return HealthSnapshot{
 		Alive:           true,
@@ -124,9 +126,10 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 
 // readiness returns (ready, reason). reason is empty when ready=true.
 // storeErrors are specific failure messages from store method calls; when
-// present they replace the generic "redis unreachable" message and suppress
-// the agent-count check (since agent data may be invalid).
-func (a *Aggregator) readiness(redisOK bool, agentCount int, storeErrors ...string) (bool, string) {
+// present they replace the generic "redis unreachable" message.
+// agentDataValid indicates whether GetAllAgentStates succeeded; the agent-count
+// check is skipped only when it is false (not whenever any store method fails).
+func (a *Aggregator) readiness(redisOK bool, agentDataValid bool, agentCount int, storeErrors ...string) (bool, string) {
 	var reasons []string
 	reasons = append(reasons, storeErrors...)
 
@@ -135,8 +138,8 @@ func (a *Aggregator) readiness(redisOK bool, agentCount int, storeErrors ...stri
 		reasons = append(reasons, "redis unreachable")
 	}
 
-	if len(storeErrors) == 0 {
-		// Only check agent count when we have valid data from the store.
+	if agentDataValid {
+		// Only check agent count when GetAllAgentStates returned valid data.
 		if agentCount == 0 {
 			reasons = append(reasons, "no agents registered")
 		} else if agentCount < a.minAgents {
