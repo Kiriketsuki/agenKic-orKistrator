@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
@@ -25,10 +26,12 @@ func main() {
 	policy := supervisor.NewRestartPolicy()
 	sv := supervisor.NewSupervisor(machine, store, policy)
 
-	server := ipc.NewOrchestratorServer(sv, store)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	submitter := dag.NewStoreSubmitter(store)
+	executor := dag.NewExecutor(ctx, submitter)
+	server := ipc.NewOrchestratorServer(sv, store, executor)
 
 	// Run supervisor loops in background.
 	go func() {
@@ -43,8 +46,9 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 		<-sigCh
 		fmt.Println("shutting down...")
-		sv.Stop()
 		server.GracefulStop()
+		executor.Shutdown()
+		sv.Stop()
 		cancel()
 	}()
 
