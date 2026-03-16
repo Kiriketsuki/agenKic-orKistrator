@@ -162,6 +162,7 @@ func TestProgress_Counts(t *testing.T) {
 	}
 	checkBool("agent_data_valid", true)
 	checkBool("queue_data_valid", true)
+	checkBool("redis_ping_ok", true)
 }
 
 func TestProgress_Empty(t *testing.T) {
@@ -183,7 +184,7 @@ func TestProgress_Empty(t *testing.T) {
 			t.Errorf("%s = %v, want 0", key, body[key])
 		}
 	}
-	for _, key := range []string{"agent_data_valid", "queue_data_valid"} {
+	for _, key := range []string{"agent_data_valid", "queue_data_valid", "redis_ping_ok"} {
 		if body[key].(bool) != true {
 			t.Errorf("%s = %v, want true", key, body[key])
 		}
@@ -215,5 +216,50 @@ func TestProgress_SentinelFields_Failure(t *testing.T) {
 	}
 	if body["queue_data_valid"].(bool) != false {
 		t.Errorf("queue_data_valid = %v, want false when QueueLength errors", body["queue_data_valid"])
+	}
+	// Ping succeeds in this test — only store ops fail.
+	if body["redis_ping_ok"].(bool) != true {
+		t.Errorf("redis_ping_ok = %v, want true (Ping succeeds even when store ops fail)", body["redis_ping_ok"])
+	}
+}
+
+// TestProgress_RedisPingFailed verifies that redis_ping_ok serializes as false
+// over HTTP when Ping returns an error, while the endpoint still returns 200.
+func TestProgress_RedisPingFailed(t *testing.T) {
+	store := state.NewMockStore()
+	store.SetPingError(errors.New("connection refused"))
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	req := httptest.NewRequest(http.MethodGet, "/progress", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (data endpoint always returns 200)", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(rec.Body).Decode(&body)
+
+	if body["redis_ping_ok"].(bool) != false {
+		t.Errorf("redis_ping_ok = %v, want false when Ping errors", body["redis_ping_ok"])
+	}
+}
+
+// TestHealthEndpoints_MethodNotAllowed verifies that POST requests to all three
+// health endpoints are rejected with 405 Method Not Allowed (Go 1.22 routing).
+func TestHealthEndpoints_MethodNotAllowed(t *testing.T) {
+	store := state.NewMockStore()
+	executor := dag.NewExecutor(context.Background(), dag.NewStoreSubmitter(store))
+	srv := newHealthServer(store, executor)
+
+	for _, path := range []string{"/healthz", "/readyz", "/progress"} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST %s: status = %d, want 405", path, rec.Code)
+		}
 	}
 }

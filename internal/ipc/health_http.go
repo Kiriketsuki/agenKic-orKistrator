@@ -22,9 +22,9 @@ func NewHealthHTTPServer(addr string, agg *health.Aggregator) *HealthHTTPServer 
 		aggregator: agg,
 		mux:        http.NewServeMux(),
 	}
-	h.mux.HandleFunc("/healthz", h.handleHealthz)
-	h.mux.HandleFunc("/readyz", h.handleReadyz)
-	h.mux.HandleFunc("/progress", h.handleProgress)
+	h.mux.HandleFunc("GET /healthz", h.handleHealthz)
+	h.mux.HandleFunc("GET /readyz", h.handleReadyz)
+	h.mux.HandleFunc("GET /progress", h.handleProgress)
 
 	h.server = &http.Server{
 		Addr:              addr,
@@ -97,6 +97,7 @@ func (h *HealthHTTPServer) handleProgress(w http.ResponseWriter, r *http.Request
 		"dags_in_progress":  snap.DAGsInProgress,
 		"agent_data_valid":  snap.AgentDataValid,
 		"queue_data_valid":  snap.QueueDataValid,
+		"redis_ping_ok":     snap.RedisPingOK,
 	})
 }
 
