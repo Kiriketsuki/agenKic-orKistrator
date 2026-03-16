@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/health"
 )
@@ -25,7 +26,13 @@ func NewHealthHTTPServer(addr string, agg *health.Aggregator) *HealthHTTPServer 
 	h.mux.HandleFunc("/readyz", h.handleReadyz)
 	h.mux.HandleFunc("/progress", h.handleProgress)
 
-	h.server = &http.Server{Addr: addr, Handler: h.mux}
+	h.server = &http.Server{
+		Addr:              addr,
+		Handler:           h.mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	return h
 }
 
@@ -45,17 +52,11 @@ func (h *HealthHTTPServer) Shutdown(ctx context.Context) error {
 	return h.server.Shutdown(ctx)
 }
 
+// handleHealthz always returns 200 alive — Alive is unconditionally true.
 func (h *HealthHTTPServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	snap := h.aggregator.Check(r.Context())
-
 	w.Header().Set("Content-Type", "application/json")
-	if snap.Alive {
-		w.WriteHeader(http.StatusOK)
-		writeJSON(w, map[string]string{"status": "alive"})
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		writeJSON(w, map[string]string{"status": "dead"})
-	}
+	w.WriteHeader(http.StatusOK)
+	writeJSON(w, map[string]string{"status": "alive"})
 }
 
 func (h *HealthHTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
@@ -63,15 +64,12 @@ func (h *HealthHTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	if snap.Ready {
-		redisStatus := "ok"
-		if !snap.RedisOK {
-			redisStatus = "unreachable"
-		}
+		// Ready implies RedisOK; the inner redis-status conditional is dead code.
 		w.WriteHeader(http.StatusOK)
 		writeJSON(w, map[string]interface{}{
 			"status": "ready",
 			"agents": snap.AgentsTotal,
-			"redis":  redisStatus,
+			"redis":  "ok",
 		})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -88,11 +86,14 @@ func (h *HealthHTTPServer) handleProgress(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	writeJSON(w, map[string]interface{}{
-		"agents_total":    snap.AgentsTotal,
-		"agents_idle":     snap.AgentsIdle,
-		"agents_working":  snap.AgentsWorking,
-		"tasks_queued":    snap.TasksQueued,
-		"tasks_in_flight": snap.TasksInFlight,
+		"agents_total":     snap.AgentsTotal,
+		"agents_idle":      snap.AgentsIdle,
+		"agents_working":   snap.AgentsWorking,
+		"agents_assigned":  snap.AgentsAssigned,
+		"agents_reporting": snap.AgentsReporting,
+		"agents_unknown":   snap.AgentsUnknown,
+		"tasks_queued":     snap.TasksQueued,
+		"tasks_in_flight":  snap.TasksInFlight,
 		"dags_in_progress": snap.DAGsInProgress,
 	})
 }

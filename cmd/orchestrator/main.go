@@ -75,18 +75,21 @@ func main() {
 	}()
 
 	// Graceful shutdown on signal.
+	// Order: cancel context first (stops all context-dependent loops such as
+	// the supervisor and health updater), then drain external-facing servers,
+	// then shut down internal components.
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 		<-sigCh
 		fmt.Println("shutting down...")
+		cancel()
 		server.GracefulStop()
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutCancel()
 		_ = httpHealth.Shutdown(shutCtx)
 		executor.Shutdown()
 		sv.Stop()
-		cancel()
 	}()
 
 	fmt.Printf("agenKic-orKistrator gRPC on %s, health HTTP on %s\n", addr, healthAddr)

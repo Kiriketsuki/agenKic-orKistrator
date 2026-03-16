@@ -44,6 +44,7 @@ func RunHealthUpdater(ctx context.Context, hs *grpchealth.Server, agg *health.Ag
 	for {
 		select {
 		case <-ctx.Done():
+			hs.Shutdown()
 			return
 		case <-ticker.C:
 			update()

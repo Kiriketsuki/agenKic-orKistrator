@@ -10,11 +10,12 @@ import (
 // MockStore is a thread-safe, in-memory StateStore implementation for use in
 // unit tests. It has no external dependencies.
 type MockStore struct {
-	mu      sync.RWMutex
-	agents  map[string]*agentRecord // agentID -> record
-	events  []Event
-	queue   []queueItem // sorted by priority ascending
-	pingErr error
+	mu                  sync.RWMutex
+	agents              map[string]*agentRecord // agentID -> record
+	events              []Event
+	queue               []queueItem // sorted by priority ascending
+	pingErr             error
+	getAllAgentStatesErr error
 }
 
 type agentRecord struct {
@@ -101,6 +102,28 @@ func (m *MockStore) ListAgents(ctx context.Context) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+// SetGetAllAgentStatesError configures GetAllAgentStates to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetGetAllAgentStatesError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getAllAgentStatesErr = err
+}
+
+func (m *MockStore) GetAllAgentStates(ctx context.Context) (map[string]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.getAllAgentStatesErr != nil {
+		return nil, m.getAllAgentStatesErr
+	}
+	states := make(map[string]string, len(m.agents))
+	for id, rec := range m.agents {
+		states[id] = rec.fields.State
+	}
+	return states, nil
 }
 
 // ── Event stream ──────────────────────────────────────────────────────────────

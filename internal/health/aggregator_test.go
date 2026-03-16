@@ -164,3 +164,54 @@ func TestAggregator_AlwaysAlive(t *testing.T) {
 		t.Error("expected Alive=true regardless of subsystem state")
 	}
 }
+
+func TestAggregator_UnknownAgentState(t *testing.T) {
+	t.Parallel()
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+	_ = store.SetAgentState(ctx, "agent-2", "transmogrifying") // unrecognised
+
+	agg := health.NewAggregator(store, &stubDAG{})
+	snap := agg.Check(ctx)
+
+	if snap.AgentsTotal != 2 {
+		t.Errorf("AgentsTotal = %d, want 2", snap.AgentsTotal)
+	}
+	if snap.AgentsIdle != 1 {
+		t.Errorf("AgentsIdle = %d, want 1", snap.AgentsIdle)
+	}
+	if snap.AgentsUnknown != 1 {
+		t.Errorf("AgentsUnknown = %d, want 1", snap.AgentsUnknown)
+	}
+	// Total must equal the sum of all buckets.
+	bucketSum := snap.AgentsIdle + snap.AgentsWorking + snap.AgentsAssigned + snap.AgentsReporting + snap.AgentsUnknown
+	if bucketSum != snap.AgentsTotal {
+		t.Errorf("bucket sum %d != AgentsTotal %d", bucketSum, snap.AgentsTotal)
+	}
+}
+
+func TestAggregator_GetAllAgentStatesError(t *testing.T) {
+	t.Parallel()
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+	store.SetGetAllAgentStatesError(errors.New("store failure"))
+
+	agg := health.NewAggregator(store, &stubDAG{})
+	snap := agg.Check(ctx)
+
+	if snap.Ready {
+		t.Error("expected Ready=false when GetAllAgentStates errors")
+	}
+	if snap.RedisOK {
+		t.Error("expected RedisOK=false when store method fails")
+	}
+	if !strings.Contains(snap.ReadyReason, "agent states unavailable") {
+		t.Errorf("ReadyReason = %q, want to contain 'agent states unavailable'", snap.ReadyReason)
+	}
+	// Should not say "no agents registered" — that would be misleading.
+	if strings.Contains(snap.ReadyReason, "no agents") {
+		t.Errorf("ReadyReason = %q, must not mention 'no agents' on store failure", snap.ReadyReason)
+	}
+}

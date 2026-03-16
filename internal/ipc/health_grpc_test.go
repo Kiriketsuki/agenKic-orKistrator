@@ -98,3 +98,21 @@ func TestGRPCHealth_NotServing_RedisDown(t *testing.T) {
 
 	waitForStatus(t, client, grpc_health_v1.HealthCheckResponse_NOT_SERVING, 500*time.Millisecond)
 }
+
+func TestGRPCHealth_NotServingOnShutdown(t *testing.T) {
+	store := state.NewMockStore()
+	ctx := context.Background()
+	_ = store.SetAgentState(ctx, "agent-1", "idle")
+
+	executor := dag.NewExecutor(ctx, dag.NewStoreSubmitter(store))
+	client, cancel := setupHealthGRPC(t, store, executor)
+
+	// Confirm SERVING before shutdown.
+	waitForStatus(t, client, grpc_health_v1.HealthCheckResponse_SERVING, 500*time.Millisecond)
+
+	// Cancel the context; RunHealthUpdater must call hs.Shutdown() and set
+	// all services to NOT_SERVING before returning.
+	cancel()
+
+	waitForStatus(t, client, grpc_health_v1.HealthCheckResponse_NOT_SERVING, 500*time.Millisecond)
+}

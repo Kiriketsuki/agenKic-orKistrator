@@ -147,6 +147,9 @@ func TestProgress_Counts(t *testing.T) {
 	check("agents_total", 2)
 	check("agents_idle", 1)
 	check("agents_working", 1)
+	check("agents_assigned", 0)
+	check("agents_reporting", 0)
+	check("agents_unknown", 0)
 	check("tasks_queued", 3)
 	check("tasks_in_flight", 1)
 	check("dags_in_progress", 0)
@@ -166,7 +169,7 @@ func TestProgress_Empty(t *testing.T) {
 	}
 	var body map[string]interface{}
 	_ = json.NewDecoder(rec.Body).Decode(&body)
-	for _, key := range []string{"agents_total", "agents_idle", "agents_working", "tasks_queued", "tasks_in_flight", "dags_in_progress"} {
+	for _, key := range []string{"agents_total", "agents_idle", "agents_working", "agents_assigned", "agents_reporting", "agents_unknown", "tasks_queued", "tasks_in_flight", "dags_in_progress"} {
 		if body[key].(float64) != 0 {
 			t.Errorf("%s = %v, want 0", key, body[key])
 		}

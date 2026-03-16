@@ -24,6 +24,7 @@ type HealthSnapshot struct {
 	AgentsWorking   int
 	AgentsAssigned  int
 	AgentsReporting int
+	AgentsUnknown   int // agents in an unrecognised state
 	TasksQueued     int64
 	TasksInFlight   int // equals AgentsWorking
 	DAGsInProgress  int
@@ -67,31 +68,42 @@ func NewAggregator(store state.StateStore, dag DAGStatusProvider, opts ...Aggreg
 func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 	redisOK := a.store.Ping(ctx) == nil
 
-	agentIDs, _ := a.store.ListAgents(ctx)
+	// Batch-fetch all agent states; propagate errors to readiness reasons.
+	var storeReasons []string
 
-	var idle, working, assigned, reporting int
-	for _, id := range agentIDs {
-		st, err := a.store.GetAgentState(ctx, id)
-		if err != nil {
-			continue
-		}
+	agentStates, err := a.store.GetAllAgentStates(ctx)
+	if err != nil {
+		storeReasons = append(storeReasons, "agent states unavailable")
+		redisOK = false
+		agentStates = map[string]string{}
+	}
+
+	var idle, working, assigned, reporting, unknown int
+	for _, st := range agentStates {
 		switch st {
-		case "idle":
+		case state.AgentStateIdle:
 			idle++
-		case "working":
+		case state.AgentStateWorking:
 			working++
-		case "assigned":
+		case state.AgentStateAssigned:
 			assigned++
-		case "reporting":
+		case state.AgentStateReporting:
 			reporting++
+		default:
+			unknown++
 		}
 	}
 
-	queueLen, _ := a.store.QueueLength(ctx)
-	dagsInProgress := a.dagProvider.ActiveExecutionCount()
-	total := len(agentIDs)
+	queueLen, err := a.store.QueueLength(ctx)
+	if err != nil {
+		storeReasons = append(storeReasons, "queue length unavailable")
+		redisOK = false
+	}
 
-	ready, reason := a.readiness(redisOK, total)
+	dagsInProgress := a.dagProvider.ActiveExecutionCount()
+	total := len(agentStates)
+
+	ready, reason := a.readiness(redisOK, total, storeReasons...)
 
 	return HealthSnapshot{
 		Alive:           true,
@@ -102,6 +114,7 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 		AgentsWorking:   working,
 		AgentsAssigned:  assigned,
 		AgentsReporting: reporting,
+		AgentsUnknown:   unknown,
 		TasksQueued:     queueLen,
 		TasksInFlight:   working,
 		DAGsInProgress:  dagsInProgress,
@@ -110,16 +123,25 @@ func (a *Aggregator) Check(ctx context.Context) HealthSnapshot {
 }
 
 // readiness returns (ready, reason). reason is empty when ready=true.
-func (a *Aggregator) readiness(redisOK bool, agentCount int) (bool, string) {
+// storeErrors are specific failure messages from store method calls; when
+// present they replace the generic "redis unreachable" message and suppress
+// the agent-count check (since agent data may be invalid).
+func (a *Aggregator) readiness(redisOK bool, agentCount int, storeErrors ...string) (bool, string) {
 	var reasons []string
+	reasons = append(reasons, storeErrors...)
 
-	if !redisOK {
+	if !redisOK && len(storeErrors) == 0 {
+		// Ping failed but no specific store method errors: report generically.
 		reasons = append(reasons, "redis unreachable")
 	}
-	if agentCount == 0 {
-		reasons = append(reasons, "no agents registered")
-	} else if agentCount < a.minAgents {
-		reasons = append(reasons, fmt.Sprintf("agents below minimum: %d < %d", agentCount, a.minAgents))
+
+	if len(storeErrors) == 0 {
+		// Only check agent count when we have valid data from the store.
+		if agentCount == 0 {
+			reasons = append(reasons, "no agents registered")
+		} else if agentCount < a.minAgents {
+			reasons = append(reasons, fmt.Sprintf("agents below minimum: %d < %d", agentCount, a.minAgents))
+		}
 	}
 
 	if len(reasons) > 0 {
