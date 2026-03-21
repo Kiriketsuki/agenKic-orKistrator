@@ -6,7 +6,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              Create a task to track a specific piece of work. Tasks branch from `main` and when merged back to `main` will bump the **Major** version (3rd digit: YY.MM.**X**.0). The target branch will be rebased before merge to ensure a linear history.
+              Create a task to track a specific piece of work. Task branches bump the **Patch** version (4th digit: YY.X.Y.**Z**). The target branch will be rebased before merge to ensure a linear history.
 
               Sub-issues (features or bugs) tracked inside a Task will automatically branch from the task branch.
 
