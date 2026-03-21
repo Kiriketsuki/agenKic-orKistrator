@@ -10,13 +10,13 @@ import (
 // MockStore is a thread-safe, in-memory StateStore implementation for use in
 // unit tests. It has no external dependencies.
 type MockStore struct {
-	mu                  sync.RWMutex
-	agents              map[string]*agentRecord // agentID -> record
-	events              []Event
-	queue               []queueItem // sorted by priority ascending
-	pingErr             error
+	mu                   sync.RWMutex
+	agents               map[string]*agentRecord // agentID -> record
+	events               []Event
+	queue                []queueItem // sorted by priority ascending
+	pingErr              error
 	getAllAgentStatesErr error
-	queueLenErr         error
+	queueLenErr          error
 }
 
 type agentRecord struct {
