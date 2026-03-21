@@ -28,28 +28,33 @@ All work goes through issues. **Never push directly to `main`.**
 
 ### Starting work
 1. Create an issue with the appropriate label — the `issue-branch-handler` workflow auto-creates a branch and draft PR
-2. Label hierarchy: `task` (top-level) → `feature` (sub-issue of task) → `bug` (sub-issue of feature/task)
+2. Label hierarchy: `epic` → `feature` (sub-issue of epic) → `task` (sub-issue of feature/epic) → `bug` / `hotfix` (always from main)
 3. Sub-issues automatically branch from their parent's branch
 
 ### Branch naming (auto-generated)
 ```
-task/{n}-kebab-title
+epic/{n}-kebab-title
 feature/{n}-kebab-title
+task/{n}-kebab-title
 bug/{n}-kebab-title
+hotfix/{n}-kebab-title
 ```
 
-### Versioning — `YY.MM.Major.Minor`
-- `task/*` or `feature/*` merged → main: **Major +1**, Minor → 0
-- `bug/*` or `hotfix/*` merged → main: **Minor +1**
-- Direct push with `hotfix:` in commit message: appends suffix (a, b … z, A …)
-- Monthly rollover: run **Manual Monthly Version Bump** from Actions → `workflow_dispatch`
+### Versioning — `YY.Major.Minor.Patch[Suffix]`
+- `epic/*` merged → main: **Major +1**, Minor → 0, Patch → 0
+- `feature/*` merged → epic or main: **Minor +1**, Patch → 0
+- `task/*` or `bug/*` merged → parent or main: **Patch +1**
+- `hotfix/*` merged → main: appends suffix letter (a, b … z, aa …)
+- Year rollover: run **Manual Version Bump** → `year-rollover` from Actions → `workflow_dispatch`
 
-### PR titles
-| Type | Format |
-|------|--------|
-| Feature | `Adding [Feature]: Name` |
-| Task | `Implementing [Task]: Name` |
-| Bug | `Fixing [Bug]: Name` |
+### PR titles (auto-generated, conventional commits)
+| Label | PR Title Prefix |
+|-------|----------------|
+| epic | `epic:` |
+| feature | `feat:` |
+| task | `chore:` |
+| bug | `fix:` |
+| hotfix | `hotfix:` |
 
 All PRs are squash-merged.
 
@@ -89,7 +94,7 @@ Workflows in `.github/workflows/`:
 - `issue-branch-handler.yml` — auto-creates branch + draft PR when an issue is labelled
 - `version-bump.yml` / `version-validation.yml` — automated versioning on merge
 - `release.yml` — release packaging
-- `manual-version-bump.yml` — monthly rollover via `workflow_dispatch`
+- `manual-version-bump.yml` — manual bumps and year rollover via `workflow_dispatch`
 
 No build/test commands exist yet — this section should be updated when the Go module is scaffolded.
 
