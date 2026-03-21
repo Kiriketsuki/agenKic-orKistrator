@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 )
 
 // mockSubmitter records calls and can simulate failures.

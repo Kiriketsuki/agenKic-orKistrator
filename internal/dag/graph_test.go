@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 )
 
 func makeNode(id string, deps ...string) *pb.DAGNode {
@@ -20,10 +20,10 @@ func TestNewGraph(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		spec        *pb.DAGSpec
-		wantErr     error
-		checkGraph  func(t *testing.T, g *dag.Graph)
+		name       string
+		spec       *pb.DAGSpec
+		wantErr    error
+		checkGraph func(t *testing.T, g *dag.Graph)
 	}{
 		{
 			name:    "nil spec nodes -> ErrEmptyDAG",

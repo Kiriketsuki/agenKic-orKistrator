@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 )
 
 func buildGraph(t *testing.T, nodes ...*pb.DAGNode) *dag.Graph {

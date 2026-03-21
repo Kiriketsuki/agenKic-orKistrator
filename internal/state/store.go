@@ -15,9 +15,9 @@ const (
 // AgentFields holds the full set of mutable agent metadata stored in Redis.
 type AgentFields struct {
 	State         string
-	LastHeartbeat int64  // unix millis
+	LastHeartbeat int64 // unix millis
 	CurrentTaskID string
-	RegisteredAt  int64  // unix millis
+	RegisteredAt  int64 // unix millis
 }
 
 // Event represents an entry published to the event stream.
