@@ -86,18 +86,18 @@ func (h *HealthHTTPServer) handleProgress(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	writeJSON(w, map[string]interface{}{
-		"agents_total":      snap.AgentsTotal,
-		"agents_idle":       snap.AgentsIdle,
-		"agents_working":    snap.AgentsWorking,
-		"agents_assigned":   snap.AgentsAssigned,
-		"agents_reporting":  snap.AgentsReporting,
-		"agents_unknown":    snap.AgentsUnknown,
-		"tasks_queued":      snap.TasksQueued,
-		"tasks_in_flight":   snap.TasksInFlight,
-		"dags_in_progress":  snap.DAGsInProgress,
-		"agent_data_valid":  snap.AgentDataValid,
-		"queue_data_valid":  snap.QueueDataValid,
-		"redis_ping_ok":     snap.RedisPingOK,
+		"agents_total":     snap.AgentsTotal,
+		"agents_idle":      snap.AgentsIdle,
+		"agents_working":   snap.AgentsWorking,
+		"agents_assigned":  snap.AgentsAssigned,
+		"agents_reporting": snap.AgentsReporting,
+		"agents_unknown":   snap.AgentsUnknown,
+		"tasks_queued":     snap.TasksQueued,
+		"tasks_in_flight":  snap.TasksInFlight,
+		"dags_in_progress": snap.DAGsInProgress,
+		"agent_data_valid": snap.AgentDataValid,
+		"queue_data_valid": snap.QueueDataValid,
+		"redis_ping_ok":    snap.RedisPingOK,
 	})
 }
 
