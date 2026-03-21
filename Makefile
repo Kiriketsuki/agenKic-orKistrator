@@ -1,4 +1,4 @@
-.PHONY: generate test test-integration lint build clean
+.PHONY: generate test test-integration test-e2e lint build clean
 
 BINARY_NAME=orchestrator
 BINARY_OUT=bin/$(BINARY_NAME)
@@ -19,6 +19,9 @@ test:
 
 test-integration:
 	go test -race -count=1 -tags=integration ./internal/...
+
+test-e2e:
+	go test -race -count=1 -timeout=60s ./e2e/...
 
 lint:
 	golangci-lint run ./...
