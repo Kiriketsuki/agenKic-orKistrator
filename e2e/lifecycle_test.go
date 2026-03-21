@@ -1,7 +1,14 @@
+// Package e2e_test exercises the in-process orchestrator stack
+// (MockStore -> Machine -> Supervisor -> DAG Executor -> gRPC via bufconn).
+//
+// Scenarios that use ApplyEventForTest to inject state transitions are
+// marked [gRPC-bypassed]; full gRPC lifecycle coverage for those paths
+// will follow once agent-side gRPC clients are implemented.
 package e2e_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -28,6 +35,7 @@ type testStack struct {
 	store   *state.MockStore
 	sv      *supervisor.Supervisor
 	machine *agent.Machine
+	policy  *supervisor.RestartPolicy
 	cancel  context.CancelFunc
 	cleanup func()
 }
@@ -60,7 +68,14 @@ func newTestStack(t *testing.T, svOpts ...supervisor.SupervisorOption) *testStac
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
 	pb.RegisterOrchestratorServiceServer(grpcServer, server)
-	go func() { _ = grpcServer.Serve(lis) }()
+
+	servErr := make(chan error, 1)
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			servErr <- err
+		}
+		close(servErr)
+	}()
 
 	// Start the supervisor run loop in the background.
 	go func() { _ = sv.Run(ctx) }()
@@ -77,10 +92,13 @@ func newTestStack(t *testing.T, svOpts ...supervisor.SupervisorOption) *testStac
 	}
 
 	cleanup := func() {
-		conn.Close()
-		grpcServer.GracefulStop()
-		cancel()
-		executor.Shutdown()
+		cancel()                  // 1. stop supervisor goroutines
+		grpcServer.GracefulStop() // 2. drain gRPC server
+		conn.Close()              // 3. close client connection
+		executor.Shutdown()       // 4. stop DAG executor
+		if err := <-servErr; err != nil {
+			t.Errorf("grpcServer.Serve: %v", err)
+		}
 	}
 
 	return &testStack{
@@ -88,6 +106,7 @@ func newTestStack(t *testing.T, svOpts ...supervisor.SupervisorOption) *testStac
 		store:   store,
 		sv:      sv,
 		machine: machine,
+		policy:  policy,
 		cancel:  cancel,
 		cleanup: cleanup,
 	}
@@ -136,6 +155,7 @@ func pollDAGComplete(
 	for time.Now().Before(deadline) {
 		resp, err := client.GetDAGStatus(context.Background(), &pb.GetDAGStatusRequest{DagExecutionId: execID})
 		if err != nil {
+			t.Logf("GetDAGStatus error (will retry): %v", err)
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
@@ -244,6 +264,16 @@ func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 	// Give the assign loop several ticks — a WORKING agent cannot transition to ASSIGNED,
 	// so this sleep is a deliberate negative-case wait before the structural assertion.
 	time.Sleep(100 * time.Millisecond)
+
+	// Structural assertion: the task must still be in the queue since no idle agent exists.
+	qLen, qErr := s.store.QueueLength(ctx)
+	if qErr != nil {
+		t.Fatalf("QueueLength: %v", qErr)
+	}
+	if qLen != 1 {
+		t.Fatalf("expected 1 task in queue (no idle agent), got %d", qLen)
+	}
+
 	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState: %v", err)
@@ -404,7 +434,7 @@ func TestE2E_LinearDAG(t *testing.T) {
 	}
 }
 
-// ── Scenario 9: Parallel Fork DAG ────────────────────────────────────────────
+// ── Scenario 7: Parallel Fork DAG ────────────────────────────────────────────
 
 // TestE2E_ParallelForkDAG verifies that a fork-join DAG (A → {B, C} → D)
 // completes with all four nodes in the COMPLETED state.  B and C execute in
@@ -444,5 +474,129 @@ func TestE2E_ParallelForkDAG(t *testing.T) {
 		if nodeMap[id] != pb.DAGExecutionState_DAG_EXECUTION_STATE_COMPLETED {
 			t.Fatalf("node %s: expected COMPLETED, got %v", id, nodeMap[id])
 		}
+	}
+}
+
+// ── Scenario 8: Restart With Exponential Backoff [gRPC-bypassed] ─────────
+
+// TestE2E_RestartWithBackoff verifies that the supervisor's RestartPolicy
+// correctly computes exponential backoff after consecutive agent crashes.
+// Each crash resets the agent to idle (via EventAgentFailed) and the policy
+// records the crash with increasing backoff: 1s, 2s, 4s...
+func TestE2E_RestartWithBackoff(t *testing.T) {
+	s := newTestStack(t)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-backoff-test"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// First crash cycle: idle → assigned → working → failed (crash).
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+		t.Fatalf("advance to assigned: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventAgentFailed); err != nil {
+		t.Fatalf("first crash: %v", err)
+	}
+
+	d1 := s.policy.RecordCrash()
+	if !d1.ShouldRestart {
+		t.Fatal("expected ShouldRestart=true after first crash")
+	}
+	if d1.Backoff != 1*time.Second {
+		t.Fatalf("expected 1s backoff after first crash, got %v", d1.Backoff)
+	}
+
+	// Second crash cycle.
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+		t.Fatalf("advance to assigned (2): %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working (2): %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventAgentFailed); err != nil {
+		t.Fatalf("second crash: %v", err)
+	}
+
+	d2 := s.policy.RecordCrash()
+	if !d2.ShouldRestart {
+		t.Fatal("expected ShouldRestart=true after second crash")
+	}
+	if d2.Backoff != 2*time.Second {
+		t.Fatalf("expected 2s backoff after second crash, got %v", d2.Backoff)
+	}
+
+	// Verify agent returned to idle after the crash.
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected IDLE after crash, got %v", stateResp.State)
+	}
+}
+
+// ── Scenario 9: Circuit Breaker Trips After Repeated Failures [gRPC-bypassed] ─
+
+// TestE2E_CircuitBreakerTrips verifies that the RestartPolicy's circuit breaker
+// opens after more than crashThreshold crashes within the crash window. The
+// default threshold is 5; after 6 crashes the policy returns ShouldRestart=false
+// with Reason=ErrCircuitOpen.
+func TestE2E_CircuitBreakerTrips(t *testing.T) {
+	s := newTestStack(t)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-circuit-test"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Simulate 5 crash cycles — all should return ShouldRestart=true.
+	for i := 1; i <= 5; i++ {
+		if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+			t.Fatalf("crash %d: advance to assigned: %v", i, err)
+		}
+		if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+			t.Fatalf("crash %d: advance to working: %v", i, err)
+		}
+		if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventAgentFailed); err != nil {
+			t.Fatalf("crash %d: EventAgentFailed: %v", i, err)
+		}
+
+		d := s.policy.RecordCrash()
+		if !d.ShouldRestart {
+			t.Fatalf("crash %d: expected ShouldRestart=true, got false", i)
+		}
+	}
+
+	// 6th crash — circuit breaker should trip.
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+		t.Fatalf("crash 6: advance to assigned: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("crash 6: advance to working: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventAgentFailed); err != nil {
+		t.Fatalf("crash 6: EventAgentFailed: %v", err)
+	}
+
+	d6 := s.policy.RecordCrash()
+	if d6.ShouldRestart {
+		t.Fatal("expected ShouldRestart=false after 6th crash (circuit breaker)")
+	}
+	if !errors.Is(d6.Reason, supervisor.ErrCircuitOpen) {
+		t.Fatalf("expected Reason=ErrCircuitOpen, got %v", d6.Reason)
 	}
 }

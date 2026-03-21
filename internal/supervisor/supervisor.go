@@ -235,17 +235,8 @@ func (sv *Supervisor) applyEvent(ctx context.Context, agentID string, event agen
 }
 
 // getAgentMutex returns the per-agent mutex, or nil if not registered.
-// ApplyEventForTest exposes applyEvent for external test packages (e.g. e2e/).
-// This cannot use the export_test.go pattern because e2e_test imports supervisor
-// as an external package — _test.go files are excluded from those compilations.
-// The ForTest suffix signals test-only intent; do not call from production code.
-func (sv *Supervisor) ApplyEventForTest(ctx context.Context, agentID string, event agent.AgentEvent) (agent.AgentSnapshot, error) {
-	return sv.applyEvent(ctx, agentID, event)
-}
-
 func (sv *Supervisor) getAgentMutex(agentID string) *sync.Mutex {
 	sv.mu.RLock()
 	defer sv.mu.RUnlock()
 	return sv.agentMu[agentID]
 }
-
