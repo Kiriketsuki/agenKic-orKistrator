@@ -1,3 +1,5 @@
+//go:build testenv
+
 // Package e2e_test exercises the in-process orchestrator stack
 // (MockStore -> Machine -> Supervisor -> DAG Executor -> gRPC via bufconn).
 //
@@ -45,12 +47,12 @@ type testStack struct {
 // Stale threshold is generous (10s) so heartbeat detection doesn't evict agents
 // in tests that aren't testing heartbeat behaviour.
 // Pass extra supervisor.SupervisorOption values to override (e.g. WithStaleThreshold).
-func newTestStack(t *testing.T, svOpts ...supervisor.SupervisorOption) *testStack {
+func newTestStack(t *testing.T, svOpts []supervisor.SupervisorOption, policyOpts ...supervisor.RestartPolicyOption) *testStack {
 	t.Helper()
 
 	store := state.NewMockStore()
 	machine := agent.NewMachine(store)
-	policy := supervisor.NewRestartPolicy()
+	policy := supervisor.NewRestartPolicy(policyOpts...)
 
 	defaults := []supervisor.SupervisorOption{
 		supervisor.WithHeartbeatInterval(20 * time.Millisecond),
@@ -178,7 +180,7 @@ func pollDAGComplete(
 // TestE2E_AgentRegistration verifies that a newly registered agent receives a
 // non-empty ID and starts in the idle state.
 func TestE2E_AgentRegistration(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -206,7 +208,7 @@ func TestE2E_AgentRegistration(t *testing.T) {
 // TestE2E_TaskAutoAssignment verifies that the supervisor's background task-assign
 // loop dequeues a pending task and transitions an idle agent to ASSIGNED.
 func TestE2E_TaskAutoAssignment(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -232,7 +234,7 @@ func TestE2E_TaskAutoAssignment(t *testing.T) {
 // TestE2E_TaskNotAssignedWhileAgentBusy verifies that the supervisor's assign loop
 // does not reassign a task to a WORKING agent, and auto-assigns once the agent returns idle.
 func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -299,7 +301,7 @@ func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 // TestE2E_FullAgentLifecycle verifies all four state transitions in sequence:
 // idle → assigned → working → reporting → idle.
 func TestE2E_FullAgentLifecycle(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -364,7 +366,7 @@ func TestE2E_FullAgentLifecycle(t *testing.T) {
 // EventAgentFailed.
 func TestE2E_HeartbeatStaleDetection(t *testing.T) {
 	// Use a tight stale threshold so the heartbeat loop fires quickly.
-	s := newTestStack(t, supervisor.WithStaleThreshold(50*time.Millisecond))
+	s := newTestStack(t, []supervisor.SupervisorOption{supervisor.WithStaleThreshold(50 * time.Millisecond)})
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -396,6 +398,11 @@ func TestE2E_HeartbeatStaleDetection(t *testing.T) {
 	// Heartbeat loop fires every 20ms; wait for it to detect the stale agent and
 	// apply EventAgentFailed (which resets state to idle).
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_IDLE, 500*time.Millisecond)
+
+	// NOTE: checkHeartbeats calls crashAgent which records the crash with the
+	// RestartPolicy and sets cooldown. This test verifies heartbeat stale detection
+	// and agent reset to IDLE only; cooldown enforcement is tested in
+	// TestE2E_CooldownEnforcement and circuit breaker in TestE2E_CircuitBreakerBlocksAssignment.
 }
 
 // ── Scenario 6: Linear DAG ───────────────────────────────────────────────────
@@ -404,7 +411,7 @@ func TestE2E_HeartbeatStaleDetection(t *testing.T) {
 // with all nodes in the COMPLETED state.
 // MVP: nodes complete on successful enqueue — full agent execution deferred to model gateway integration.
 func TestE2E_LinearDAG(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	spec := &pb.DAGSpec{
@@ -441,7 +448,7 @@ func TestE2E_LinearDAG(t *testing.T) {
 // parallel after A, and D starts only after both B and C finish.
 // MVP: nodes complete on successful enqueue — full agent execution deferred to model gateway integration.
 func TestE2E_ParallelForkDAG(t *testing.T) {
-	s := newTestStack(t)
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	spec := &pb.DAGSpec{
@@ -477,14 +484,14 @@ func TestE2E_ParallelForkDAG(t *testing.T) {
 	}
 }
 
-// ── Scenario 8: Restart With Exponential Backoff [gRPC-bypassed] ─────────
+// ── Scenario 8: Crash Cycle Policy Backoff [gRPC-bypassed] ───────────────
 
-// TestE2E_RestartWithBackoff verifies that the supervisor's RestartPolicy
-// correctly computes exponential backoff after consecutive agent crashes.
-// Each crash resets the agent to idle (via EventAgentFailed) and the policy
-// records the crash with increasing backoff: 1s, 2s, 4s...
-func TestE2E_RestartWithBackoff(t *testing.T) {
-	s := newTestStack(t)
+// TestCrashCycle_PolicyBackoff verifies that the RestartPolicy correctly computes
+// exponential backoff after consecutive agent crashes driven through the full stack.
+// This tests policy arithmetic in the E2E stack context — supervisor-enforced
+// cooldown is tested in TestE2E_CooldownEnforcement.
+func TestCrashCycle_PolicyBackoff(t *testing.T) {
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -507,7 +514,7 @@ func TestE2E_RestartWithBackoff(t *testing.T) {
 		t.Fatalf("first crash: %v", err)
 	}
 
-	d1 := s.policy.RecordCrash()
+	d1 := s.policy.RecordCrash(agentID)
 	if !d1.ShouldRestart {
 		t.Fatal("expected ShouldRestart=true after first crash")
 	}
@@ -526,7 +533,7 @@ func TestE2E_RestartWithBackoff(t *testing.T) {
 		t.Fatalf("second crash: %v", err)
 	}
 
-	d2 := s.policy.RecordCrash()
+	d2 := s.policy.RecordCrash(agentID)
 	if !d2.ShouldRestart {
 		t.Fatal("expected ShouldRestart=true after second crash")
 	}
@@ -544,14 +551,14 @@ func TestE2E_RestartWithBackoff(t *testing.T) {
 	}
 }
 
-// ── Scenario 9: Circuit Breaker Trips After Repeated Failures [gRPC-bypassed] ─
+// ── Scenario 9: Crash Cycle Policy Circuit Breaker [gRPC-bypassed] ───────────
 
-// TestE2E_CircuitBreakerTrips verifies that the RestartPolicy's circuit breaker
-// opens after more than crashThreshold crashes within the crash window. The
-// default threshold is 5; after 6 crashes the policy returns ShouldRestart=false
-// with Reason=ErrCircuitOpen.
-func TestE2E_CircuitBreakerTrips(t *testing.T) {
-	s := newTestStack(t)
+// TestCrashCycle_PolicyCircuitBreaker verifies that the RestartPolicy's circuit
+// breaker opens after more than crashThreshold crashes within the crash window.
+// This tests policy arithmetic in the E2E stack context — supervisor-enforced
+// circuit breaker is tested in TestE2E_CircuitBreakerBlocksAssignment.
+func TestCrashCycle_PolicyCircuitBreaker(t *testing.T) {
+	s := newTestStack(t, nil)
 	defer s.cleanup()
 
 	ctx := context.Background()
@@ -575,7 +582,7 @@ func TestE2E_CircuitBreakerTrips(t *testing.T) {
 			t.Fatalf("crash %d: EventAgentFailed: %v", i, err)
 		}
 
-		d := s.policy.RecordCrash()
+		d := s.policy.RecordCrash(agentID)
 		if !d.ShouldRestart {
 			t.Fatalf("crash %d: expected ShouldRestart=true, got false", i)
 		}
@@ -592,11 +599,127 @@ func TestE2E_CircuitBreakerTrips(t *testing.T) {
 		t.Fatalf("crash 6: EventAgentFailed: %v", err)
 	}
 
-	d6 := s.policy.RecordCrash()
+	d6 := s.policy.RecordCrash(agentID)
 	if d6.ShouldRestart {
 		t.Fatal("expected ShouldRestart=false after 6th crash (circuit breaker)")
 	}
 	if !errors.Is(d6.Reason, supervisor.ErrCircuitOpen) {
 		t.Fatalf("expected Reason=ErrCircuitOpen, got %v", d6.Reason)
+	}
+}
+
+// ── Scenario 10: Cooldown Enforcement (E2E) ─────────────────────────────
+
+// TestE2E_CooldownEnforcement verifies that the supervisor's task-assign loop
+// does not assign a task to an agent that is in cooldown after a crash. Once the
+// cooldown expires, the agent becomes eligible for assignment again.
+func TestE2E_CooldownEnforcement(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+		supervisor.WithBaseBackoff(80*time.Millisecond),
+		supervisor.WithCrashThreshold(10),
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-cooldown-e2e"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Advance agent to WORKING, then crash via CrashAgentForTest (integrates policy).
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+		t.Fatalf("advance to assigned: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+	s.sv.CrashAgentForTest(ctx, agentID)
+
+	// Agent is IDLE but in cooldown (80ms). Submit a task.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-cd-001", Prompt: "cooldown test", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	// Give the assign loop several ticks — task should NOT be assigned (agent in cooldown).
+	time.Sleep(40 * time.Millisecond) // well within the 80ms cooldown
+
+	qLen, qErr := s.store.QueueLength(ctx)
+	if qErr != nil {
+		t.Fatalf("QueueLength: %v", qErr)
+	}
+	if qLen != 1 {
+		t.Fatalf("expected task to remain queued during cooldown, queue length = %d", qLen)
+	}
+
+	// Wait for cooldown to expire, then the task should be assigned.
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 500*time.Millisecond)
+}
+
+// ── Scenario 11: Circuit Breaker Blocks Assignment (E2E) ─────────────────
+
+// TestE2E_CircuitBreakerBlocksAssignment verifies that the supervisor's
+// task-assign loop permanently skips an agent whose circuit breaker is open.
+// After exceeding the crash threshold, the agent should never receive a task.
+func TestE2E_CircuitBreakerBlocksAssignment(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+		supervisor.WithBaseBackoff(10*time.Millisecond),
+		supervisor.WithCrashThreshold(3),
+		supervisor.WithCrashWindow(60*time.Second),
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-circuit-e2e"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Crash the agent 4 times (threshold=3, so >3 opens circuit).
+	for i := 1; i <= 4; i++ {
+		if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventTaskAssigned); err != nil {
+			t.Fatalf("crash %d: advance to assigned: %v", i, err)
+		}
+		if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+			t.Fatalf("crash %d: advance to working: %v", i, err)
+		}
+		s.sv.CrashAgentForTest(ctx, agentID)
+	}
+
+	// Agent is IDLE but circuit-open. Submit a task.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-cb-001", Prompt: "circuit test", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	// Wait generously — agent should never be assigned (circuit open).
+	time.Sleep(200 * time.Millisecond)
+
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected agent to remain IDLE (circuit open), got %v", stateResp.State)
+	}
+
+	qLen, qErr := s.store.QueueLength(ctx)
+	if qErr != nil {
+		t.Fatalf("QueueLength: %v", qErr)
+	}
+	if qLen != 1 {
+		t.Fatalf("expected task to remain queued (circuit open), queue length = %d", qLen)
 	}
 }

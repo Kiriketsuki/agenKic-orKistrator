@@ -8,9 +8,17 @@ import (
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
 )
 
-// ApplyEventForTest exposes applyEvent for external test packages (e.g. e2e/).
+// ApplyEventForTest exposes applyEvent for test packages; prefer the public API
+// in unit tests. For EventAgentFailed, prefer CrashAgentForTest — it integrates
+// the restart policy.
 // This file is excluded from production builds via the testenv build tag.
-// Do not call from production code.
 func (sv *Supervisor) ApplyEventForTest(ctx context.Context, agentID string, event agent.AgentEvent) (agent.AgentSnapshot, error) {
 	return sv.applyEvent(ctx, agentID, event)
+}
+
+// CrashAgentForTest exposes crashAgent for test packages.
+// Unlike ApplyEventForTest(EventAgentFailed), this method also records the crash
+// with the RestartPolicy and sets cooldown/circuit-breaker state.
+func (sv *Supervisor) CrashAgentForTest(ctx context.Context, agentID string) {
+	sv.crashAgent(ctx, agentID)
 }

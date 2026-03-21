@@ -26,9 +26,11 @@ type Supervisor struct {
 	staleThreshold    time.Duration
 	taskPollInterval  time.Duration
 
-	mu      sync.RWMutex
-	agentMu map[string]*sync.Mutex // per-agentID mutex for Machine.ApplyEvent serialization
-	stopped bool
+	mu            sync.RWMutex
+	agentMu       map[string]*sync.Mutex // per-agentID mutex for Machine.ApplyEvent serialization
+	agentCooldown map[string]time.Time   // per-agent cooldown expiry after crash
+	circuitOpen   map[string]bool        // per-agent circuit breaker state
+	stopped       bool
 }
 
 // SupervisorOption configures the Supervisor.
@@ -59,6 +61,8 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 		staleThreshold:    defaultStaleThreshold,
 		taskPollInterval:  defaultTaskPollInterval,
 		agentMu:           make(map[string]*sync.Mutex),
+		agentCooldown:     make(map[string]time.Time),
+		circuitOpen:       make(map[string]bool),
 	}
 	for _, opt := range opts {
 		opt(sv)
@@ -154,7 +158,27 @@ func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 			continue
 		}
 
-		_, _ = sv.applyEvent(ctx, agentID, agent.EventAgentFailed)
+		sv.crashAgent(ctx, agentID)
+	}
+}
+
+// crashAgent applies EventAgentFailed and records the crash with the restart policy.
+// If the policy returns a backoff, the agent is placed in cooldown.
+// If the circuit breaker opens, the agent is marked circuit-open.
+func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
+	_, _ = sv.applyEvent(ctx, agentID, agent.EventAgentFailed)
+
+	decision := sv.policy.RecordCrash(agentID)
+
+	sv.mu.Lock()
+	defer sv.mu.Unlock()
+
+	if !decision.ShouldRestart {
+		sv.circuitOpen[agentID] = true
+		return
+	}
+	if decision.Backoff > 0 {
+		sv.agentCooldown[agentID] = time.Now().Add(decision.Backoff)
 	}
 }
 
@@ -202,21 +226,33 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 	})
 }
 
-// findIdleAgent returns the ID of any idle agent, or ("", false) if none exists.
+// findIdleAgent returns the ID of any idle agent that is not in cooldown or
+// circuit-open state, or ("", false) if none exists.
 func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 	agents, err := sv.store.ListAgents(ctx)
 	if err != nil {
 		return "", false
 	}
 
+	sv.mu.RLock()
+	defer sv.mu.RUnlock()
+
+	now := time.Now()
 	for _, agentID := range agents {
 		stateStr, err := sv.store.GetAgentState(ctx, agentID)
 		if err != nil {
 			continue
 		}
-		if stateStr == string(agent.StateIdle) {
-			return agentID, true
+		if stateStr != string(agent.StateIdle) {
+			continue
 		}
+		if sv.circuitOpen[agentID] {
+			continue
+		}
+		if exp, ok := sv.agentCooldown[agentID]; ok && now.Before(exp) {
+			continue
+		}
+		return agentID, true
 	}
 	return "", false
 }
