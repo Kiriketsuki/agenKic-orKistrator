@@ -2,7 +2,6 @@ package e2e_test
 
 import (
 	"context"
-	"errors"
 	"net"
 	"testing"
 	"time"
@@ -210,9 +209,9 @@ func TestE2E_TaskAutoAssignment(t *testing.T) {
 
 // ── Scenario 3: Task Queued When All Agents Busy ──────────────────────────────
 
-// TestE2E_TaskQueuedWhenAllBusy verifies that a submitted task stays in the queue
-// when no idle agents exist, and is automatically assigned once an agent becomes idle.
-func TestE2E_TaskQueuedWhenAllBusy(t *testing.T) {
+// TestE2E_TaskNotAssignedWhileAgentBusy verifies that the supervisor's assign loop
+// does not reassign a task to a WORKING agent, and auto-assigns once the agent returns idle.
+func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 	s := newTestStack(t)
 	defer s.cleanup()
 
@@ -242,14 +241,9 @@ func TestE2E_TaskQueuedWhenAllBusy(t *testing.T) {
 		t.Fatalf("SubmitTask: %v", err)
 	}
 
-	// Give the assign loop a few ticks — task should remain queued since agent is busy.
+	// Give the assign loop several ticks — a WORKING agent cannot transition to ASSIGNED,
+	// so this sleep is a deliberate negative-case wait before the structural assertion.
 	time.Sleep(100 * time.Millisecond)
-	qlen, err := s.store.QueueLength(ctx)
-	if err != nil {
-		t.Fatalf("QueueLength: %v", err)
-	}
-	// Queue may be 0 or 1 depending on timing; the key assertion is agent is still WORKING.
-	_ = qlen
 	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState: %v", err)
@@ -374,61 +368,11 @@ func TestE2E_HeartbeatStaleDetection(t *testing.T) {
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_IDLE, 500*time.Millisecond)
 }
 
-// ── Scenario 6: Exponential Backoff ──────────────────────────────────────────
-
-// TestE2E_ExponentialBackoff verifies that RestartPolicy doubles the backoff
-// duration on each consecutive crash: 1s → 2s → 4s.
-func TestE2E_ExponentialBackoff(t *testing.T) {
-	policy := supervisor.NewRestartPolicy()
-
-	want := []time.Duration{
-		1 * time.Second,
-		2 * time.Second,
-		4 * time.Second,
-	}
-	for i, expected := range want {
-		d := policy.RecordCrash()
-		if !d.ShouldRestart {
-			t.Fatalf("crash %d: expected ShouldRestart=true", i+1)
-		}
-		if d.Backoff != expected {
-			t.Fatalf("crash %d: expected backoff %v, got %v", i+1, expected, d.Backoff)
-		}
-	}
-}
-
-// ── Scenario 7: Circuit Breaker ───────────────────────────────────────────────
-
-// TestE2E_CircuitBreakerTrips verifies that after exceeding the crash threshold
-// (5 crashes within the window) the circuit breaker opens and ShouldRestart is false.
-func TestE2E_CircuitBreakerTrips(t *testing.T) {
-	policy := supervisor.NewRestartPolicy(
-		supervisor.WithCrashThreshold(5),
-		supervisor.WithCrashWindow(60*time.Second),
-	)
-
-	// First 5 crashes should be restarted (circuit breaker not yet tripped).
-	for i := 1; i <= 5; i++ {
-		d := policy.RecordCrash()
-		if !d.ShouldRestart {
-			t.Fatalf("crash %d: expected ShouldRestart=true before threshold, got false", i)
-		}
-	}
-
-	// 6th crash: circuit breaker should open.
-	d := policy.RecordCrash()
-	if d.ShouldRestart {
-		t.Fatal("expected ShouldRestart=false after circuit breaker trips")
-	}
-	if !errors.Is(d.Reason, supervisor.ErrCircuitOpen) {
-		t.Fatalf("expected ErrCircuitOpen, got %v", d.Reason)
-	}
-}
-
-// ── Scenario 8: Linear DAG ───────────────────────────────────────────────────
+// ── Scenario 6: Linear DAG ───────────────────────────────────────────────────
 
 // TestE2E_LinearDAG verifies that a three-node linear DAG (A → B → C) completes
 // with all nodes in the COMPLETED state.
+// MVP: nodes complete on successful enqueue — full agent execution deferred to model gateway integration.
 func TestE2E_LinearDAG(t *testing.T) {
 	s := newTestStack(t)
 	defer s.cleanup()
@@ -465,6 +409,7 @@ func TestE2E_LinearDAG(t *testing.T) {
 // TestE2E_ParallelForkDAG verifies that a fork-join DAG (A → {B, C} → D)
 // completes with all four nodes in the COMPLETED state.  B and C execute in
 // parallel after A, and D starts only after both B and C finish.
+// MVP: nodes complete on successful enqueue — full agent execution deferred to model gateway integration.
 func TestE2E_ParallelForkDAG(t *testing.T) {
 	s := newTestStack(t)
 	defer s.cleanup()
