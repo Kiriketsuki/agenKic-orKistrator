@@ -235,23 +235,39 @@ func TestLiteLLMClient_SystemPromptSerialized(t *testing.T) {
 }
 
 func TestLiteLLMClient_WithBaseURL_RejectsInvalidSchemes(t *testing.T) {
-	tests := []struct {
-		url     string
-		wantURL string
-	}{
-		{"http://localhost:4000", "http://localhost:4000"},
-		{"https://proxy.example.com", "https://proxy.example.com"},
-		{"ftp://evil.com", "http://localhost:8000"},      // rejected, keeps default
-		{"file:///etc/passwd", "http://localhost:8000"},  // rejected
-		{"javascript:alert(1)", "http://localhost:8000"}, // rejected
+	successBody := `{"choices":[{"message":{"content":"ok"}}],"model":"m","usage":{}}`
+	req := gateway.CompletionRequest{
+		Model:    "test",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
 	}
-	for _, tt := range tests {
-		client := gateway.NewLiteLLMClient(gateway.WithBaseURL(tt.url))
-		// We can't directly inspect baseURL, but we can verify via Provider name
-		// that the client was constructed. The real test is that invalid schemes
-		// don't crash and the client remains functional.
-		if client.Provider() != "litellm" {
-			t.Errorf("WithBaseURL(%q) broke client construction", tt.url)
+
+	// Start a test server to detect whether the client actually reaches it.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(successBody))
+	}))
+	defer srv.Close()
+
+	// Valid http:// URL — should reach the test server and succeed.
+	client := gateway.NewLiteLLMClient(gateway.WithBaseURL(srv.URL))
+	_, err := client.Complete(context.Background(), req)
+	if err != nil {
+		t.Fatalf("valid URL: expected success, got %v", err)
+	}
+
+	// Invalid schemes — should be rejected, falling back to default (localhost:8000).
+	// Complete will fail because localhost:8000 is not running, proving the
+	// invalid URL was NOT used (the test server IS running and would succeed).
+	for _, badURL := range []string{
+		"ftp://evil.com",
+		"file:///etc/passwd",
+		"javascript:alert(1)",
+	} {
+		badClient := gateway.NewLiteLLMClient(gateway.WithBaseURL(badURL))
+		_, err := badClient.Complete(context.Background(), req)
+		if err == nil {
+			t.Errorf("WithBaseURL(%q): expected error (fallback to default), got success — invalid scheme was not rejected", badURL)
 		}
 	}
 }

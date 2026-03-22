@@ -22,7 +22,7 @@
 |:--|:---------|:----------|:---------|
 | 1 | Should the LiteLLM client retry on 429 internally, or delegate retry to the fallback chain (T6)? Internal retry with backoff is simpler but risks masking cascading failures. | T2 spec | [ ] |
 | 2 | Does the Anthropic adapter need to translate `system` messages into the top-level `system` field (Anthropic API v1 format) or can we rely on LiteLLM to handle that translation? | T3 spec | [x] Resolved: LiteLLM accepts system messages in the messages array and translates for Anthropic. `buildRequest` prepends `{role: "system"}` when `SystemPrompt` is set. |
-| 3 | Should `ParseModelName` strip the `ollama/` prefix before forwarding to LiteLLM, or should LiteLLM receive the full prefixed name? LiteLLM's Ollama support expects the prefix. | T3 spec | [x] Resolved: Acceptance scenario (line 208) is controlling — prefix is stripped by `OllamaAdapter.FormatRequest`. |
+| 3 | Should the `ollama/` prefix be stripped before forwarding to LiteLLM, or should LiteLLM receive the full prefixed name? LiteLLM's Ollama support expects the prefix. | T3 spec | [x] Resolved: Acceptance scenario (line 208) is controlling — prefix is stripped by `OllamaAdapter.FormatRequest` (not `ParseModelName`, which only returns `bool` for matching). |
 | 4 | What is the canonical timeout for completion calls? Gateway-level timeout vs per-request override? | T2 spec | [ ] |
 
 ---
@@ -33,11 +33,11 @@
 - **LiteLLM proxy client** implementing `gateway.Completer` — a single Go struct that POSTs to `/chat/completions` on the configured LiteLLM base URL and returns a `CompletionResponse`
 - **Functional options** for client construction: `WithBaseURL(url)`, `WithTimeout(d)`, `WithHTTPClient(c)` — allows test injection of a custom `http.Client` without global state
 - **Error normalisation** — HTTP 429 maps to `gateway.ErrRateLimited`; HTTP 5xx maps to `gateway.ErrProviderUnavailable`; non-JSON or structurally incomplete responses map to a descriptive error; network errors are wrapped and returned as-is
-- **`FormatAdapter` interface** — `Name() string`, `FormatRequest(req CompletionRequest) (map[string]any, error)`, `ParseModelName(model string) string` — each provider implements this to translate the gateway's canonical request into a provider-appropriate JSON body
+- **`FormatAdapter` interface** — `Name() string`, `FormatRequest(req CompletionRequest) CompletionRequest`, `ParseModelName(model string) bool` — each provider implements this to adjust provider-specific fields (temperature clamping, model name normalization) on the typed request before serialization. Note: `FormatRequest` intentionally omits an error return — current adapters only perform infallible field adjustments. When a future adapter needs to reject a request, evolve to `(CompletionRequest, error)` and update `Registry.Resolve` accordingly. Blast radius at time of writing: 3 adapters, 1 call site.
 - **Anthropic adapter** — handles all `claude-*` model names; clamps `Temperature` to `[0.0, 1.0]` (Anthropic rejects values above 1.0); passes `MaxTokens` as `max_tokens`
 - **OpenAI adapter** — handles `gpt-*`, `o1-*`, `o3-*` model names; zeros `Temperature` for reasoning models (`o1-*`, `o3-*`) because they do not support sampling temperature; passes `MaxTokens` as `max_tokens`
 - **Ollama adapter** — handles `ollama/*` model names; strips the `ollama/` prefix before forwarding to LiteLLM; passes all fields through without modification (Ollama models do not have special temperature constraints at the gateway level)
-- **Adapter registry** — a map from model prefix pattern to `FormatAdapter`, with a `Lookup(model string) (FormatAdapter, error)` function that returns `ErrNoProvider` if no adapter matches
+- **Adapter registry** — `Registry` struct with ordered adapter list and two methods: `Find(model string) (FormatAdapter, error)` returns the first matching adapter or `ErrNoProvider`; `Resolve(model string, req CompletionRequest) (CompletionRequest, error)` calls `Find` then `FormatRequest`. `Registry` implements the `gateway.AdapterResolver` interface, which `LiteLLMClient` depends on via dependency inversion
 
 ### Should-Have
 - Request/response logging at `DEBUG` level using `log/slog` — logs model name, token counts, and HTTP status without logging message content
@@ -60,34 +60,57 @@
 | `internal/gateway/providers/anthropic.go` | New: `AnthropicAdapter` implementing `FormatAdapter` |
 | `internal/gateway/providers/openai.go` | New: `OpenAIAdapter` implementing `FormatAdapter` |
 | `internal/gateway/providers/ollama.go` | New: `OllamaAdapter` implementing `FormatAdapter` |
-| `internal/gateway/providers/registry.go` | New: `AdapterRegistry` and `Lookup` |
-| `internal/gateway/providers/registry_test.go` | New: registry routing tests |
-| `internal/gateway/providers/adapters_test.go` | New: per-adapter formatting and temperature constraint tests |
+| `internal/gateway/providers/provider.go` | New: `FormatAdapter` interface, `Registry` with `Find`/`Resolve`, `DefaultRegistry` |
+| `internal/gateway/providers/provider_test.go` | New: registry routing tests + per-adapter formatting and temperature constraint tests |
 
 ### API Contracts
 
 **FormatAdapter interface** (lives in `internal/gateway/providers/`):
 
 ```go
-// FormatAdapter translates a gateway CompletionRequest into a provider-specific
-// JSON body and normalises the model name for that provider.
+// FormatAdapter adjusts a CompletionRequest for a specific provider's quirks.
 type FormatAdapter interface {
-    // Name returns the provider name, e.g. "anthropic", "openai", "ollama".
+    // Name returns the provider identifier (e.g. "anthropic", "openai", "ollama").
     Name() string
 
-    // FormatRequest converts a canonical CompletionRequest into the JSON payload
-    // to send to the LiteLLM proxy. The returned map is serialised as the HTTP
-    // request body.
-    FormatRequest(req gateway.CompletionRequest) (map[string]any, error)
+    // FormatRequest returns a (possibly modified) copy of req tailored for this
+    // provider. It must not mutate the original request. Note: Go's shallow copy
+    // (out := req) shares reference-type fields like Metadata — implementations
+    // must not write to shared maps or slices.
+    //
+    // Intentionally omits an error return — current adapters only perform
+    // infallible field adjustments (temperature clamping, model name stripping).
+    // When a future adapter needs to reject a request, evolve this signature to
+    // (CompletionRequest, error) and update Registry.Resolve accordingly.
+    // Blast radius at time of writing: 3 adapters, 1 call site.
+    FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest
 
-    // ParseModelName normalises the model identifier for this provider.
-    // For example, OllamaAdapter strips the "ollama/" prefix.
-    ParseModelName(model string) string
+    // ParseModelName returns true when this adapter should handle the given model
+    // name. The model name is matched before FormatRequest is applied.
+    ParseModelName(model string) bool
 }
+```
 
-// Lookup returns the FormatAdapter responsible for the given model string.
-// Returns ErrNoProvider if no adapter matches.
-func Lookup(model string) (FormatAdapter, error)
+**Registry** (lives in `internal/gateway/providers/`):
+
+```go
+// Find returns the FormatAdapter whose ParseModelName reports true for model.
+// If no adapter matches, it returns gateway.ErrNoProvider.
+func (r *Registry) Find(model string) (FormatAdapter, error)
+
+// Resolve implements gateway.AdapterResolver. It finds the adapter for the
+// given model and applies its FormatRequest transformation.
+func (r *Registry) Resolve(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error)
+```
+
+**AdapterResolver interface** (lives in `internal/gateway/gateway.go` — dependency inversion):
+
+```go
+// AdapterResolver finds and applies the format adapter for a model name.
+// Implementations should return ErrNoProvider if no adapter handles the model.
+type AdapterResolver interface {
+    Resolve(model string, req CompletionRequest) (CompletionRequest, error)
+}
 ```
 
 **LiteLLM client** (lives in `internal/gateway/litellm.go`):
@@ -332,10 +355,10 @@ Feature: LiteLLM Client & Provider Adapters
 | T3.1 | Define `FormatAdapter` interface in `internal/gateway/providers/` | High | T1 | pending |
 | T3.2 | Implement `AnthropicAdapter` with temperature clamping and `ParseModelName` identity pass-through | High | T3.1 | pending |
 | T3.3 | Implement `OpenAIAdapter` with reasoning model temperature zeroing (`o1-*`, `o3-*`) | High | T3.1 | pending |
-| T3.4 | Implement `OllamaAdapter` with `ollama/` prefix stripping in `ParseModelName` | High | T3.1 | pending |
-| T3.5 | Implement `AdapterRegistry` and `Lookup` function with prefix-based dispatch | High | T3.2–T3.4 | pending |
-| T3.6 | Write unit tests for all adapters: temperature constraints, model name parsing, unknown model error | High | T3.5 | pending |
-| T3.7 | Integrate adapter lookup into `LiteLLMClient.Complete`: call `Lookup`, call `FormatRequest`, pass result to HTTP body | High | T2.3, T3.5 | pending |
+| T3.4 | Implement `OllamaAdapter` with `ollama/` prefix stripping in `FormatRequest` | High | T3.1 | pending |
+| T3.5 | Implement `Registry` with `Find` and `Resolve` methods, plus `DefaultRegistry` factory | High | T3.2–T3.4 | pending |
+| T3.6 | Write unit tests for all adapters: temperature constraints, model name parsing, field preservation, unknown model error | High | T3.5 | pending |
+| T3.7 | Integrate adapter resolution into `LiteLLMClient.Complete`: inject `AdapterResolver` via `WithAdapterResolver` option, call `Resolve` before `buildRequest` | High | T2.3, T3.5 | pending |
 
 ---
 
