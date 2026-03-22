@@ -717,3 +717,49 @@ func TestE2E_CircuitBreakerBlocksAssignment(t *testing.T) {
 		t.Fatalf("expected agent to remain IDLE (circuit open), got %v", stateResp.State)
 	}
 }
+
+// ── Scenario 12: Spurious Crash Guard (E2E) ────────────────────────────────
+
+// TestE2E_SpuriousCrashGuard verifies that CrashAgentForTest on an already-IDLE
+// agent is a no-op: the TOCTOU guard (supervisor.go PreviousState==StateIdle)
+// fires, no crash is recorded, no cooldown is set, and the agent remains
+// eligible for immediate task assignment.
+func TestE2E_SpuriousCrashGuard(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+		supervisor.WithCrashThreshold(3),
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-spurious-test"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Agent is IDLE. Crash it — the TOCTOU guard should fire and skip RecordCrash.
+	s.sv.CrashAgentForTest(ctx, agentID)
+
+	// Agent should still be IDLE (EventAgentFailed from IDLE → IDLE is a no-op transition).
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected IDLE after spurious crash, got %v", stateResp.State)
+	}
+
+	// Behavioral proof: submit a task and verify it gets assigned promptly.
+	// If RecordCrash had fired, cooldown would block assignment.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-spurious-001", Prompt: "spurious test", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 500*time.Millisecond)
+}

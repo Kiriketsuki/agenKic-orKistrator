@@ -166,17 +166,33 @@ func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 // If the policy returns a backoff, the agent is placed in cooldown.
 // If the circuit breaker opens, the agent is marked circuit-open.
 //
+// The per-agent mutex is held for the entire operation to prevent interleaving
+// with completeAgent (which deletes cooldown entries). This serializes all
+// state-transition + policy operations for a given agent.
+//
 // A cooldown sentinel is pre-populated before the state transition so that
-// findIdleAgent cannot observe the agent as IDLE without a cooldown entry
-// during the window between applyEvent returning and the final cooldown write.
+// findIdleAgent cannot observe the agent as IDLE without a cooldown entry.
 func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
-	// Pre-populate cooldown sentinel so findIdleAgent skips this agent
-	// during the window between applyEvent and the actual cooldown write.
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Pre-populate cooldown sentinel so findIdleAgent skips this agent.
 	sv.mu.Lock()
 	sv.agentCooldown[agentID] = time.Now().Add(24 * time.Hour)
 	sv.mu.Unlock()
 
-	snap, _ := sv.applyEvent(ctx, agentID, agent.EventAgentFailed)
+	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventAgentFailed)
+	if err != nil {
+		// Store error — clean up sentinel and return without recording a crash.
+		sv.mu.Lock()
+		delete(sv.agentCooldown, agentID)
+		sv.mu.Unlock()
+		return
+	}
 
 	// TOCTOU guard: if the agent was already IDLE when applyEvent fired,
 	// this is a spurious crash (the agent completed work concurrently).
@@ -283,8 +299,18 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 // completeAgent applies EventOutputDelivered and records a success with the
 // restart policy, resetting consecutive crash counters and clearing any
 // cooldown or circuit-breaker state for the agent.
+//
+// The per-agent mutex is held for the entire operation to prevent interleaving
+// with crashAgent (which pre-populates cooldown sentinels).
 func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) {
-	_, err := sv.applyEvent(ctx, agentID, agent.EventOutputDelivered)
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputDelivered)
 	if err != nil {
 		return
 	}
