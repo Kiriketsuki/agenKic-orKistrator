@@ -51,9 +51,9 @@
 **API Contracts**:
 ```go
 type Gateway interface {
-    Route(task TaskSpec) (ModelTier, error)
-    Complete(req CompletionRequest) (CompletionResponse, error)
-    GetCostReport(period TimePeriod) (CostReport, error)
+    Route(ctx context.Context, task TaskSpec) (RoutingDecision, error)
+    Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
+    GetCostReport(ctx context.Context, period TimePeriod) (CostReport, error)
 }
 ```
 
