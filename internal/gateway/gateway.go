@@ -161,7 +161,11 @@ func Today() TimePeriod {
 }
 
 // LastNDays returns a TimePeriod covering the last n days up to now (UTC).
+// If n is negative, it is clamped to 0 (today only).
 func LastNDays(n int) TimePeriod {
+	if n < 0 {
+		n = 0
+	}
 	now := time.Now().UTC()
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -n)
 	return TimePeriod{Start: start, End: now}

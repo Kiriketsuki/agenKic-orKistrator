@@ -47,6 +47,15 @@ func (e *ProviderError) Error() string {
 func (e *ProviderError) Unwrap() error { return e.Err }
 
 // FallbackError aggregates errors from all providers in a fallback chain.
+//
+// Detection: use errors.Is(err, ErrAllProvidersFailed) to check whether a
+// fallback chain exhaustion occurred.
+//
+// Inspection: use errors.As(err, &fe) targeting *FallbackError, then iterate
+// fe.Errors to inspect individual ProviderError values. Note that
+// errors.As(err, &pe) targeting *ProviderError directly will return false
+// because Unwrap() returns the sentinel ErrAllProvidersFailed, not the
+// individual provider errors.
 type FallbackError struct {
 	Errors []ProviderError
 }

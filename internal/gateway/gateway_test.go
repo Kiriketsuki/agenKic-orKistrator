@@ -121,6 +121,77 @@ func TestTimePeriod_Since(t *testing.T) {
 	}
 }
 
+func TestTimePeriod_LastNDays_Negative(t *testing.T) {
+	now := time.Now().UTC()
+	p := LastNDays(-5)
+
+	// Negative n should be clamped to 0 (today only).
+	wantStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	if !p.Start.Equal(wantStart) {
+		t.Fatalf("LastNDays(-5).Start = %v, want %v (today midnight)", p.Start, wantStart)
+	}
+	if p.End.Before(p.Start) {
+		t.Fatalf("LastNDays(-5) produced inverted interval: Start=%v, End=%v", p.Start, p.End)
+	}
+}
+
+func TestCompletionRequest_MultiTurn(t *testing.T) {
+	req := CompletionRequest{
+		Model: "claude-sonnet-4-6",
+		Messages: []Message{
+			{Role: "system", Content: "Be helpful"},
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi there"},
+		},
+		SystemPrompt: "Be helpful",
+		MaxTokens:    1024,
+		Temperature:  0.7,
+		Stream:       true,
+		Tier:         TierMid,
+	}
+
+	if len(req.Messages) != 3 {
+		t.Fatalf("len(Messages) = %d, want 3", len(req.Messages))
+	}
+	if req.Messages[0].Role != "system" || req.Messages[0].Content != "Be helpful" {
+		t.Fatalf("Messages[0] = %+v, want {system, Be helpful}", req.Messages[0])
+	}
+	if req.Messages[1].Role != "user" || req.Messages[1].Content != "Hello" {
+		t.Fatalf("Messages[1] = %+v, want {user, Hello}", req.Messages[1])
+	}
+	if req.Messages[2].Role != "assistant" || req.Messages[2].Content != "Hi there" {
+		t.Fatalf("Messages[2] = %+v, want {assistant, Hi there}", req.Messages[2])
+	}
+	if req.SystemPrompt != "Be helpful" {
+		t.Fatalf("SystemPrompt = %q, want %q", req.SystemPrompt, "Be helpful")
+	}
+	if req.Stream != true {
+		t.Fatalf("Stream = %v, want true", req.Stream)
+	}
+	if req.Tier != TierMid {
+		t.Fatalf("Tier = %q, want %q", req.Tier, TierMid)
+	}
+}
+
+func TestCompletionResponse_FallbackUsed(t *testing.T) {
+	resp := CompletionResponse{
+		Content:      "Hello!",
+		Model:        "gpt-4o",
+		InputTokens:  10,
+		OutputTokens: 5,
+		FallbackUsed: true,
+		ProviderName: "openai",
+	}
+
+	if !resp.FallbackUsed {
+		t.Fatalf("FallbackUsed = false, want true")
+	}
+	if resp.ProviderName != "openai" {
+		t.Fatalf("ProviderName = %q, want %q", resp.ProviderName, "openai")
+	}
+}
+
 func TestProviderError_Unwrap(t *testing.T) {
 	err := &ProviderError{
 		Op:       "Complete",
@@ -166,6 +237,22 @@ func TestFallbackError_Unwrap(t *testing.T) {
 	}
 	if !errors.Is(err, ErrAllProvidersFailed) {
 		t.Fatalf("errors.Is(FallbackError, ErrAllProvidersFailed) = false, want true")
+	}
+}
+
+func TestFallbackError_ErrorString(t *testing.T) {
+	err := &FallbackError{
+		Errors: []ProviderError{
+			{Provider: "anthropic", Err: ErrProviderUnavailable},
+			{Op: "Complete", Provider: "openai", Err: ErrRateLimited},
+		},
+	}
+	got := err.Error()
+	want := "gateway: all providers failed:\n" +
+		"  gateway: provider anthropic: gateway: provider unavailable\n" +
+		"  gateway: Complete: provider openai: gateway: provider rate limited"
+	if got != want {
+		t.Fatalf("FallbackError.Error() =\n%q\nwant:\n%q", got, want)
 	}
 }
 
