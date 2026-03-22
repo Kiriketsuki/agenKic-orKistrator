@@ -165,8 +165,28 @@ func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 // crashAgent applies EventAgentFailed and records the crash with the restart policy.
 // If the policy returns a backoff, the agent is placed in cooldown.
 // If the circuit breaker opens, the agent is marked circuit-open.
+//
+// A cooldown sentinel is pre-populated before the state transition so that
+// findIdleAgent cannot observe the agent as IDLE without a cooldown entry
+// during the window between applyEvent returning and the final cooldown write.
 func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
-	_, _ = sv.applyEvent(ctx, agentID, agent.EventAgentFailed)
+	// Pre-populate cooldown sentinel so findIdleAgent skips this agent
+	// during the window between applyEvent and the actual cooldown write.
+	sv.mu.Lock()
+	sv.agentCooldown[agentID] = time.Now().Add(24 * time.Hour)
+	sv.mu.Unlock()
+
+	snap, _ := sv.applyEvent(ctx, agentID, agent.EventAgentFailed)
+
+	// TOCTOU guard: if the agent was already IDLE when applyEvent fired,
+	// this is a spurious crash (the agent completed work concurrently).
+	// Clean up the sentinel and return without recording a crash.
+	if snap.PreviousState == agent.StateIdle {
+		sv.mu.Lock()
+		delete(sv.agentCooldown, agentID)
+		sv.mu.Unlock()
+		return
+	}
 
 	decision := sv.policy.RecordCrash(agentID)
 
@@ -175,10 +195,13 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 
 	if !decision.ShouldRestart {
 		sv.circuitOpen[agentID] = true
+		delete(sv.agentCooldown, agentID)
 		return
 	}
 	if decision.Backoff > 0 {
 		sv.agentCooldown[agentID] = time.Now().Add(decision.Backoff)
+	} else {
+		delete(sv.agentCooldown, agentID)
 	}
 }
 
@@ -255,6 +278,23 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 		return agentID, true
 	}
 	return "", false
+}
+
+// completeAgent applies EventOutputDelivered and records a success with the
+// restart policy, resetting consecutive crash counters and clearing any
+// cooldown or circuit-breaker state for the agent.
+func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) {
+	_, err := sv.applyEvent(ctx, agentID, agent.EventOutputDelivered)
+	if err != nil {
+		return
+	}
+
+	sv.policy.RecordSuccess(agentID)
+
+	sv.mu.Lock()
+	delete(sv.agentCooldown, agentID)
+	delete(sv.circuitOpen, agentID)
+	sv.mu.Unlock()
 }
 
 // applyEvent serializes Machine.ApplyEvent per agentID using per-agent mutex.

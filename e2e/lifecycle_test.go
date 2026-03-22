@@ -288,9 +288,7 @@ func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputReady); err != nil {
 		t.Fatalf("advance to reporting: %v", err)
 	}
-	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputDelivered); err != nil {
-		t.Fatalf("advance to idle: %v", err)
-	}
+	s.sv.CompleteAgentForTest(ctx, agentID)
 
 	// Supervisor should now assign the queued task.
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
@@ -346,10 +344,8 @@ func TestE2E_FullAgentLifecycle(t *testing.T) {
 		t.Fatalf("expected REPORTING, got %v", stateResp.State)
 	}
 
-	// reporting → idle
-	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputDelivered); err != nil {
-		t.Fatalf("EventOutputDelivered: %v", err)
-	}
+	// reporting → idle (integrates restart policy success path)
+	s.sv.CompleteAgentForTest(ctx, agentID)
 	stateResp, err = s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState (idle): %v", err)
@@ -650,12 +646,15 @@ func TestE2E_CooldownEnforcement(t *testing.T) {
 	// Give the assign loop several ticks — task should NOT be assigned (agent in cooldown).
 	time.Sleep(40 * time.Millisecond) // well within the 80ms cooldown
 
-	qLen, qErr := s.store.QueueLength(ctx)
-	if qErr != nil {
-		t.Fatalf("QueueLength: %v", qErr)
+	// Structural assertion: agent must remain IDLE (findIdleAgent skips agents in cooldown).
+	// GetAgentState is cycle-stable — unlike QueueLength, it is not subject to the
+	// transient-zero window caused by tryAssignTask's dequeue-before-requeue pattern.
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
 	}
-	if qLen != 1 {
-		t.Fatalf("expected task to remain queued during cooldown, queue length = %d", qLen)
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected agent to remain IDLE during cooldown, got %v", stateResp.State)
 	}
 
 	// Wait for cooldown to expire, then the task should be assigned.
@@ -707,19 +706,14 @@ func TestE2E_CircuitBreakerBlocksAssignment(t *testing.T) {
 	// Wait generously — agent should never be assigned (circuit open).
 	time.Sleep(200 * time.Millisecond)
 
+	// Structural assertion: agent must remain IDLE (findIdleAgent skips circuit-open agents).
+	// GetAgentState is cycle-stable — unlike QueueLength, it is not subject to the
+	// transient-zero window caused by tryAssignTask's dequeue-before-requeue pattern.
 	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState: %v", err)
 	}
 	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
 		t.Fatalf("expected agent to remain IDLE (circuit open), got %v", stateResp.State)
-	}
-
-	qLen, qErr := s.store.QueueLength(ctx)
-	if qErr != nil {
-		t.Fatalf("QueueLength: %v", qErr)
-	}
-	if qLen != 1 {
-		t.Fatalf("expected task to remain queued (circuit open), queue length = %d", qLen)
 	}
 }
