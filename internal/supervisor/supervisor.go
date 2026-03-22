@@ -32,6 +32,11 @@ type Supervisor struct {
 	agentCooldown map[string]time.Time   // per-agent cooldown expiry after crash
 	circuitOpen   map[string]bool        // per-agent circuit breaker state
 	stopped       bool
+
+	// Assign-loop backoff: exponential backoff on consecutive store errors
+	// in tryAssignTask. Only accessed from the taskAssignLoop goroutine.
+	consecutiveAssignErrors int
+	nextAssignAttempt       time.Time
 }
 
 // SupervisorOption configures the Supervisor.
@@ -189,6 +194,16 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	// Pre-read task binding before transitioning — if store is degraded,
+	// skip the crash so the heartbeat loop can retry next tick.
+	// Per-agent mutex is held: no concurrent modification of CurrentTaskID
+	// is possible (tryAssignTask and completeAgent acquire the same mutex).
+	preFields, preErr := sv.store.GetAgentFields(ctx, agentID)
+	if preErr != nil {
+		log.Printf("supervisor: crashAgent %s — GetAgentFields failed, deferring crash: %v", agentID, preErr)
+		return
+	}
+
 	// Pre-populate cooldown sentinel so findIdleAgent skips this agent.
 	sv.mu.Lock()
 	sv.agentCooldown[agentID] = time.Now().Add(24 * time.Hour)
@@ -213,11 +228,12 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 		return
 	}
 
-	// Re-enqueue the agent's assigned task so it is not permanently lost.
-	fields, fErr := sv.store.GetAgentFields(ctx, agentID)
-	if fErr == nil && fields.CurrentTaskID != "" {
-		if err := sv.store.EnqueueTask(ctx, fields.CurrentTaskID, fields.CurrentTaskPriority); err != nil {
-			log.Printf("supervisor: task %s lost — re-enqueue failed (agent %s crashed): %v", fields.CurrentTaskID, agentID, err)
+	// Re-enqueue the agent's assigned task using pre-read CurrentTaskID.
+	// SetAgentState (inside ApplyEvent) does not modify CurrentTaskID,
+	// so the pre-read value is still valid after the transition.
+	if preFields.CurrentTaskID != "" {
+		if err := sv.store.EnqueueTask(ctx, preFields.CurrentTaskID, preFields.CurrentTaskPriority); err != nil {
+			log.Printf("supervisor: task %s lost — re-enqueue failed (agent %s crashed): %v", preFields.CurrentTaskID, agentID, err)
 		}
 	}
 
@@ -254,6 +270,11 @@ func (sv *Supervisor) taskAssignLoop(ctx context.Context) {
 }
 
 func (sv *Supervisor) tryAssignTask(ctx context.Context) {
+	// Exponential backoff: skip this tick if backing off from store errors.
+	if !sv.nextAssignAttempt.IsZero() && time.Now().Before(sv.nextAssignAttempt) {
+		return
+	}
+
 	taskID, priority, err := sv.store.DequeueTask(ctx)
 	if err != nil {
 		// ErrQueueEmpty is expected — not a failure.
@@ -288,6 +309,7 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue failed (assign error): %v", taskID, err)
 		}
+		sv.recordAssignError()
 		return
 	}
 
@@ -299,6 +321,15 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		cur.CurrentTaskPriority = priority
 		if err := sv.store.SetAgentFields(ctx, agentID, cur); err != nil {
 			log.Printf("supervisor: task %s — CurrentTaskID not persisted (agent %s): %v", taskID, agentID, err)
+			// Re-enqueue: the agent is ASSIGNED but has no CurrentTaskID.
+			// It will self-heal via stale heartbeat → crashAgent → IDLE.
+			// No dual-ownership risk: the zombie agent has no task context.
+			if rErr := sv.store.EnqueueTask(ctx, taskID, priority); rErr != nil {
+				log.Printf("supervisor: task %s lost — re-enqueue after SetAgentFields failure failed: %v", taskID, rErr)
+			}
+			sv.recordAssignError()
+		} else {
+			sv.resetAssignBackoff()
 		}
 	} else {
 		// GetAgentFields failed after ApplyEvent succeeded — the agent is
@@ -308,6 +339,7 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue after GetAgentFields failure failed: %v", taskID, err)
 		}
+		sv.recordAssignError()
 	}
 
 	mu.Unlock()
@@ -318,6 +350,25 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		TaskID:    taskID,
 		Timestamp: time.Now().UnixMilli(),
 	})
+}
+
+// recordAssignError increments the consecutive error counter and sets
+// exponential backoff for tryAssignTask. Cap at 64x taskPollInterval.
+// Only called from taskAssignLoop goroutine — no locking needed.
+func (sv *Supervisor) recordAssignError() {
+	sv.consecutiveAssignErrors++
+	shift := sv.consecutiveAssignErrors
+	if shift > 6 {
+		shift = 6 // cap at 2^6 = 64x
+	}
+	sv.nextAssignAttempt = time.Now().Add(sv.taskPollInterval * time.Duration(1<<shift))
+}
+
+// resetAssignBackoff clears the backoff state after a successful assignment.
+// Only called from taskAssignLoop goroutine — no locking needed.
+func (sv *Supervisor) resetAssignBackoff() {
+	sv.consecutiveAssignErrors = 0
+	sv.nextAssignAttempt = time.Time{}
 }
 
 // findIdleAgent returns the ID of any idle agent that is not in cooldown or
