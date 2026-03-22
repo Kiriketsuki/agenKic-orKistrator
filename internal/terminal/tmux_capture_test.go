@@ -103,6 +103,13 @@ func TestCaptureOutput_LargeScrollback(t *testing.T) {
 	if strings.Contains(out, "SCROLLTEST-LINE-001") {
 		t.Errorf("expected 'SCROLLTEST-LINE-001' to be outside capture window, but it appeared")
 	}
+
+	// The lower boundary of a 100-line window over 500 lines should be
+	// approximately LINE-401. Verify the boundary marker is present.
+	// (Satisfies Gherkin scenario: "the first returned line is line 401")
+	if !strings.Contains(out, "SCROLLTEST-LINE-401") {
+		t.Errorf("expected captured output to contain 'SCROLLTEST-LINE-401' as lower boundary, got:\n%s", out)
+	}
 }
 
 func TestCaptureOutput_ValidSession(t *testing.T) {

@@ -215,7 +215,7 @@ Feature: Command Injection & Output Capture
 - [ ] `ErrInvalidLines` returned when `lines <= 0` (without invoking tmux)
 - [ ] All unit tests pass: `go test ./internal/terminal/... -run "TestSendCommand|TestCaptureOutput"`
 - [ ] No regressions on F1 (SpawnSession, DestroySession) tests
-- [ ] Methods satisfy the `Substrate` interface contract defined in `substrate.go`
+- [ ] `SendCommand` and `CaptureOutput` satisfy their `Substrate` interface contracts defined in `substrate.go`
 
 ---
 

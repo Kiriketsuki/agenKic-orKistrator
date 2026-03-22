@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// Compile-time check: TmuxSubstrate must implement Substrate.
+var _ Substrate = (*TmuxSubstrate)(nil)
+
 // TmuxSubstrate implements Substrate using the tmux terminal multiplexer.
 type TmuxSubstrate struct {
 	tmuxPath string // absolute path to the tmux binary
