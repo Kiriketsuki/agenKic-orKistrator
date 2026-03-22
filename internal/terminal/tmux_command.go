@@ -15,7 +15,8 @@ func (t *TmuxSubstrate) SendCommand(session string, cmd string) error {
 		errStr := err.Error()
 		if strings.Contains(errStr, "session not found") ||
 			strings.Contains(errStr, "can't find session") ||
-			strings.Contains(errStr, "can't find window") {
+			strings.Contains(errStr, "can't find window") ||
+			strings.Contains(errStr, "can't find pane") {
 			return ErrSessionNotFound
 		}
 		return fmt.Errorf("send command to session %q: %w", session, err)
