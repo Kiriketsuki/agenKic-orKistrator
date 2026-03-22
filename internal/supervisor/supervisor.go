@@ -300,6 +300,14 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		if err := sv.store.SetAgentFields(ctx, agentID, cur); err != nil {
 			log.Printf("supervisor: task %s — CurrentTaskID not persisted (agent %s): %v", taskID, agentID, err)
 		}
+	} else {
+		// GetAgentFields failed after ApplyEvent succeeded — the agent is
+		// ASSIGNED but CurrentTaskID is empty. Re-enqueue the task so it is
+		// not permanently lost (council 8, Defect A).
+		log.Printf("supervisor: task %s — GetAgentFields failed (agent %s), re-enqueueing: %v", taskID, agentID, fErr)
+		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
+			log.Printf("supervisor: task %s lost — re-enqueue after GetAgentFields failure failed: %v", taskID, err)
+		}
 	}
 
 	mu.Unlock()

@@ -17,6 +17,8 @@ type MockStore struct {
 	pingErr              error
 	getAllAgentStatesErr error
 	queueLenErr          error
+	getAgentFieldsErr    error
+	setAgentFieldsErr    error
 }
 
 type agentRecord struct {
@@ -66,18 +68,40 @@ func (m *MockStore) GetAgentState(ctx context.Context, agentID string) (string, 
 
 // ── Agent full record ─────────────────────────────────────────────────────────
 
+// SetSetAgentFieldsError configures SetAgentFields to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetSetAgentFieldsError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setAgentFieldsErr = err
+}
+
 func (m *MockStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.setAgentFieldsErr != nil {
+		return m.setAgentFieldsErr
+	}
 	m.agents[agentID] = &agentRecord{fields: fields}
 	return nil
+}
+
+// SetGetAgentFieldsError configures GetAgentFields to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetGetAgentFieldsError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getAgentFieldsErr = err
 }
 
 func (m *MockStore) GetAgentFields(ctx context.Context, agentID string) (AgentFields, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	if m.getAgentFieldsErr != nil {
+		return AgentFields{}, m.getAgentFieldsErr
+	}
 	rec, ok := m.agents[agentID]
 	if !ok {
 		return AgentFields{}, ErrAgentNotFound

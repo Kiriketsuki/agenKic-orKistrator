@@ -833,3 +833,139 @@ func TestE2E_CrashRecoveryReenqueuesTask(t *testing.T) {
 		t.Fatalf("expected empty queue after re-assignment, got %d", qLen)
 	}
 }
+
+// ── Scenario 14: GetAgentFields Failure Re-enqueues Task (E2E) ──────────────
+
+// TestE2E_GetAgentFieldsFailureReenqueuesTask verifies that when GetAgentFields
+// fails inside tryAssignTask (after ApplyEvent succeeds), the task is re-enqueued
+// rather than silently lost. Once the error is cleared, the task should be
+// assigned normally. This exercises the council 8 Defect A fix.
+func TestE2E_GetAgentFieldsFailureReenqueuesTask(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-getfields-err"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Inject GetAgentFields error before submitting the task.
+	s.store.SetGetAgentFieldsError(errors.New("injected GetAgentFields failure"))
+
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-gaf-001", Prompt: "test getfields error", Priority: 3.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	// Give the assign loop several ticks — tryAssignTask will dequeue the task,
+	// ApplyEvent will succeed (agent → ASSIGNED), but GetAgentFields will fail.
+	// The else branch re-enqueues the task. The assign loop will repeat: dequeue,
+	// ApplyEvent fails (already ASSIGNED), re-enqueue. The task stays in the queue.
+	time.Sleep(80 * time.Millisecond)
+
+	// Clear the error so the next assign cycle can complete.
+	s.store.SetGetAgentFieldsError(nil)
+
+	// The agent is already ASSIGNED from the first ApplyEvent that succeeded.
+	// The task was re-enqueued. Drive the agent back to IDLE so the task can
+	// be assigned again cleanly.
+	//
+	// Complete the agent: ASSIGNED → WORKING → REPORTING → IDLE.
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputReady); err != nil {
+		t.Fatalf("advance to reporting: %v", err)
+	}
+	if err := s.sv.CompleteAgentForTest(ctx, agentID); err != nil {
+		t.Fatalf("CompleteAgentForTest: %v", err)
+	}
+
+	// Agent is now IDLE again. The re-enqueued task should be picked up.
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 500*time.Millisecond)
+
+	// Verify queue is empty — task was dequeued and assigned.
+	qLen, err := s.store.QueueLength(ctx)
+	if err != nil {
+		t.Fatalf("QueueLength: %v", err)
+	}
+	if qLen != 0 {
+		t.Fatalf("expected empty queue after recovery, got %d", qLen)
+	}
+}
+
+// ── Scenario 15: SetAgentFields Failure in CompleteAgent (E2E) ──────────────
+
+// TestE2E_SetAgentFieldsFailureInCompleteAgent verifies that completeAgent
+// succeeds (agent transitions to IDLE) even when SetAgentFields fails. The
+// state transition is the critical operation; the CurrentTaskID clear is
+// best-effort with a log warning.
+func TestE2E_SetAgentFieldsFailureInCompleteAgent(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-setfields-err"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Submit a task and wait for assignment.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-saf-001", Prompt: "test setfields error", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
+
+	// Advance to REPORTING.
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputReady); err != nil {
+		t.Fatalf("advance to reporting: %v", err)
+	}
+
+	// Inject SetAgentFields error before completing.
+	s.store.SetSetAgentFieldsError(errors.New("injected SetAgentFields failure"))
+
+	// CompleteAgent should still succeed — ApplyEvent transitions the agent to
+	// IDLE; the SetAgentFields failure is logged but not fatal.
+	if err := s.sv.CompleteAgentForTest(ctx, agentID); err != nil {
+		t.Fatalf("CompleteAgentForTest: %v", err)
+	}
+
+	// Agent should be IDLE despite SetAgentFields failure.
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected IDLE after complete with SetAgentFields error, got %v", stateResp.State)
+	}
+
+	// Clear error and verify agent can be assigned again.
+	s.store.SetSetAgentFieldsError(nil)
+
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-saf-002", Prompt: "recovery test", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask (recovery): %v", err)
+	}
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
+}
