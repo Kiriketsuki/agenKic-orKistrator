@@ -149,15 +149,18 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		if err := store.EnqueueTask(ctx, "task-q-high", 1.0); err != nil {
 			t.Fatalf("EnqueueTask high: %v", err)
 		}
-		got, err := store.DequeueTask(ctx)
+		got, gotPri, err := store.DequeueTask(ctx)
 		if err != nil {
 			t.Fatalf("DequeueTask: %v", err)
 		}
 		if got != "task-q-high" {
 			t.Fatalf("want task-q-high (priority=1.0), got %q", got)
 		}
+		if gotPri != 1.0 {
+			t.Fatalf("want priority 1.0, got %v", gotPri)
+		}
 		// Clean up second task.
-		if _, err := store.DequeueTask(ctx); err != nil {
+		if _, _, err := store.DequeueTask(ctx); err != nil {
 			t.Fatalf("DequeueTask cleanup: %v", err)
 		}
 	})
@@ -165,12 +168,12 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 	t.Run("DequeueTask on empty queue returns ErrQueueEmpty", func(t *testing.T) {
 		// Drain any leftover tasks from previous sub-tests.
 		for {
-			_, err := store.DequeueTask(ctx)
+			_, _, err := store.DequeueTask(ctx)
 			if err != nil {
 				break
 			}
 		}
-		_, err := store.DequeueTask(ctx)
+		_, _, err := store.DequeueTask(ctx)
 		if !errors.Is(err, state.ErrQueueEmpty) {
 			t.Fatalf("want ErrQueueEmpty, got %v", err)
 		}
@@ -202,7 +205,7 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 	t.Run("QueueLength reflects enqueued tasks", func(t *testing.T) {
 		// Drain first.
 		for {
-			_, err := store.DequeueTask(ctx)
+			_, _, err := store.DequeueTask(ctx)
 			if err != nil {
 				break
 			}
@@ -225,6 +228,6 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 			t.Fatalf("want 1, got %d", n)
 		}
 		// Clean up.
-		store.DequeueTask(ctx) //nolint:errcheck
+		_, _, _ = store.DequeueTask(ctx)
 	})
 }

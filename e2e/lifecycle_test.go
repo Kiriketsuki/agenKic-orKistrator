@@ -336,8 +336,10 @@ func TestE2E_FullAgentLifecycle(t *testing.T) {
 		t.Fatalf("expected REPORTING, got %v", stateResp.State)
 	}
 
-	// reporting → idle (integrates restart policy success path)
-	s.sv.CompleteAgentForTest(ctx, agentID)
+	// reporting → idle via gRPC CompleteAgent (production path)
+	if _, err := s.client.CompleteAgent(ctx, &pb.CompleteAgentRequest{AgentId: agentID}); err != nil {
+		t.Fatalf("CompleteAgent: %v", err)
+	}
 	stateResp, err = s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState (idle): %v", err)
@@ -746,7 +748,7 @@ func TestE2E_SpuriousCrashGuard(t *testing.T) {
 
 	// Behavioral proof: submit a task and verify it gets assigned promptly.
 	// If RecordCrash had fired, cooldown would block assignment.
-	// NOTE: 500ms timeout < default baseBackoff (1s, restart.go:73). If baseBackoff
+	// NOTE: 500ms timeout < default baseBackoff (1s, restart.go:72). If baseBackoff
 	// is reduced below this timeout, this test stops detecting TOCTOU guard regressions.
 	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
 		Task: &pb.TaskSpec{TaskId: "task-spurious-001", Prompt: "spurious test", Priority: 1.0},
@@ -756,4 +758,75 @@ func TestE2E_SpuriousCrashGuard(t *testing.T) {
 	}
 
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 500*time.Millisecond)
+}
+
+// ── Scenario 13: Crash Recovery Re-enqueues Task (E2E) ──────────────────────
+
+// TestE2E_CrashRecoveryReenqueuesTask verifies that when a WORKING agent crashes,
+// the task it was assigned is re-enqueued at its original priority rather than
+// being permanently lost. A second idle agent should pick up the re-enqueued task.
+func TestE2E_CrashRecoveryReenqueuesTask(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+		supervisor.WithBaseBackoff(50*time.Millisecond),
+		supervisor.WithCrashThreshold(10),
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+
+	// Register two agents.
+	reg1, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-crash-recovery-1"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent 1: %v", err)
+	}
+	reg2, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-crash-recovery-2"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent 2: %v", err)
+	}
+	agent1 := reg1.AgentId
+	agent2 := reg2.AgentId
+
+	// Submit a task — supervisor assigns to one of the agents.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-recovery-001", Prompt: "recoverable work", Priority: 5.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	// Wait for one agent to be assigned.
+	time.Sleep(100 * time.Millisecond)
+
+	// Determine which agent was assigned and advance it to WORKING.
+	var assignedAgent, idleAgent string
+	resp1, _ := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agent1})
+	if resp1.State == pb.AgentState_AGENT_STATE_ASSIGNED {
+		assignedAgent, idleAgent = agent1, agent2
+	} else {
+		assignedAgent, idleAgent = agent2, agent1
+	}
+
+	if _, err := s.sv.ApplyEventForTest(ctx, assignedAgent, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+
+	// Crash the working agent — crashAgent should re-enqueue the task.
+	s.sv.CrashAgentForTest(ctx, assignedAgent)
+
+	// The idle agent should pick up the re-enqueued task.
+	pollAgentState(t, s.client, idleAgent, pb.AgentState_AGENT_STATE_ASSIGNED, 500*time.Millisecond)
+
+	// Verify the queue is empty (task was dequeued and assigned to the idle agent).
+	qLen, err := s.store.QueueLength(ctx)
+	if err != nil {
+		t.Fatalf("QueueLength: %v", err)
+	}
+	if qLen != 0 {
+		t.Fatalf("expected empty queue after re-assignment, got %d", qLen)
+	}
 }

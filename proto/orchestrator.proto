@@ -24,6 +24,9 @@ service OrchestratorService {
 
   // Query the execution state of a DAG.
   rpc GetDAGStatus(GetDAGStatusRequest) returns (GetDAGStatusResponse);
+
+  // Signal that an agent has completed its task (REPORTING → IDLE).
+  rpc CompleteAgent(CompleteAgentRequest) returns (CompleteAgentResponse);
 }
 
 // ─── Agent Registration ──────────────────────────────────────────────────────
@@ -153,3 +156,11 @@ message GetDAGStatusResponse {
   DAGExecutionState   state            = 2;
   repeated DAGNodeStatus node_statuses = 3;
 }
+
+// ─── Agent Completion ───────────────────────────────────────────────────────
+
+message CompleteAgentRequest {
+  string agent_id = 1;
+}
+
+message CompleteAgentResponse {}

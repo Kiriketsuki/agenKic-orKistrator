@@ -72,13 +72,15 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 }
 
 // RegisterAgent adds an agent to the pool in idle state.
+// Store I/O is performed outside sv.mu to avoid holding the lock during
+// network round-trips (consistent with findIdleAgent's snapshot pattern).
 func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
-	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
+	sv.mu.RLock()
 	if sv.stopped {
+		sv.mu.RUnlock()
 		return ErrSupervisorStopped
 	}
+	sv.mu.RUnlock()
 
 	now := time.Now().UnixMilli()
 	if err := sv.store.SetAgentFields(ctx, agentID, state.AgentFields{
@@ -89,6 +91,12 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 		return fmt.Errorf("register agent %s: %w", agentID, err)
 	}
 
+	sv.mu.Lock()
+	defer sv.mu.Unlock()
+
+	if sv.stopped {
+		return ErrSupervisorStopped
+	}
 	sv.agentMu[agentID] = &sync.Mutex{}
 	return nil
 }
@@ -205,6 +213,14 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 		return
 	}
 
+	// Re-enqueue the agent's assigned task so it is not permanently lost.
+	fields, fErr := sv.store.GetAgentFields(ctx, agentID)
+	if fErr == nil && fields.CurrentTaskID != "" {
+		if err := sv.store.EnqueueTask(ctx, fields.CurrentTaskID, fields.CurrentTaskPriority); err != nil {
+			log.Printf("supervisor: task %s lost — re-enqueue failed (agent %s crashed): %v", fields.CurrentTaskID, agentID, err)
+		}
+	}
+
 	decision := sv.policy.RecordCrash(agentID)
 
 	sv.mu.Lock()
@@ -238,7 +254,7 @@ func (sv *Supervisor) taskAssignLoop(ctx context.Context) {
 }
 
 func (sv *Supervisor) tryAssignTask(ctx context.Context) {
-	taskID, err := sv.store.DequeueTask(ctx)
+	taskID, priority, err := sv.store.DequeueTask(ctx)
 	if err != nil {
 		// ErrQueueEmpty is expected — not a failure.
 		return
@@ -246,8 +262,8 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 
 	agentID, found := sv.findIdleAgent(ctx)
 	if !found {
-		// Re-enqueue the task at default priority since no idle agent available.
-		if err := sv.store.EnqueueTask(ctx, taskID, 0); err != nil {
+		// Re-enqueue at original priority since no idle agent available.
+		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue failed (no idle agent): %v", taskID, err)
 		}
 		return
@@ -255,11 +271,19 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 
 	snap, err := sv.applyEvent(ctx, agentID, agent.EventTaskAssigned)
 	if err != nil {
-		// Could not assign; re-enqueue.
-		if err := sv.store.EnqueueTask(ctx, taskID, 0); err != nil {
+		// Could not assign; re-enqueue at original priority.
+		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue failed (assign error): %v", taskID, err)
 		}
 		return
+	}
+
+	// Record the assigned task on the agent for crash recovery (read-modify-write
+	// to preserve LastHeartbeat and RegisteredAt).
+	if cur, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil {
+		cur.CurrentTaskID = taskID
+		cur.CurrentTaskPriority = priority
+		_ = sv.store.SetAgentFields(ctx, agentID, cur)
 	}
 
 	_ = sv.store.PublishEvent(ctx, state.Event{
@@ -306,9 +330,24 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 		if exp, ok := cooldownSnap[agentID]; ok && now.Before(exp) {
 			continue
 		}
+		// Re-verify under fresh RLock: crashAgent may have updated circuit/cooldown
+		// after the snapshot was taken (outer race window before sentinel pre-population).
+		sv.mu.RLock()
+		recheckCircuit := sv.circuitOpen[agentID]
+		recheckExp, recheckCooling := sv.agentCooldown[agentID]
+		sv.mu.RUnlock()
+		if recheckCircuit || (recheckCooling && now.Before(recheckExp)) {
+			continue
+		}
 		return agentID, true
 	}
 	return "", false
+}
+
+// CompleteAgent is the public entry point for signaling agent task completion.
+// It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
+func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) {
+	sv.completeAgent(ctx, agentID)
 }
 
 // completeAgent applies EventOutputDelivered and records a success with the
@@ -331,6 +370,13 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) {
 	}
 
 	sv.policy.RecordSuccess(agentID)
+
+	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
+	if cur, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil {
+		cur.CurrentTaskID = ""
+		cur.CurrentTaskPriority = 0
+		_ = sv.store.SetAgentFields(ctx, agentID, cur)
+	}
 
 	sv.mu.Lock()
 	delete(sv.agentCooldown, agentID)

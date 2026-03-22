@@ -153,17 +153,17 @@ func (m *MockStore) EnqueueTask(ctx context.Context, taskID string, priority flo
 	return nil
 }
 
-func (m *MockStore) DequeueTask(ctx context.Context) (string, error) {
+func (m *MockStore) DequeueTask(ctx context.Context) (string, float64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if len(m.queue) == 0 {
-		return "", ErrQueueEmpty
+		return "", 0, ErrQueueEmpty
 	}
 	item := m.queue[0]
 	// Build a new slice rather than modifying in place (immutable pattern).
 	m.queue = append([]queueItem{}, m.queue[1:]...)
-	return item.taskID, nil
+	return item.taskID, item.priority, nil
 }
 
 // SetQueueLengthError configures QueueLength to return err.
