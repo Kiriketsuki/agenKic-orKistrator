@@ -11,7 +11,9 @@ type FormatAdapter interface {
 	Name() string
 
 	// FormatRequest returns a (possibly modified) copy of req tailored for this
-	// provider. It must not mutate the original request.
+	// provider. It must not mutate the original request. Note: Go's shallow copy
+	// (out := req) shares reference-type fields like Metadata — implementations
+	// must not write to shared maps or slices.
 	FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest
 
 	// ParseModelName returns true when this adapter should handle the given model
@@ -40,13 +42,23 @@ func DefaultRegistry() *Registry {
 	)
 }
 
-// Find returns the FormatAdapter whose ParseModelName reports true for model,
-// and the boolean is true. If no adapter matches, (nil, false) is returned.
-func (r *Registry) Find(model string) (FormatAdapter, bool) {
+// Find returns the FormatAdapter whose ParseModelName reports true for model.
+// If no adapter matches, it returns gateway.ErrNoProvider.
+func (r *Registry) Find(model string) (FormatAdapter, error) {
 	for _, a := range r.adapters {
 		if a.ParseModelName(model) {
-			return a, true
+			return a, nil
 		}
 	}
-	return nil, false
+	return nil, gateway.ErrNoProvider
+}
+
+// Resolve implements gateway.AdapterResolver. It finds the adapter for the
+// given model and applies its FormatRequest transformation.
+func (r *Registry) Resolve(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error) {
+	adapter, err := r.Find(model)
+	if err != nil {
+		return req, err
+	}
+	return adapter.FormatRequest(req), nil
 }

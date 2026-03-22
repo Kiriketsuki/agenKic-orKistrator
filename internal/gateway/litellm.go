@@ -5,9 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
+
+const maxResponseBytes = 10 << 20 // 10 MB
 
 const (
 	defaultBaseURL = "http://localhost:8000"
@@ -55,14 +59,22 @@ type LiteLLMClient struct {
 	timeout      time.Duration
 	httpClient   *http.Client
 	providerName string
+	resolver     AdapterResolver
 }
 
 // LiteLLMOption configures the LiteLLMClient.
 type LiteLLMOption func(*LiteLLMClient)
 
 // WithBaseURL sets the base URL of the LiteLLM proxy (default: http://localhost:8000).
+// Only http and https schemes are accepted; other schemes are silently rejected.
 func WithBaseURL(u string) LiteLLMOption {
-	return func(c *LiteLLMClient) { c.baseURL = u }
+	return func(c *LiteLLMClient) {
+		parsed, err := url.Parse(u)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return // reject invalid schemes, keep current baseURL
+		}
+		c.baseURL = u
+	}
 }
 
 // WithTimeout sets the HTTP request timeout (default: 30s).
@@ -83,6 +95,12 @@ func WithProviderName(name string) LiteLLMOption {
 	return func(c *LiteLLMClient) { c.providerName = name }
 }
 
+// WithAdapterResolver sets the adapter resolver used to format requests
+// for specific providers before sending them to the LiteLLM proxy.
+func WithAdapterResolver(r AdapterResolver) LiteLLMOption {
+	return func(c *LiteLLMClient) { c.resolver = r }
+}
+
 // NewLiteLLMClient returns a LiteLLMClient with the given options applied.
 func NewLiteLLMClient(opts ...LiteLLMOption) *LiteLLMClient {
 	c := &LiteLLMClient{
@@ -101,8 +119,17 @@ func NewLiteLLMClient(opts ...LiteLLMOption) *LiteLLMClient {
 func (c *LiteLLMClient) Provider() string { return c.providerName }
 
 // Complete sends a completion request to the LiteLLM proxy and returns the response.
-// It implements the Completer interface.
+// It implements the Completer interface. If an AdapterResolver is configured, it
+// formats the request for the target provider before serialisation.
 func (c *LiteLLMClient) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
+	if c.resolver != nil {
+		var err error
+		req, err = c.resolver.Resolve(req.Model, req)
+		if err != nil {
+			return CompletionResponse{}, &ProviderError{Op: "Complete", Provider: c.providerName, Err: err}
+		}
+	}
+
 	body, err := c.buildRequest(req)
 	if err != nil {
 		return CompletionResponse{}, &ProviderError{Provider: c.providerName, Err: fmt.Errorf("marshal request: %w", err)}
@@ -119,6 +146,7 @@ func (c *LiteLLMClient) Complete(ctx context.Context, req CompletionRequest) (Co
 		return CompletionResponse{}, &ProviderError{Provider: c.providerName, Err: fmt.Errorf("%w: %s", ErrProviderUnavailable, err.Error())}
 	}
 	defer resp.Body.Close()
+	limited := io.LimitReader(resp.Body, maxResponseBytes)
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return CompletionResponse{}, &ProviderError{Provider: c.providerName, Err: ErrRateLimited}
@@ -128,7 +156,7 @@ func (c *LiteLLMClient) Complete(ctx context.Context, req CompletionRequest) (Co
 	}
 	if resp.StatusCode != http.StatusOK {
 		var errBody liteLLMErrorBody
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		_ = json.NewDecoder(limited).Decode(&errBody)
 		msg := errBody.Error.Message
 		if msg == "" {
 			msg = fmt.Sprintf("status %d", resp.StatusCode)
@@ -137,7 +165,7 @@ func (c *LiteLLMClient) Complete(ctx context.Context, req CompletionRequest) (Co
 	}
 
 	var liteLLMResp liteLLMResponse
-	if err := json.NewDecoder(resp.Body).Decode(&liteLLMResp); err != nil {
+	if err := json.NewDecoder(limited).Decode(&liteLLMResp); err != nil {
 		return CompletionResponse{}, &ProviderError{Provider: c.providerName, Err: fmt.Errorf("decode response: %w", err)}
 	}
 
@@ -156,9 +184,12 @@ func (c *LiteLLMClient) Complete(ctx context.Context, req CompletionRequest) (Co
 
 // buildRequest serialises a CompletionRequest into the LiteLLM JSON request body.
 func (c *LiteLLMClient) buildRequest(req CompletionRequest) ([]byte, error) {
-	msgs := make([]liteLLMMessage, len(req.Messages))
-	for i, m := range req.Messages {
-		msgs[i] = liteLLMMessage{Role: m.Role, Content: m.Content}
+	var msgs []liteLLMMessage
+	if req.SystemPrompt != "" {
+		msgs = append(msgs, liteLLMMessage{Role: "system", Content: req.SystemPrompt})
+	}
+	for _, m := range req.Messages {
+		msgs = append(msgs, liteLLMMessage{Role: m.Role, Content: m.Content})
 	}
 
 	lr := liteLLMRequest{

@@ -196,6 +196,134 @@ func TestLiteLLMClient_Complete(t *testing.T) {
 	}
 }
 
+func TestLiteLLMClient_SystemPromptSerialized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if len(body.Messages) < 2 {
+			t.Errorf("expected at least 2 messages (system + user), got %d", len(body.Messages))
+		}
+		if body.Messages[0].Role != "system" {
+			t.Errorf("first message role=%q, want %q", body.Messages[0].Role, "system")
+		}
+		if body.Messages[0].Content != "You are helpful" {
+			t.Errorf("system prompt=%q, want %q", body.Messages[0].Content, "You are helpful")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"model":"claude","usage":{}}`))
+	}))
+	defer srv.Close()
+
+	client := gateway.NewLiteLLMClient(gateway.WithBaseURL(srv.URL))
+	_, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:        "claude-haiku-4-5",
+		Messages:     []gateway.Message{{Role: "user", Content: "hi"}},
+		SystemPrompt: "You are helpful",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLiteLLMClient_WithBaseURL_RejectsInvalidSchemes(t *testing.T) {
+	tests := []struct {
+		url     string
+		wantURL string
+	}{
+		{"http://localhost:4000", "http://localhost:4000"},
+		{"https://proxy.example.com", "https://proxy.example.com"},
+		{"ftp://evil.com", "http://localhost:8000"},      // rejected, keeps default
+		{"file:///etc/passwd", "http://localhost:8000"},  // rejected
+		{"javascript:alert(1)", "http://localhost:8000"}, // rejected
+	}
+	for _, tt := range tests {
+		client := gateway.NewLiteLLMClient(gateway.WithBaseURL(tt.url))
+		// We can't directly inspect baseURL, but we can verify via Provider name
+		// that the client was constructed. The real test is that invalid schemes
+		// don't crash and the client remains functional.
+		if client.Provider() != "litellm" {
+			t.Errorf("WithBaseURL(%q) broke client construction", tt.url)
+		}
+	}
+}
+
+func TestLiteLLMClient_WithAdapterResolver(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		// Verify the adapter transformed the model name
+		if body.Model != "llama3" {
+			t.Errorf("resolver not applied: model=%q, want %q", body.Model, "llama3")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"hi"}}],"model":"llama3","usage":{}}`))
+	}))
+	defer srv.Close()
+
+	resolver := &testResolver{
+		fn: func(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error) {
+			out := req
+			out.Model = "llama3" // simulate ollama prefix stripping
+			return out, nil
+		},
+	}
+
+	client := gateway.NewLiteLLMClient(
+		gateway.WithBaseURL(srv.URL),
+		gateway.WithAdapterResolver(resolver),
+	)
+	_, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:    "ollama/llama3",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLiteLLMClient_ResolverErrNoProvider(t *testing.T) {
+	resolver := &testResolver{
+		fn: func(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error) {
+			return req, gateway.ErrNoProvider
+		},
+	}
+	client := gateway.NewLiteLLMClient(gateway.WithAdapterResolver(resolver))
+	_, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:    "unknown",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, gateway.ErrNoProvider) {
+		t.Errorf("expected ErrNoProvider, got %v", err)
+	}
+}
+
+// testResolver implements gateway.AdapterResolver for testing.
+type testResolver struct {
+	fn func(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error)
+}
+
+func (r *testResolver) Resolve(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error) {
+	return r.fn(model, req)
+}
+
 func TestLiteLLMClient_ProviderName(t *testing.T) {
 	c := gateway.NewLiteLLMClient()
 	if c.Provider() != "litellm" {

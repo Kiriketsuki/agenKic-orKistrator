@@ -1,6 +1,7 @@
 package providers_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/gateway"
@@ -14,32 +15,39 @@ func TestRegistry_Find(t *testing.T) {
 
 	tests := []struct {
 		model        string
-		wantFound    bool
+		wantErr      bool
 		wantProvider string
 	}{
-		{"claude-haiku-4-5", true, "anthropic"},
-		{"claude-sonnet-4-6", true, "anthropic"},
-		{"claude-opus-4-6", true, "anthropic"},
-		{"gpt-4o", true, "openai"},
-		{"gpt-3.5-turbo", true, "openai"},
-		{"o1-preview", true, "openai"},
-		{"o3-mini", true, "openai"},
-		{"ollama/llama3", true, "ollama"},
-		{"ollama/mistral:7b", true, "ollama"},
-		{"unknown-model", false, ""},
-		{"gemini-pro", false, ""},
+		{"claude-haiku-4-5", false, "anthropic"},
+		{"claude-sonnet-4-6", false, "anthropic"},
+		{"claude-opus-4-6", false, "anthropic"},
+		{"gpt-4o", false, "openai"},
+		{"gpt-3.5-turbo", false, "openai"},
+		{"o1-preview", false, "openai"},
+		{"o3-mini", false, "openai"},
+		{"ollama/llama3", false, "ollama"},
+		{"ollama/mistral:7b", false, "ollama"},
+		{"unknown-model", true, ""},
+		{"gemini-pro", true, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
-			adapter, found := reg.Find(tt.model)
-			if found != tt.wantFound {
-				t.Errorf("Find(%q) found=%v, want %v", tt.model, found, tt.wantFound)
-			}
-			if tt.wantFound {
-				if adapter.Name() != tt.wantProvider {
-					t.Errorf("Find(%q) provider=%q, want %q", tt.model, adapter.Name(), tt.wantProvider)
+			adapter, err := reg.Find(tt.model)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Find(%q) expected error, got nil", tt.model)
 				}
+				if !errors.Is(err, gateway.ErrNoProvider) {
+					t.Errorf("Find(%q) error=%v, want ErrNoProvider", tt.model, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Find(%q) unexpected error: %v", tt.model, err)
+			}
+			if adapter.Name() != tt.wantProvider {
+				t.Errorf("Find(%q) provider=%q, want %q", tt.model, adapter.Name(), tt.wantProvider)
 			}
 		})
 	}
@@ -47,9 +55,12 @@ func TestRegistry_Find(t *testing.T) {
 
 func TestRegistry_EmptyRegistry(t *testing.T) {
 	reg := providers.NewRegistry()
-	_, found := reg.Find("claude-haiku-4-5")
-	if found {
-		t.Error("empty registry should not find any adapter")
+	_, err := reg.Find("claude-haiku-4-5")
+	if err == nil {
+		t.Error("empty registry should return error")
+	}
+	if !errors.Is(err, gateway.ErrNoProvider) {
+		t.Errorf("expected ErrNoProvider, got %v", err)
 	}
 }
 
@@ -259,7 +270,7 @@ func TestOllamaAdapter_ParseModelName(t *testing.T) {
 	}
 }
 
-func TestOllamaAdapter_FormatRequest_Passthrough(t *testing.T) {
+func TestOllamaAdapter_FormatRequest_StripsPrefix(t *testing.T) {
 	a := &providers.OllamaAdapter{}
 
 	req := gateway.CompletionRequest{
@@ -269,14 +280,49 @@ func TestOllamaAdapter_FormatRequest_Passthrough(t *testing.T) {
 		MaxTokens:   512,
 	}
 	got := a.FormatRequest(req)
-	if got.Model != req.Model {
-		t.Errorf("model changed: got %q, want %q", got.Model, req.Model)
+	if got.Model != "llama3" {
+		t.Errorf("model prefix not stripped: got %q, want %q", got.Model, "llama3")
 	}
 	if got.Temperature != req.Temperature {
 		t.Errorf("temperature changed: got %v, want %v", got.Temperature, req.Temperature)
 	}
 	if got.MaxTokens != req.MaxTokens {
 		t.Errorf("max_tokens changed: got %d, want %d", got.MaxTokens, req.MaxTokens)
+	}
+}
+
+func TestOllamaAdapter_FormatRequest_StripsPrefixWithTag(t *testing.T) {
+	a := &providers.OllamaAdapter{}
+	req := gateway.CompletionRequest{Model: "ollama/mistral:7b"}
+	got := a.FormatRequest(req)
+	if got.Model != "mistral:7b" {
+		t.Errorf("model prefix not stripped: got %q, want %q", got.Model, "mistral:7b")
+	}
+}
+
+func TestRegistry_Resolve(t *testing.T) {
+	reg := providers.DefaultRegistry()
+
+	// Anthropic model with high temperature — should be clamped
+	req := gateway.CompletionRequest{
+		Model:       "claude-haiku-4-5",
+		Messages:    []gateway.Message{{Role: "user", Content: "hi"}},
+		Temperature: 1.5,
+	}
+	got, err := reg.Resolve("claude-haiku-4-5", req)
+	if err != nil {
+		t.Fatalf("Resolve unexpected error: %v", err)
+	}
+	if got.Temperature != 1.0 {
+		t.Errorf("Resolve did not apply adapter: temperature=%v, want 1.0", got.Temperature)
+	}
+}
+
+func TestRegistry_Resolve_ErrNoProvider(t *testing.T) {
+	reg := providers.DefaultRegistry()
+	_, err := reg.Resolve("unknown-model", gateway.CompletionRequest{})
+	if !errors.Is(err, gateway.ErrNoProvider) {
+		t.Errorf("Resolve error=%v, want ErrNoProvider", err)
 	}
 }
 

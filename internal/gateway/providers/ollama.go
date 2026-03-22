@@ -18,8 +18,10 @@ func (a *OllamaAdapter) ParseModelName(model string) bool {
 	return strings.HasPrefix(model, "ollama/")
 }
 
-// FormatRequest passes the request through unchanged. LiteLLM understands
-// the "ollama/<model>" naming convention without further transformation.
+// FormatRequest strips the "ollama/" prefix from the model name before
+// forwarding to LiteLLM. All other fields pass through unchanged.
 func (a *OllamaAdapter) FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest {
-	return req
+	out := req
+	out.Model = strings.TrimPrefix(req.Model, "ollama/")
+	return out
 }

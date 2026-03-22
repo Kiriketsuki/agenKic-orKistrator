@@ -21,8 +21,8 @@
 | # | Question | Raised By | Resolved |
 |:--|:---------|:----------|:---------|
 | 1 | Should the LiteLLM client retry on 429 internally, or delegate retry to the fallback chain (T6)? Internal retry with backoff is simpler but risks masking cascading failures. | T2 spec | [ ] |
-| 2 | Does the Anthropic adapter need to translate `system` messages into the top-level `system` field (Anthropic API v1 format) or can we rely on LiteLLM to handle that translation? | T3 spec | [ ] |
-| 3 | Should `ParseModelName` strip the `ollama/` prefix before forwarding to LiteLLM, or should LiteLLM receive the full prefixed name? LiteLLM's Ollama support expects the prefix. | T3 spec | [ ] |
+| 2 | Does the Anthropic adapter need to translate `system` messages into the top-level `system` field (Anthropic API v1 format) or can we rely on LiteLLM to handle that translation? | T3 spec | [x] Resolved: LiteLLM accepts system messages in the messages array and translates for Anthropic. `buildRequest` prepends `{role: "system"}` when `SystemPrompt` is set. |
+| 3 | Should `ParseModelName` strip the `ollama/` prefix before forwarding to LiteLLM, or should LiteLLM receive the full prefixed name? LiteLLM's Ollama support expects the prefix. | T3 spec | [x] Resolved: Acceptance scenario (line 208) is controlling — prefix is stripped by `OllamaAdapter.FormatRequest`. |
 | 4 | What is the canonical timeout for completion calls? Gateway-level timeout vs per-request override? | T2 spec | [ ] |
 
 ---

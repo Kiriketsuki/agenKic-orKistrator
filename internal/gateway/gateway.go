@@ -179,8 +179,8 @@ func Since(t time.Time) TimePeriod {
 // ProviderConfig holds the runtime configuration for a single provider.
 type ProviderConfig struct {
 	Name string
-	// TODO(T2): Completer implementations constructing HTTP clients from BaseURL
-	// must validate the host against a scheme+host allowlist and block private CIDRs.
+	// BaseURL validation: LiteLLMClient.WithBaseURL rejects non-http/https schemes.
+	// Full host allowlist and private CIDR blocking deferred to config loading (T5).
 	BaseURL string
 	APIKey  string `json:"-"`
 	Models  []string
@@ -242,6 +242,12 @@ type Completer interface {
 	Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
 	// Provider returns the provider name (e.g. "anthropic", "openai", "ollama").
 	Provider() string
+}
+
+// AdapterResolver finds and applies the format adapter for a model name.
+// Implementations should return ErrNoProvider if no adapter handles the model.
+type AdapterResolver interface {
+	Resolve(model string, req CompletionRequest) (CompletionRequest, error)
 }
 
 // CostTracker records and queries per-request cost data.
