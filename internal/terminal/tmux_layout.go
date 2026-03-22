@@ -11,7 +11,7 @@ import (
 func (t *TmuxSubstrate) ListSessions() ([]Session, error) {
 	out, err := t.run(
 		"list-sessions",
-		"-F", "#{session_name}:#{session_width}:#{session_height}:#{session_windows}:#{session_attached}",
+		"-F", "#{session_name}\t#{session_width}\t#{session_height}\t#{session_windows}\t#{session_attached}",
 	)
 	if err != nil {
 		// tmux exits non-zero when no server is running or no sessions exist.
@@ -38,25 +38,16 @@ func (t *TmuxSubstrate) ListSessions() ([]Session, error) {
 }
 
 // parseSessionLine parses a single line from tmux list-sessions -F output.
-// Expected format: name:width:height:windows:attached
+// Expected format: name\twidth\theight\twindows\tattached (tab-delimited)
 func parseSessionLine(line string) (Session, error) {
-	parts := strings.SplitN(line, ":", 5)
+	parts := strings.SplitN(line, "\t", 5)
 	if len(parts) != 5 {
 		return Session{}, fmt.Errorf("expected 5 fields, got %d", len(parts))
 	}
 
-	width, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return Session{}, fmt.Errorf("width: %w", err)
-	}
-	height, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return Session{}, fmt.Errorf("height: %w", err)
-	}
-	paneCount, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return Session{}, fmt.Errorf("pane count: %w", err)
-	}
+	width, _ := strconv.Atoi(parts[1])  // 0 if empty (detached, no client)
+	height, _ := strconv.Atoi(parts[2]) // 0 if empty
+	paneCount, _ := strconv.Atoi(parts[3])
 
 	return Session{
 		Name:      parts[0],
@@ -78,12 +69,14 @@ func (t *TmuxSubstrate) SplitPane(session string, direction Direction) (Pane, er
 	out, err := t.run(
 		"split-window", flag,
 		"-t", session,
-		"-P", "-F", "#{pane_id}:#{session_name}:#{pane_width}:#{pane_height}:#{pane_active}",
+		"-P", "-F", "#{pane_id}\t#{session_name}\t#{pane_width}\t#{pane_height}\t#{pane_active}",
 	)
 	if err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "session not found") ||
-			strings.Contains(errStr, "can't find session") {
+			strings.Contains(errStr, "can't find session") ||
+			strings.Contains(errStr, "can't find window") ||
+			strings.Contains(errStr, "can't find pane") {
 			return Pane{}, ErrSessionNotFound
 		}
 		if strings.Contains(errStr, "create pane failed") {
@@ -101,9 +94,9 @@ func (t *TmuxSubstrate) SplitPane(session string, direction Direction) (Pane, er
 }
 
 // parsePaneLine parses a single line from tmux split-window -P -F output.
-// Expected format: pane_id:session_name:width:height:active
+// Expected format: pane_id\tsession_name\twidth\theight\tactive (tab-delimited)
 func parsePaneLine(line string) (Pane, error) {
-	parts := strings.SplitN(line, ":", 5)
+	parts := strings.SplitN(line, "\t", 5)
 	if len(parts) != 5 {
 		return Pane{}, fmt.Errorf("expected 5 fields, got %d", len(parts))
 	}
