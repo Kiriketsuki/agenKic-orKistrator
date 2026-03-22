@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agenKic-orKistrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --bg: #f5f3ee;
+    --surface: #ffffff;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+    --navy: #1e3a5f;
+    --navy-dim: rgba(30, 58, 95, 0.06);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.07);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.07);
+    --slate: #3d5a80;
+    --slate-dim: rgba(61, 90, 128, 0.07);
+    --rose: #9f1239;
+    --rose-dim: rgba(159, 18, 57, 0.07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --border: rgba(200, 220, 240, 0.08);
+      --border-strong: rgba(200, 220, 240, 0.15);
+      --text: #d4dce8;
+      --text-dim: #7a8da6;
+      --navy: #7db0de;
+      --navy-dim: rgba(125, 176, 222, 0.10);
+      --teal: #34d399;
+      --teal-dim: rgba(52, 211, 153, 0.10);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.10);
+      --slate: #93b5d6;
+      --slate-dim: rgba(147, 181, 214, 0.10);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 60px 24px;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .a { animation: fadeUp 0.4s ease-out both; animation-delay: calc(var(--i, 0) * 0.08s); }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-delay: 0ms !important; }
+  }
+
+  .page { max-width: 720px; width: 100%; }
+
+  .mono-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.6px;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    max-width: 560px;
+    margin-bottom: 40px;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--navy);
+  }
+
+  .card-list { display: flex; flex-direction: column; gap: 12px; }
+
+  a.card {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  a.card:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  }
+
+  .card__num {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1;
+  }
+
+  .card__body { min-width: 0; }
+
+  .card__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .card__desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .card__arrow {
+    font-size: 18px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+
+  a.card:hover .card__arrow { transform: translateX(3px); }
+
+  .card--epic1 .card__num { color: var(--navy); }
+  .card--epic2 .card__num { color: var(--slate); }
+  .card--epic3 .card__num { color: var(--teal); }
+  .card--epic4 .card__num { color: var(--amber); }
+
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .footer a { color: var(--navy); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 520px) {
+    a.card { grid-template-columns: 40px 1fr auto; padding: 16px; gap: 12px; }
+    .card__num { font-size: 22px; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="mono-tag a" style="--i:0">documentation</div>
+  <h1 class="a" style="--i:1">agenKic-orKistrator</h1>
+  <p class="subtitle a" style="--i:2">
+    Visual architecture explainers for each epic. Pixelated AI office orchestrator &mdash;
+    pixel-art agents, multi-model routing, real-time coordination.
+  </p>
+
+  <div class="section-label a" style="--i:3">Visual Explainers</div>
+
+  <div class="card-list">
+    <a class="card card--epic1 a" style="--i:4" href="visual-explainer/epic-1-go-orchestrator-core.html">
+      <div class="card__num">1</div>
+      <div class="card__body">
+        <div class="card__title">Go Orchestrator Core</div>
+        <div class="card__desc">Supervisor, agent state machine, DAG engine, gRPC service, Redis state</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+
+    <a class="card card--epic2 a" style="--i:5" href="visual-explainer/epic-2-terminal-substrate.html">
+      <div class="card__num">2</div>
+      <div class="card__body">
+        <div class="card__title">Terminal Substrate Layer</div>
+        <div class="card__desc">tmux session management, command injection, output capture</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+
+    <a class="card card--epic3 a" style="--i:6" href="visual-explainer/epic-3-model-gateway.html">
+      <div class="card__num">3</div>
+      <div class="card__body">
+        <div class="card__title">Model Gateway / Judge-Router</div>
+        <div class="card__desc">LiteLLM proxy, 3-tier routing, provider adapters, fallback chains, cost tracking</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+
+    <a class="card card--epic4 a" style="--i:7" href="#">
+      <div class="card__num">4</div>
+      <div class="card__body">
+        <div class="card__title">Pixel Office UI</div>
+        <div class="card__desc">Godot 4 pixel-art office, godot-xterm, agent sprites &mdash; coming soon</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+  </div>
+
+  <div class="footer a" style="--i:8">
+    <span><a href="https://github.com/Kiriketsuki/agenKic-orKistrator">GitHub</a> &middot; v26.03.1.0</span>
+    <span>Generated 2026-03-22</span>
+  </div>
+</div>
+
+</body>
+</html>
