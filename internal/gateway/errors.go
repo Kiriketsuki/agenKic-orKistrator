@@ -23,16 +23,25 @@ var (
 
 	// ErrConfigInvalid is returned when the gateway configuration is malformed.
 	ErrConfigInvalid = errors.New("gateway: invalid configuration")
+
+	// ErrCostTrackerFull is returned when the cost tracker's capacity is exceeded.
+	ErrCostTrackerFull = errors.New("gateway: cost tracker capacity exceeded")
 )
 
-// ProviderError wraps an error with the provider name that produced it.
+// ProviderError wraps an error with the provider and operation that produced it.
 type ProviderError struct {
+	Op       string // e.g. "Route", "Complete", "GetCostReport"
 	Provider string
 	Err      error
 }
 
 func (e *ProviderError) Error() string {
-	return "gateway: provider " + e.Provider + ": " + e.Err.Error()
+	msg := "gateway: "
+	if e.Op != "" {
+		msg += e.Op + ": "
+	}
+	msg += "provider " + e.Provider + ": " + e.Err.Error()
+	return msg
 }
 
 func (e *ProviderError) Unwrap() error { return e.Err }

@@ -27,10 +27,33 @@ func (t ModelTier) Valid() bool {
 	}
 }
 
+// MarshalText implements encoding.TextMarshaler for YAML/JSON serde.
+func (t ModelTier) MarshalText() ([]byte, error) {
+	if !t.Valid() {
+		return nil, ErrInvalidTier
+	}
+	return []byte(t), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler for YAML/JSON serde.
+func (t *ModelTier) UnmarshalText(b []byte) error {
+	v := ModelTier(b)
+	if !v.Valid() {
+		return ErrInvalidTier
+	}
+	*t = v
+	return nil
+}
+
 // TaskSpec describes a task submitted for routing classification.
 type TaskSpec struct {
 	ID          string
 	Description string
+	// Payload carries the actual task content for classification.
+	// The judge-router uses this (not just Description) to assess complexity.
+	Payload string
+	// Metadata is arbitrary key-value data passed through to cost tracking.
+	Metadata map[string]string
 	// OverrideTier, if set, bypasses the judge-router and forces this tier.
 	OverrideTier ModelTier
 }
@@ -46,10 +69,17 @@ type RoutingDecision struct {
 type CompletionRequest struct {
 	Model    string
 	Messages []Message
+	// SystemPrompt is handled separately from Messages for providers (e.g.
+	// Anthropic) that require system prompts outside the message array.
+	SystemPrompt string
 	// MaxTokens caps the response length. Zero means provider default.
 	MaxTokens int
 	// Temperature controls randomness. Negative means provider default.
 	Temperature float64
+	// Stream enables streaming response mode via the provider.
+	Stream bool
+	// Tier carries the routing decision so cost tracking receives tier context.
+	Tier ModelTier
 	// Metadata is passed through to cost tracking; not sent to the provider.
 	Metadata map[string]string
 }
@@ -81,6 +111,7 @@ type TokenUsage struct {
 
 // CostRecord is a single billing entry written by the cost tracker.
 type CostRecord struct {
+	RequestID     string
 	Timestamp     time.Time
 	Model         string
 	Tier          ModelTier
@@ -115,10 +146,30 @@ type CostSummary struct {
 	EstimatedCost float64
 }
 
-// TimePeriod defines the time range for a cost report.
+// TimePeriod defines the time range for a cost report as a half-open
+// interval [Start, End).
 type TimePeriod struct {
 	Start time.Time
 	End   time.Time
+}
+
+// Today returns a TimePeriod covering the current calendar day in UTC.
+func Today() TimePeriod {
+	now := time.Now().UTC()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return TimePeriod{Start: start, End: start.AddDate(0, 0, 1)}
+}
+
+// LastNDays returns a TimePeriod covering the last n days up to now (UTC).
+func LastNDays(n int) TimePeriod {
+	now := time.Now().UTC()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -n)
+	return TimePeriod{Start: start, End: now}
+}
+
+// Since returns a TimePeriod from t up to now (UTC).
+func Since(t time.Time) TimePeriod {
+	return TimePeriod{Start: t, End: time.Now().UTC()}
 }
 
 // ProviderConfig holds the runtime configuration for a single provider.
