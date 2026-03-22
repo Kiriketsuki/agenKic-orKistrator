@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -188,6 +189,23 @@ type ProviderConfig struct {
 // String returns a human-readable representation with the API key redacted.
 func (p ProviderConfig) String() string {
 	return "ProviderConfig{Name: " + p.Name + ", BaseURL: " + p.BaseURL + ", APIKey: [REDACTED]}"
+}
+
+// Format implements fmt.Formatter to ensure APIKey is never leaked via any
+// format verb, including %+v which bypasses fmt.Stringer and uses reflection.
+func (p ProviderConfig) Format(f fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if f.Flag('+') {
+			fmt.Fprintf(f, "gateway.ProviderConfig{Name:%s, BaseURL:%s, APIKey:[REDACTED], Models:%v}", p.Name, p.BaseURL, p.Models)
+			return
+		}
+		fmt.Fprint(f, p.String())
+	case 's':
+		fmt.Fprint(f, p.String())
+	default:
+		fmt.Fprint(f, p.String())
+	}
 }
 
 // TierConfig maps a tier to its primary model and fallback chain.

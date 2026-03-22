@@ -33,7 +33,7 @@
 - **`Message` type**: A single conversation turn with `Role string` and `Content string` fields (compatible with OpenAI and Anthropic message formats)
 - **`CompletionRequest` type**: Encapsulates a full LLM call — `Model string`, `Messages []Message`, `SystemPrompt string`, `MaxTokens int`, `Temperature float64`, `Stream bool`, `Tier ModelTier`, `Metadata map[string]string`
 - **`CompletionResponse` type**: Unified response regardless of provider — `Content string`, `Model string`, `InputTokens int`, `OutputTokens int`, `FallbackUsed bool`, `ProviderName string`
-- **`TokenUsage` type**: Token consumption summary — `InputTokens int`, `OutputTokens int`
+- ~~**`TokenUsage` type**~~ — deliberately inlined: `InputTokens` and `OutputTokens` are carried directly on `CompletionResponse` and `CostRecord` rather than via a separate wrapper struct (avoids indirection, follows idiomatic Go)
 - **`CostRecord` type**: Per-request cost entry — `RequestID string`, `Timestamp time.Time`, `Model string`, `Tier ModelTier`, `Provider string`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`, `CacheHit bool`, `Metadata map[string]string`
 - **`CostReport` type**: Aggregated report — `Period TimePeriod`, `TierCosts map[ModelTier]TierCostSummary`, `Total CostSummary`
 - **`TierCostSummary` type**: Per-tier aggregate — `Tier ModelTier`, `RequestCount int`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`
