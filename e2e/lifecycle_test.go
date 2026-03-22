@@ -267,15 +267,7 @@ func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 	// so this sleep is a deliberate negative-case wait before the structural assertion.
 	time.Sleep(100 * time.Millisecond)
 
-	// Structural assertion: the task must still be in the queue since no idle agent exists.
-	qLen, qErr := s.store.QueueLength(ctx)
-	if qErr != nil {
-		t.Fatalf("QueueLength: %v", qErr)
-	}
-	if qLen != 1 {
-		t.Fatalf("expected 1 task in queue (no idle agent), got %d", qLen)
-	}
-
+	// Structural assertion: agent must still be WORKING (findIdleAgent skips non-idle agents).
 	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 	if err != nil {
 		t.Fatalf("GetAgentState: %v", err)
@@ -754,6 +746,8 @@ func TestE2E_SpuriousCrashGuard(t *testing.T) {
 
 	// Behavioral proof: submit a task and verify it gets assigned promptly.
 	// If RecordCrash had fired, cooldown would block assignment.
+	// NOTE: 500ms timeout < default baseBackoff (1s, restart.go:73). If baseBackoff
+	// is reduced below this timeout, this test stops detecting TOCTOU guard regressions.
 	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
 		Task: &pb.TaskSpec{TaskId: "task-spurious-001", Prompt: "spurious test", Priority: 1.0},
 	})

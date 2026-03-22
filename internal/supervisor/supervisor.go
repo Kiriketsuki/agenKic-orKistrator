@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -246,14 +247,18 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 	agentID, found := sv.findIdleAgent(ctx)
 	if !found {
 		// Re-enqueue the task at default priority since no idle agent available.
-		_ = sv.store.EnqueueTask(ctx, taskID, 0)
+		if err := sv.store.EnqueueTask(ctx, taskID, 0); err != nil {
+			log.Printf("supervisor: task %s lost — re-enqueue failed (no idle agent): %v", taskID, err)
+		}
 		return
 	}
 
 	snap, err := sv.applyEvent(ctx, agentID, agent.EventTaskAssigned)
 	if err != nil {
 		// Could not assign; re-enqueue.
-		_ = sv.store.EnqueueTask(ctx, taskID, 0)
+		if err := sv.store.EnqueueTask(ctx, taskID, 0); err != nil {
+			log.Printf("supervisor: task %s lost — re-enqueue failed (assign error): %v", taskID, err)
+		}
 		return
 	}
 
@@ -267,6 +272,8 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 
 // findIdleAgent returns the ID of any idle agent that is not in cooldown or
 // circuit-open state, or ("", false) if none exists.
+// Cooldown/circuit-open maps are snapshotted under RLock then released before
+// per-agent store I/O, so store latency does not block crashAgent's sv.mu.Lock.
 func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 	agents, err := sv.store.ListAgents(ctx)
 	if err != nil {
@@ -274,7 +281,15 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 	}
 
 	sv.mu.RLock()
-	defer sv.mu.RUnlock()
+	cooldownSnap := make(map[string]time.Time, len(sv.agentCooldown))
+	for k, v := range sv.agentCooldown {
+		cooldownSnap[k] = v
+	}
+	circuitSnap := make(map[string]bool, len(sv.circuitOpen))
+	for k, v := range sv.circuitOpen {
+		circuitSnap[k] = v
+	}
+	sv.mu.RUnlock()
 
 	now := time.Now()
 	for _, agentID := range agents {
@@ -285,10 +300,10 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 		if stateStr != string(agent.StateIdle) {
 			continue
 		}
-		if sv.circuitOpen[agentID] {
+		if circuitSnap[agentID] {
 			continue
 		}
-		if exp, ok := sv.agentCooldown[agentID]; ok && now.Before(exp) {
+		if exp, ok := cooldownSnap[agentID]; ok && now.Before(exp) {
 			continue
 		}
 		return agentID, true
