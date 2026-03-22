@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -105,7 +106,10 @@ func TestTimePeriod_LastNDays(t *testing.T) {
 		t.Fatalf("LastNDays(7).Start = %v, want %v", p.Start, wantStart)
 	}
 	if p.End.Before(now.Add(-time.Second)) {
-		t.Fatalf("LastNDays(7).End = %v, expected close to now %v", p.End, now)
+		t.Fatalf("LastNDays(7).End = %v, too far in the past vs now %v", p.End, now)
+	}
+	if p.End.After(now.Add(time.Second)) {
+		t.Fatalf("LastNDays(7).End = %v, too far in the future vs now %v", p.End, now)
 	}
 }
 
@@ -282,6 +286,22 @@ func TestCostRecord_CacheHit(t *testing.T) {
 	}
 	if !rec.CacheHit {
 		t.Fatal("CostRecord.CacheHit = false, want true")
+	}
+}
+
+func TestProviderConfig_FormatV_RedactsAPIKey(t *testing.T) {
+	cfg := ProviderConfig{
+		Name:    "anthropic",
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "sk-ant-secret-key-12345",
+		Models:  []string{"claude-sonnet-4-6"},
+	}
+	got := fmt.Sprintf("%+v", cfg)
+	if strings.Contains(got, "sk-ant-secret-key-12345") {
+		t.Fatalf("fmt.Sprintf(\"%%+v\") leaked APIKey: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("fmt.Sprintf(\"%%+v\") missing [REDACTED]: %q", got)
 	}
 }
 
