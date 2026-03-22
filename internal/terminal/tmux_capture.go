@@ -20,7 +20,9 @@ func (t *TmuxSubstrate) CaptureOutput(session string, lines int) (string, error)
 	if err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "session not found") ||
-			strings.Contains(errStr, "can't find session") {
+			strings.Contains(errStr, "can't find session") ||
+			strings.Contains(errStr, "can't find window") ||
+			strings.Contains(errStr, "can't find pane") {
 			return "", ErrSessionNotFound
 		}
 		return "", fmt.Errorf("capture output from session %q: %w", session, err)

@@ -38,7 +38,10 @@ func TmuxVersion() (string, error) {
 func parseTmuxError(stderr string) error {
 	s := strings.ToLower(stderr)
 	switch {
-	case strings.Contains(s, "session not found") || strings.Contains(s, "can't find session"):
+	case strings.Contains(s, "session not found") ||
+		strings.Contains(s, "can't find session") ||
+		strings.Contains(s, "can't find window") ||
+		strings.Contains(s, "can't find pane"):
 		return ErrSessionNotFound
 	case strings.Contains(s, "duplicate session"):
 		return ErrSessionExists
