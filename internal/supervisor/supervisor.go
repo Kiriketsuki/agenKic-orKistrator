@@ -455,6 +455,8 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 		if err := sv.store.SetAgentFields(ctx, agentID, cur); err != nil {
 			log.Printf("supervisor: CurrentTaskID not cleared for agent %s — duplicate re-enqueue possible on next crash: %v", agentID, err)
 		}
+	} else {
+		log.Printf("supervisor: GetAgentFields failed for agent %s — CurrentTaskID not cleared, duplicate re-enqueue possible on next crash: %v", agentID, fErr)
 	}
 
 	sv.mu.Lock()

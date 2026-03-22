@@ -970,6 +970,77 @@ func TestE2E_SetAgentFieldsFailureInCompleteAgent(t *testing.T) {
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
 }
 
+// ── Scenario 19: GetAgentFields Failure in CompleteAgent (E2E) ───────────────
+
+// TestE2E_GetAgentFieldsFailureInCompleteAgent verifies that completeAgent
+// succeeds (agent transitions to IDLE) even when GetAgentFields fails. The
+// state transition is the critical operation; the CurrentTaskID clear is
+// best-effort with a log warning. This mirrors Scenario 15 (SetAgentFields
+// failure) and closes the completeAgent error-handling asymmetry identified
+// by Council 10.
+func TestE2E_GetAgentFieldsFailureInCompleteAgent(t *testing.T) {
+	s := newTestStack(t,
+		[]supervisor.SupervisorOption{supervisor.WithTaskPollInterval(10 * time.Millisecond)},
+	)
+	defer s.cleanup()
+
+	ctx := context.Background()
+	regResp, err := s.client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "agent-getfields-complete-err"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Submit a task and wait for assignment.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-gfc-001", Prompt: "test getfields complete error", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
+
+	// Advance to REPORTING.
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventWorkStarted); err != nil {
+		t.Fatalf("advance to working: %v", err)
+	}
+	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputReady); err != nil {
+		t.Fatalf("advance to reporting: %v", err)
+	}
+
+	// Inject GetAgentFields error before completing.
+	s.store.SetGetAgentFieldsError(errors.New("injected GetAgentFields failure in completeAgent"))
+
+	// CompleteAgent should still succeed — ApplyEvent transitions the agent to
+	// IDLE; the GetAgentFields failure is logged but not fatal.
+	if err := s.sv.CompleteAgentForTest(ctx, agentID); err != nil {
+		t.Fatalf("CompleteAgentForTest: %v", err)
+	}
+
+	// Agent should be IDLE despite GetAgentFields failure.
+	// Note: GetAgentFields error is still injected, but GetAgentState uses
+	// the state machine (not GetAgentFields), so this check works.
+	s.store.SetGetAgentFieldsError(nil)
+	stateResp, err := s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected IDLE after complete with GetAgentFields error, got %v", stateResp.State)
+	}
+
+	// Verify agent can be assigned again after error clears.
+	_, err = s.client.SubmitTask(ctx, &pb.SubmitTaskRequest{
+		Task: &pb.TaskSpec{TaskId: "task-gfc-002", Prompt: "recovery test", Priority: 1.0},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask (recovery): %v", err)
+	}
+	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
+}
+
 // ── Scenario 16: CrashAgent GetAgentFields Failure Defers Crash (E2E) ───────
 
 // TestE2E_CrashAgentGetAgentFieldsFailureDefersCrash verifies that crashAgent
