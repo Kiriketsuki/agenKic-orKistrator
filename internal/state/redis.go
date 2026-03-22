@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	fieldState            = "state"
-	fieldLastHeartbeat    = "last_heartbeat"
-	fieldCurrentTask      = "current_task_id"
-	fieldCurrentTaskPrio  = "current_task_priority"
-	fieldRegisteredAt     = "registered_at"
+	fieldState           = "state"
+	fieldLastHeartbeat   = "last_heartbeat"
+	fieldCurrentTask     = "current_task_id"
+	fieldCurrentTaskPrio = "current_task_priority"
+	fieldRegisteredAt    = "registered_at"
 
 	streamKey = "events"
 	queueKey  = "task_queue"

@@ -15,7 +15,7 @@ const (
 // AgentFields holds the full set of mutable agent metadata stored in Redis.
 type AgentFields struct {
 	State               string
-	LastHeartbeat       int64   // unix millis
+	LastHeartbeat       int64 // unix millis
 	CurrentTaskID       string
 	CurrentTaskPriority float64 // original priority for crash re-enqueue
 	RegisteredAt        int64   // unix millis

@@ -280,7 +280,9 @@ func TestE2E_TaskNotAssignedWhileAgentBusy(t *testing.T) {
 	if _, err := s.sv.ApplyEventForTest(ctx, agentID, agent.EventOutputReady); err != nil {
 		t.Fatalf("advance to reporting: %v", err)
 	}
-	s.sv.CompleteAgentForTest(ctx, agentID)
+	if err := s.sv.CompleteAgentForTest(ctx, agentID); err != nil {
+		t.Fatalf("CompleteAgentForTest: %v", err)
+	}
 
 	// Supervisor should now assign the queued task.
 	pollAgentState(t, s.client, agentID, pb.AgentState_AGENT_STATE_ASSIGNED, 2*time.Second)
@@ -799,7 +801,8 @@ func TestE2E_CrashRecoveryReenqueuesTask(t *testing.T) {
 		t.Fatalf("SubmitTask: %v", err)
 	}
 
-	// Wait for one agent to be assigned.
+	// Give the assign loop time to route the task to one of the two agents.
+	// This sleep is for test logistics only — the real assertion is pollAgentState below.
 	time.Sleep(100 * time.Millisecond)
 
 	// Determine which agent was assigned and advance it to WORKING.

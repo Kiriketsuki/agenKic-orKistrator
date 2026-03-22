@@ -27,6 +27,6 @@ func (sv *Supervisor) CrashAgentForTest(ctx context.Context, agentID string) {
 // CompleteAgentForTest exposes completeAgent for test packages.
 // Unlike ApplyEventForTest(EventOutputDelivered), this method also calls
 // policy.RecordSuccess and clears cooldown/circuit-breaker state.
-func (sv *Supervisor) CompleteAgentForTest(ctx context.Context, agentID string) {
-	sv.completeAgent(ctx, agentID)
+func (sv *Supervisor) CompleteAgentForTest(ctx context.Context, agentID string) error {
+	return sv.completeAgent(ctx, agentID)
 }
