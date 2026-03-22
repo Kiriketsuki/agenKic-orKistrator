@@ -1,10 +1,12 @@
 package terminal
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // sessionNameRe matches valid tmux session names: alphanumeric, dash, underscore, dot.
@@ -20,13 +22,16 @@ func CheckTmux() error {
 }
 
 // TmuxVersion runs `tmux -V` and returns the version string (e.g. "tmux 3.4").
-// Returns ErrTmuxNotFound if tmux is not on PATH.
-func TmuxVersion() (string, error) {
+// Returns ErrTmuxNotFound if tmux is not on PATH. Uses a 5-second timeout to
+// prevent indefinite blocking if the tmux process hangs.
+func TmuxVersion(ctx context.Context) (string, error) {
 	path, err := exec.LookPath("tmux")
 	if err != nil {
 		return "", ErrTmuxNotFound
 	}
-	out, err := exec.Command(path, "-V").Output()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "-V").Output()
 	if err != nil {
 		return "", fmt.Errorf("tmux -V: %w", err)
 	}

@@ -1,6 +1,8 @@
 package terminal
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,13 +10,14 @@ import (
 
 // ListSessions returns all sessions currently managed by the tmux server.
 // If no tmux server is running (no sessions exist), an empty slice is returned.
-func (t *TmuxSubstrate) ListSessions() ([]Session, error) {
-	out, err := t.run(
+func (t *TmuxSubstrate) ListSessions(ctx context.Context) ([]Session, error) {
+	out, err := t.run(ctx,
 		"list-sessions",
 		"-F", "#{session_name}\t#{session_width}\t#{session_height}\t#{session_windows}\t#{session_attached}",
 	)
 	if err != nil {
 		// tmux exits non-zero when no server is running or no sessions exist.
+		// parseTmuxError doesn't handle these — check the error message directly.
 		errStr := err.Error()
 		if strings.Contains(errStr, "no server running") ||
 			strings.Contains(errStr, "no sessions") {
@@ -47,39 +50,35 @@ func parseSessionLine(line string) (Session, error) {
 
 	width, _ := strconv.Atoi(parts[1])  // 0 if empty (detached, no client)
 	height, _ := strconv.Atoi(parts[2]) // 0 if empty
-	paneCount, _ := strconv.Atoi(parts[3])
+	windowCount, _ := strconv.Atoi(parts[3])
 
 	return Session{
-		Name:      parts[0],
-		Width:     width,
-		Height:    height,
-		PaneCount: paneCount,
-		Attached:  parts[4] == "1",
+		Name:        parts[0],
+		Width:       width,
+		Height:      height,
+		WindowCount: windowCount,
+		Attached:    parts[4] == "1",
 	}, nil
 }
 
 // SplitPane splits the active pane in the named session and returns the new pane.
 // Direction Horizontal splits left-right (-h); Vertical splits top-bottom (-v).
-func (t *TmuxSubstrate) SplitPane(session string, direction Direction) (Pane, error) {
+func (t *TmuxSubstrate) SplitPane(ctx context.Context, session string, direction Direction) (Pane, error) {
 	flag := "-v"
 	if direction == Horizontal {
 		flag = "-h"
 	}
 
-	out, err := t.run(
+	out, err := t.run(ctx,
 		"split-window", flag,
 		"-t", session,
 		"-P", "-F", "#{pane_id}\t#{session_name}\t#{pane_width}\t#{pane_height}\t#{pane_active}",
 	)
 	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "session not found") ||
-			strings.Contains(errStr, "can't find session") ||
-			strings.Contains(errStr, "can't find window") ||
-			strings.Contains(errStr, "can't find pane") {
+		if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrPaneNotFound) {
 			return Pane{}, ErrSessionNotFound
 		}
-		if strings.Contains(errStr, "create pane failed") {
+		if errors.Is(err, ErrPaneLimit) {
 			return Pane{}, ErrPaneLimit
 		}
 		return Pane{}, fmt.Errorf("split pane in session %q: %w", session, err)

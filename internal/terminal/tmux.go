@@ -8,7 +8,8 @@ import (
 )
 
 // TmuxSubstrate implements Substrate using the tmux terminal multiplexer.
-// TODO: add var _ Substrate = (*TmuxSubstrate)(nil) once all 6 interface methods are implemented.
+var _ Substrate = (*TmuxSubstrate)(nil)
+
 type TmuxSubstrate struct {
 	tmuxPath string // absolute path to the tmux binary
 }

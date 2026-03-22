@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestCheckTmux(t *testing.T) {
 
 // TestTmuxVersion verifies TmuxVersion returns a non-empty version string.
 func TestTmuxVersion(t *testing.T) {
-	ver, err := TmuxVersion()
+	ver, err := TmuxVersion(context.Background())
 	if err != nil {
 		if errors.Is(err, ErrTmuxNotFound) {
 			t.Skip("tmux not available on PATH — skipping")

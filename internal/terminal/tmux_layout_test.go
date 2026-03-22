@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -21,8 +22,8 @@ func TestParseSessionLine_Valid(t *testing.T) {
 	if s.Height != 55 {
 		t.Errorf("Height: got %d, want 55", s.Height)
 	}
-	if s.PaneCount != 2 {
-		t.Errorf("PaneCount: got %d, want 2", s.PaneCount)
+	if s.WindowCount != 2 {
+		t.Errorf("WindowCount: got %d, want 2", s.WindowCount)
 	}
 	if s.Attached {
 		t.Errorf("Attached: got true, want false")
@@ -96,10 +97,11 @@ func TestListSessions_NoSessions(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	// Destroy any pre-existing test sessions that might interfere.
-	_ = sub.DestroySession("test-listsessions-none")
+	_ = sub.DestroySession(ctx, "test-listsessions-none")
 
-	sessions, err := sub.ListSessions()
+	sessions, err := sub.ListSessions(ctx)
 	if err != nil {
 		t.Fatalf("ListSessions: unexpected error: %v", err)
 	}
@@ -117,13 +119,14 @@ func TestListSessions_WithSession(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "test-listsessions-active"
-	if _, err := sub.SpawnSession(sessionName, ""); err != nil {
+	if _, err := sub.SpawnSession(ctx, sessionName, "", SessionOptions{}); err != nil {
 		t.Fatalf("SpawnSession: %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
-	sessions, err := sub.ListSessions()
+	sessions, err := sub.ListSessions(ctx)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -150,13 +153,14 @@ func TestSplitPane_Horizontal(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "test-splitpane-h"
-	if _, err := sub.SpawnSession(sessionName, ""); err != nil {
+	if _, err := sub.SpawnSession(ctx, sessionName, "", SessionOptions{}); err != nil {
 		t.Fatalf("SpawnSession: %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
-	pane, err := sub.SplitPane(sessionName, Horizontal)
+	pane, err := sub.SplitPane(ctx, sessionName, Horizontal)
 	if err != nil {
 		t.Fatalf("SplitPane(Horizontal): %v", err)
 	}
@@ -180,13 +184,14 @@ func TestSplitPane_Vertical(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "test-splitpane-v"
-	if _, err := sub.SpawnSession(sessionName, ""); err != nil {
+	if _, err := sub.SpawnSession(ctx, sessionName, "", SessionOptions{}); err != nil {
 		t.Fatalf("SpawnSession: %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
-	pane, err := sub.SplitPane(sessionName, Vertical)
+	pane, err := sub.SplitPane(ctx, sessionName, Vertical)
 	if err != nil {
 		t.Fatalf("SplitPane(Vertical): %v", err)
 	}
@@ -207,7 +212,8 @@ func TestSplitPane_SessionNotFound(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
-	_, err = sub.SplitPane("nonexistent-session-t3-split", Horizontal)
+	ctx := context.Background()
+	_, err = sub.SplitPane(ctx, "nonexistent-session-t3-split", Horizontal)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("SplitPane on missing session: got %v, want ErrSessionNotFound", err)
 	}
