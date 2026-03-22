@@ -113,7 +113,10 @@ type CostRecord struct {
 	InputTokens   int
 	OutputTokens  int
 	EstimatedCost float64 // USD
-	Metadata      map[string]string
+	// CacheHit indicates whether the request used cached input tokens,
+	// which affects pricing (e.g. DeepSeek V3: 10x cheaper for cached).
+	CacheHit bool
+	Metadata map[string]string
 }
 
 // CostReport aggregates spend over a time period.
@@ -178,7 +181,7 @@ type ProviderConfig struct {
 	// TODO(T2): Completer implementations constructing HTTP clients from BaseURL
 	// must validate the host against a scheme+host allowlist and block private CIDRs.
 	BaseURL string
-	APIKey  string
+	APIKey  string `json:"-"`
 	Models  []string
 }
 

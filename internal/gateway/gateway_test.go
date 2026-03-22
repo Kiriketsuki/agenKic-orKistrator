@@ -155,14 +155,14 @@ func TestCompletionRequest_MultiTurn(t *testing.T) {
 	if len(req.Messages) != 3 {
 		t.Fatalf("len(Messages) = %d, want 3", len(req.Messages))
 	}
-	if req.Messages[0].Role != "system" || req.Messages[0].Content != "Be helpful" {
-		t.Fatalf("Messages[0] = %+v, want {system, Be helpful}", req.Messages[0])
+	if req.Messages[0].Role != "user" || req.Messages[0].Content != "Hello" {
+		t.Fatalf("Messages[0] = %+v, want {user, Hello}", req.Messages[0])
 	}
-	if req.Messages[1].Role != "user" || req.Messages[1].Content != "Hello" {
-		t.Fatalf("Messages[1] = %+v, want {user, Hello}", req.Messages[1])
+	if req.Messages[1].Role != "assistant" || req.Messages[1].Content != "Hi there" {
+		t.Fatalf("Messages[1] = %+v, want {assistant, Hi there}", req.Messages[1])
 	}
-	if req.Messages[2].Role != "assistant" || req.Messages[2].Content != "Hi there" {
-		t.Fatalf("Messages[2] = %+v, want {assistant, Hi there}", req.Messages[2])
+	if req.Messages[2].Role != "user" || req.Messages[2].Content != "What's the weather?" {
+		t.Fatalf("Messages[2] = %+v, want {user, What's the weather?}", req.Messages[2])
 	}
 	if req.SystemPrompt != "Be helpful" {
 		t.Fatalf("SystemPrompt = %q, want %q", req.SystemPrompt, "Be helpful")

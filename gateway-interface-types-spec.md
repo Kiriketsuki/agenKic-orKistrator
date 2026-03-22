@@ -34,7 +34,7 @@
 - **`CompletionRequest` type**: Encapsulates a full LLM call — `Model string`, `Messages []Message`, `SystemPrompt string`, `MaxTokens int`, `Temperature float64`, `Stream bool`, `Tier ModelTier`, `Metadata map[string]string`
 - **`CompletionResponse` type**: Unified response regardless of provider — `Content string`, `Model string`, `InputTokens int`, `OutputTokens int`, `FallbackUsed bool`, `ProviderName string`
 - **`TokenUsage` type**: Token consumption summary — `InputTokens int`, `OutputTokens int`
-- **`CostRecord` type**: Per-request cost entry — `RequestID string`, `Timestamp time.Time`, `Model string`, `Tier ModelTier`, `Provider string`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`, `Metadata map[string]string`
+- **`CostRecord` type**: Per-request cost entry — `RequestID string`, `Timestamp time.Time`, `Model string`, `Tier ModelTier`, `Provider string`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`, `CacheHit bool`, `Metadata map[string]string`
 - **`CostReport` type**: Aggregated report — `Period TimePeriod`, `TierCosts map[ModelTier]TierCostSummary`, `Total CostSummary`
 - **`TierCostSummary` type**: Per-tier aggregate — `Tier ModelTier`, `RequestCount int`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`
 - **`CostSummary` type**: Cross-tier aggregate — `RequestCount int`, `InputTokens int`, `OutputTokens int`, `EstimatedCost float64`
@@ -54,7 +54,7 @@
 
 ### Should-Have
 
-- `CostRecord.CacheHit bool` field to distinguish cached vs uncached token pricing (relevant for DeepSeek V3 and Claude prompt caching)
+- ~~`CostRecord.CacheHit bool`~~ — promoted to Must-Have (added in council remediation commit)
 
 ### Nice-to-Have
 
@@ -287,9 +287,9 @@ Feature: Gateway Interface & Types
     Scenario: CostReport aggregates multiple CostRecords by tier
       Given five CostRecords — three with TierCheap and two with TierMid
       When a CostReport is built from those records
-      Then ByTier[TierCheap].Requests equals 3
-      And ByTier[TierMid].Requests equals 2
-      And TotalCostUSD equals the sum of all EstimatedCostUSD values
+      Then TierCosts[TierCheap].RequestCount equals 3
+      And TierCosts[TierMid].RequestCount equals 2
+      And Total.EstimatedCost equals the sum of all EstimatedCost values
 
     Scenario: TimePeriod Today() covers the current calendar day
       Given the current time is 2026-03-22T14:30:00Z
