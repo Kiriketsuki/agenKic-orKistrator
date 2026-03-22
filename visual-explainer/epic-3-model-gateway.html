@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epic 3 — Model Gateway / Judge-Router</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f0f5f4;
+    --surface: #ffffff;
+    --surface-alt: #e8efed;
+    --surface-recessed: #f7faf9;
+    --border: rgba(15, 80, 72, 0.10);
+    --border-strong: rgba(15, 80, 72, 0.20);
+    --text: #0f2e2a;
+    --text-dim: #4a6e68;
+
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --teal-mid: rgba(14, 124, 107, 0.15);
+    --slate: #3d5a80;
+    --slate-dim: rgba(61, 90, 128, 0.08);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.08);
+    --rose: #9f1239;
+    --rose-dim: rgba(159, 18, 57, 0.08);
+    --sage: #3d7a5f;
+    --sage-dim: rgba(61, 122, 95, 0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a1f1c;
+      --surface: #122b27;
+      --surface-alt: #163832;
+      --surface-recessed: #0e2422;
+      --border: rgba(200, 240, 230, 0.08);
+      --border-strong: rgba(200, 240, 230, 0.16);
+      --text: #d4ece6;
+      --text-dim: #7fada2;
+
+      --teal: #34d399;
+      --teal-dim: rgba(52, 211, 153, 0.10);
+      --teal-mid: rgba(52, 211, 153, 0.18);
+      --slate: #7db0de;
+      --slate-dim: rgba(125, 176, 222, 0.10);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.10);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.10);
+      --sage: #6ee7b7;
+      --sage-dim: rgba(110, 231, 183, 0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 48px 24px;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate {
+    animation: fadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .container { max-width: 1080px; margin: 0 auto; }
+
+  /* =========== HEADER =========== */
+  .epic-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--teal);
+    background: var(--teal-dim);
+    border: 1px solid var(--teal-mid);
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    line-height: 1.15;
+    margin-bottom: 8px;
+  }
+
+  .lead {
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    max-width: 720px;
+    margin-bottom: 32px;
+  }
+
+  .lead code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--teal-dim);
+    color: var(--teal);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* =========== STATS ROW =========== */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+
+  .stat-card__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .stat-card__value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--teal);
+  }
+
+  .stat-card__value--amber { color: var(--amber); }
+  .stat-card__value--slate { color: var(--slate); }
+  .stat-card__value--rose { color: var(--rose); }
+
+  /* =========== SECTION HEADERS =========== */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    margin-top: 48px;
+  }
+
+  .section-label::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--teal);
+  }
+
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin-bottom: 12px;
+  }
+
+  .section-desc {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    max-width: 680px;
+    margin-bottom: 24px;
+  }
+
+  /* =========== MERMAID =========== */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    overflow: auto;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .diagram-shell { position: relative; }
+
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    opacity: 0.6;
+  }
+
+  .mermaid-viewport {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    min-height: 300px;
+  }
+
+  .mermaid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .zoom-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 14px !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+  }
+
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon {
+    stroke-width: 1.5px !important;
+  }
+
+  .mermaid .edge-pattern-solid {
+    stroke-width: 1.5px !important;
+  }
+
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  /* =========== FEATURE CARDS =========== */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+
+  .ve-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .ve-card--wide {
+    grid-column: 1 / -1;
+  }
+
+  .ve-card__tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+  }
+
+  .ve-card__tag--teal { color: var(--teal); background: var(--teal-dim); }
+  .ve-card__tag--slate { color: var(--slate); background: var(--slate-dim); }
+  .ve-card__tag--amber { color: var(--amber); background: var(--amber-dim); }
+  .ve-card__tag--rose { color: var(--rose); background: var(--rose-dim); }
+  .ve-card__tag--sage { color: var(--sage); background: var(--sage-dim); }
+
+  .ve-card__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .ve-card__issue {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  .ve-card__desc {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+
+  .ve-card__files {
+    list-style: none;
+    margin-bottom: 12px;
+  }
+
+  .ve-card__files li {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 3px 0;
+    color: var(--text-dim);
+  }
+
+  .ve-card__files li::before {
+    content: '>';
+    color: var(--teal);
+    margin-right: 6px;
+    font-weight: 600;
+  }
+
+  .ve-card__scope {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .scope-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--surface-alt);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  /* =========== INTERFACE TABLE =========== */
+  .interface-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 40px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  thead th {
+    background: var(--surface-alt);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  tbody td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tbody tr:nth-child(even) td {
+    background: var(--surface-recessed);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  td code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--teal-dim);
+    color: var(--teal);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* =========== TIER VISUAL =========== */
+  .tier-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .tier-box {
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .tier-box--cheap {
+    background: var(--sage-dim);
+    border: 1px solid var(--sage);
+  }
+
+  .tier-box--mid {
+    background: var(--slate-dim);
+    border: 1px solid var(--slate);
+  }
+
+  .tier-box--frontier {
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+  }
+
+  .tier-box__name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .tier-box--cheap .tier-box__name { color: var(--sage); }
+  .tier-box--mid .tier-box__name { color: var(--slate); }
+  .tier-box--frontier .tier-box__name { color: var(--amber); }
+
+  .tier-box__model {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+
+  .tier-box__fallback {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .tier-box__cost {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* =========== REQUEST LIFECYCLE =========== */
+  .lifecycle-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0;
+    margin-bottom: 40px;
+    position: relative;
+  }
+
+  .lifecycle-step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 18px 16px;
+    position: relative;
+    text-align: center;
+  }
+
+  .lifecycle-step:first-child { border-radius: 10px 0 0 10px; }
+  .lifecycle-step:last-child { border-radius: 0 10px 10px 0; }
+
+  .lifecycle-step__num {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--teal);
+    margin-bottom: 4px;
+  }
+
+  .lifecycle-step__label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .lifecycle-step__detail {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .lifecycle-step + .lifecycle-step::before {
+    content: '\2192';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: var(--teal);
+    z-index: 1;
+    background: var(--bg);
+    width: 16px;
+    text-align: center;
+    line-height: 16px;
+  }
+
+  /* =========== CONFIG BLOCK =========== */
+  .config-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 40px;
+  }
+
+  .config-block__header {
+    background: var(--surface-alt);
+    padding: 10px 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .config-block__body {
+    padding: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  .config-block__body .ck { color: var(--teal); }
+  .config-block__body .cv { color: var(--slate); }
+  .config-block__body .cc { color: var(--text-dim); font-style: italic; }
+
+  /* =========== DEPENDENCY DAG (text) =========== */
+  .dep-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dep-row:last-child { border-bottom: none; }
+
+  .dep-id {
+    font-weight: 600;
+    min-width: 28px;
+    color: var(--teal);
+  }
+
+  .dep-arrow {
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .dep-deps {
+    color: var(--text-dim);
+  }
+
+  /* =========== EXIT CRITERIA =========== */
+  .exit-list {
+    list-style: none;
+    margin-bottom: 40px;
+  }
+
+  .exit-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .exit-list li:last-child { border-bottom: none; }
+
+  .exit-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-strong);
+    flex-shrink: 0;
+    font-size: 11px;
+    margin-top: 1px;
+  }
+
+  /* =========== FOOTER =========== */
+  .footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* =========== RESPONSIVE =========== */
+  @media (max-width: 768px) {
+    body { padding: 20px 12px; }
+    h1 { font-size: 26px; }
+    .tier-strip { grid-template-columns: 1fr; }
+    .lifecycle-steps { grid-template-columns: 1fr; }
+    .lifecycle-step { border-radius: 0 !important; }
+    .lifecycle-step:first-child { border-radius: 10px 10px 0 0 !important; }
+    .lifecycle-step:last-child { border-radius: 0 0 10px 10px !important; }
+    .lifecycle-step + .lifecycle-step::before {
+      content: '\2193';
+      left: 50%;
+      top: -8px;
+      transform: translateX(-50%);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="animate" style="--i:0">
+    <span class="epic-tag">Epic 3</span>
+  </div>
+  <h1 class="animate" style="--i:1">Model Gateway / Judge-Router</h1>
+  <p class="lead animate" style="--i:2">
+    A unified model gateway that routes tasks to the right AI provider based on complexity.
+    A lightweight <strong>judge model</strong> classifies each task, then routes it to the cheapest capable tier &mdash;
+    delivering frontier-quality on complex work while running cheap models on everything else.
+    Target: <strong>60&ndash;90% cost savings</strong> vs. naive all-frontier routing.
+  </p>
+
+  <!-- STATS -->
+  <div class="stats-row animate" style="--i:3">
+    <div class="stat-card">
+      <div class="stat-card__label">Features</div>
+      <div class="stat-card__value">5</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Spec Tasks</div>
+      <div class="stat-card__value--amber stat-card__value">T1&ndash;T9</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Routing Tiers</div>
+      <div class="stat-card__value--slate stat-card__value">3</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Providers</div>
+      <div class="stat-card__value--rose stat-card__value">4</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Cost Savings</div>
+      <div class="stat-card__value">60&ndash;90%</div>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE DIAGRAM -->
+  <div class="section-label animate" style="--i:4">01 &mdash; Architecture</div>
+  <h2 class="animate" style="--i:4">Request Flow</h2>
+  <p class="section-desc animate" style="--i:4">
+    Every task enters through the <code>Gateway</code> interface. The Judge-Router classifies complexity,
+    the config maps tiers to concrete models, the LiteLLM client dispatches via provider adapters,
+    and cost is recorded on every response.
+  </p>
+
+  <section class="diagram-shell animate" style="--i:5">
+    <p class="diagram-shell__hint">
+      Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit
+    </p>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+flowchart TD
+    subgraph Caller["Orchestrator / Agent"]
+        TS["TaskSpec"]
+    end
+
+    subgraph GW["Gateway Interface"]
+        RT["Route()"]
+        CM["Complete()"]
+        CR["GetCostReport()"]
+    end
+
+    subgraph Judge["Judge-Router T4"]
+        JM["Haiku Judge Call"]
+        CL["Classify: cheap / mid / frontier"]
+    end
+
+    subgraph Config["Config Loader T5"]
+        YML["models.yaml"]
+        TM["Tier → Model mapping"]
+    end
+
+    subgraph Fallback["Fallback Chain T6"]
+        FC["Try primary"]
+        FB["Fallback on error"]
+    end
+
+    subgraph LLM["LiteLLM Client T2"]
+        LC["POST /chat/completions"]
+    end
+
+    subgraph Adapters["Provider Adapters T3"]
+        AA["Anthropic"]
+        AO["OpenAI"]
+        AL["Ollama"]
+    end
+
+    subgraph Providers["AI Providers"]
+        P1["Claude API"]
+        P2["GPT-4o / Gemini"]
+        P3["Ollama Local"]
+    end
+
+    subgraph Cost["Cost Tracker T7"]
+        REC["Record()"]
+        REP["Report()"]
+    end
+
+    TS --> RT
+    RT --> JM
+    JM --> CL
+    CL --> TM
+    YML --> TM
+    TM --> CM
+    CM --> FC
+    FC -->|"success"| LC
+    FC -->|"error"| FB
+    FB --> LC
+    LC --> AA
+    LC --> AO
+    LC --> AL
+    AA --> P1
+    AO --> P2
+    AL --> P3
+    P1 --> REC
+    P2 --> REC
+    P3 --> REC
+    REC --> REP
+    CR --> REP
+    </script>
+  </section>
+
+  <div class="legend animate" style="--i:6">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--teal)"></div> Core gateway flow</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--slate)"></div> External providers</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> Config / cost tracking</div>
+  </div>
+
+  <!-- ROUTING TIERS -->
+  <div class="section-label animate" style="--i:7">02 &mdash; Routing Tiers</div>
+  <h2 class="animate" style="--i:7">Three-Tier Model Strategy</h2>
+  <p class="section-desc animate" style="--i:7">
+    The judge model classifies every task into one of three tiers. Each tier has a primary model and a fallback chain
+    configured in <code>config/models.yaml</code>.
+  </p>
+
+  <div class="tier-strip animate" style="--i:8">
+    <div class="tier-box tier-box--cheap">
+      <div class="tier-box__name">Cheap</div>
+      <div class="tier-box__model">claude-haiku-4-5</div>
+      <div class="tier-box__fallback">fallback: gpt-4o-mini &rarr; ollama/llama3</div>
+      <div class="tier-box__cost">$0.80 / $4.00 per 1M tokens</div>
+    </div>
+    <div class="tier-box tier-box--mid">
+      <div class="tier-box__name">Mid</div>
+      <div class="tier-box__model">claude-sonnet-4-6</div>
+      <div class="tier-box__fallback">fallback: gpt-4o &rarr; gemini-pro</div>
+      <div class="tier-box__cost">$3.00 / $15.00 per 1M tokens</div>
+    </div>
+    <div class="tier-box tier-box--frontier">
+      <div class="tier-box__name">Frontier</div>
+      <div class="tier-box__model">claude-opus-4-6</div>
+      <div class="tier-box__fallback">fallback: gpt-4o &rarr; claude-sonnet-4-6</div>
+      <div class="tier-box__cost">$15.00 / $75.00 per 1M tokens</div>
+    </div>
+  </div>
+
+  <!-- REQUEST LIFECYCLE -->
+  <div class="section-label animate" style="--i:9">03 &mdash; Lifecycle</div>
+  <h2 class="animate" style="--i:9">Request Lifecycle</h2>
+
+  <div class="lifecycle-steps animate" style="--i:10">
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">1</div>
+      <div class="lifecycle-step__label">Task Arrives</div>
+      <div class="lifecycle-step__detail">TaskSpec with<br>description +<br>metadata</div>
+    </div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">2</div>
+      <div class="lifecycle-step__label">Judge Classifies</div>
+      <div class="lifecycle-step__detail">Haiku model<br>returns tier<br>+ rationale</div>
+    </div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">3</div>
+      <div class="lifecycle-step__label">Config Resolves</div>
+      <div class="lifecycle-step__detail">Tier maps to<br>primary model +<br>fallback chain</div>
+    </div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">4</div>
+      <div class="lifecycle-step__label">Adapter Formats</div>
+      <div class="lifecycle-step__detail">Provider adapter<br>translates request<br>to API shape</div>
+    </div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">5</div>
+      <div class="lifecycle-step__label">LiteLLM Dispatches</div>
+      <div class="lifecycle-step__detail">POST to<br>/chat/completions<br>unified endpoint</div>
+    </div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-step__num">6</div>
+      <div class="lifecycle-step__label">Cost Recorded</div>
+      <div class="lifecycle-step__detail">Model + tokens +<br>estimated USD<br>logged per request</div>
+    </div>
+  </div>
+
+  <!-- FEATURE BREAKDOWN -->
+  <div class="section-label animate" style="--i:11">04 &mdash; Features</div>
+  <h2 class="animate" style="--i:11">Feature Breakdown</h2>
+  <p class="section-desc animate" style="--i:11">
+    Five features cover the full gateway stack. Each has its own spec, branch, and implementation.
+  </p>
+
+  <div class="feature-grid animate" style="--i:12">
+
+    <div class="ve-card">
+      <span class="ve-card__tag ve-card__tag--teal">T1</span>
+      <div class="ve-card__title">Gateway Interface &amp; Types</div>
+      <div class="ve-card__issue">#32 &middot; feature/32-feature-gateway-interface-types-t1</div>
+      <div class="ve-card__desc">
+        Shared contracts that all sub-systems build against. Defines <code>Gateway</code>, <code>Router</code>,
+        <code>Completer</code>, and <code>CostTracker</code> interfaces plus all request/response types.
+        No business logic, no I/O &mdash; pure type definitions.
+      </div>
+      <ul class="ve-card__files">
+        <li>internal/gateway/gateway.go</li>
+        <li>internal/gateway/errors.go</li>
+      </ul>
+      <div class="ve-card__scope">
+        <span class="scope-chip">ModelTier enum</span>
+        <span class="scope-chip">CompletionRequest</span>
+        <span class="scope-chip">CompletionResponse</span>
+        <span class="scope-chip">CostRecord</span>
+        <span class="scope-chip">TimePeriod</span>
+      </div>
+    </div>
+
+    <div class="ve-card">
+      <span class="ve-card__tag ve-card__tag--slate">T2 T3</span>
+      <div class="ve-card__title">LiteLLM Client &amp; Provider Adapters</div>
+      <div class="ve-card__issue">#33 &middot; feature/33-feature-litellm-client-provider-adapters-t2-t3</div>
+      <div class="ve-card__desc">
+        Unified HTTP client for <code>/chat/completions</code> on LiteLLM proxy.
+        Provider adapters translate the canonical request into each API&rsquo;s format:
+        Anthropic clamps temperature &le;1.0, OpenAI zeros temperature for reasoning models,
+        Ollama strips the <code>ollama/</code> prefix.
+      </div>
+      <ul class="ve-card__files">
+        <li>internal/gateway/litellm.go</li>
+        <li>internal/gateway/providers/provider.go</li>
+        <li>internal/gateway/providers/anthropic.go</li>
+        <li>internal/gateway/providers/openai.go</li>
+        <li>internal/gateway/providers/ollama.go</li>
+      </ul>
+      <div class="ve-card__scope">
+        <span class="scope-chip">LiteLLMClient</span>
+        <span class="scope-chip">FormatAdapter</span>
+        <span class="scope-chip">Functional options</span>
+        <span class="scope-chip">Error normalisation</span>
+      </div>
+    </div>
+
+    <div class="ve-card">
+      <span class="ve-card__tag ve-card__tag--amber">T4</span>
+      <div class="ve-card__title">Judge-Router</div>
+      <div class="ve-card__issue">#34 &middot; feature/34-feature-judge-router-t4</div>
+      <div class="ve-card__desc">
+        The core routing intelligence. A Haiku-class judge model classifies task complexity in a single
+        cheap call, then routes to the appropriate tier. Supports override tiers for callers that
+        already know the target. Falls back to a configurable default tier on classification failure.
+      </div>
+      <ul class="ve-card__files">
+        <li>internal/gateway/router.go</li>
+        <li>internal/gateway/router_test.go</li>
+      </ul>
+      <div class="ve-card__scope">
+        <span class="scope-chip">JudgeRouter</span>
+        <span class="scope-chip">Classification prompt</span>
+        <span class="scope-chip">Default tier fallback</span>
+        <span class="scope-chip">Override flag</span>
+      </div>
+    </div>
+
+    <div class="ve-card">
+      <span class="ve-card__tag ve-card__tag--sage">T5 T6</span>
+      <div class="ve-card__title">Config Loader &amp; Fallback Chains</div>
+      <div class="ve-card__issue">#37 &middot; feature/37-feature-config-loader-fallback-chains-t5-t6</div>
+      <div class="ve-card__desc">
+        Operator-editable <code>config/models.yaml</code> for tier definitions, provider settings,
+        fallback ordering, and cost tables. <code>FallbackCompleter</code> retries with the next
+        provider in the chain on failure. Validated at startup &mdash; no hot-reload.
+      </div>
+      <ul class="ve-card__files">
+        <li>config/models.yaml</li>
+        <li>internal/gateway/config.go</li>
+        <li>internal/gateway/fallback.go</li>
+      </ul>
+      <div class="ve-card__scope">
+        <span class="scope-chip">GatewayConfig</span>
+        <span class="scope-chip">LoadConfig()</span>
+        <span class="scope-chip">ValidateConfig()</span>
+        <span class="scope-chip">FallbackCompleter</span>
+      </div>
+    </div>
+
+    <div class="ve-card">
+      <span class="ve-card__tag ve-card__tag--rose">T7</span>
+      <div class="ve-card__title">Cost Tracking</div>
+      <div class="ve-card__issue">#38 &middot; feature/38-feature-cost-tracking-t7</div>
+      <div class="ve-card__desc">
+        In-memory cost tracker that logs model, token counts, and estimated USD for every request.
+        Queryable by time period with per-tier aggregation. Thread-safe under concurrent
+        <code>Record</code> calls via <code>sync.RWMutex</code>. Proves the 60&ndash;90% savings claim.
+      </div>
+      <ul class="ve-card__files">
+        <li>internal/gateway/cost.go</li>
+        <li>internal/gateway/cost_test.go</li>
+      </ul>
+      <div class="ve-card__scope">
+        <span class="scope-chip">InMemoryCostTracker</span>
+        <span class="scope-chip">EstimateCost()</span>
+        <span class="scope-chip">Record() / Report()</span>
+        <span class="scope-chip">RWMutex safety</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CORE INTERFACES -->
+  <div class="section-label animate" style="--i:13">05 &mdash; Interfaces</div>
+  <h2 class="animate" style="--i:13">Core Interface Contracts</h2>
+
+  <div class="interface-table-wrap animate" style="--i:14">
+    <table>
+      <thead>
+        <tr>
+          <th>Interface</th>
+          <th>Methods</th>
+          <th>Implementor</th>
+          <th>Package</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Gateway</code></td>
+          <td><code>Route()</code> <code>Complete()</code> <code>GetCostReport()</code></td>
+          <td>Top-level facade</td>
+          <td><code>internal/gateway</code></td>
+        </tr>
+        <tr>
+          <td><code>Router</code></td>
+          <td><code>Route(TaskSpec) (ModelTier, error)</code></td>
+          <td><code>JudgeRouter</code></td>
+          <td><code>internal/gateway</code></td>
+        </tr>
+        <tr>
+          <td><code>Completer</code></td>
+          <td><code>Complete(CompletionRequest) (CompletionResponse, error)</code></td>
+          <td><code>LiteLLMClient</code>, <code>FallbackCompleter</code></td>
+          <td><code>internal/gateway</code></td>
+        </tr>
+        <tr>
+          <td><code>CostTracker</code></td>
+          <td><code>Record(CostRecord)</code> <code>Report(TimePeriod)</code></td>
+          <td><code>InMemoryCostTracker</code></td>
+          <td><code>internal/gateway</code></td>
+        </tr>
+        <tr>
+          <td><code>FormatAdapter</code></td>
+          <td><code>Name()</code> <code>FormatRequest()</code> <code>ParseModelName()</code></td>
+          <td><code>Anthropic</code>, <code>OpenAI</code>, <code>Ollama</code></td>
+          <td><code>internal/gateway/providers</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CONFIG SAMPLE -->
+  <div class="section-label animate" style="--i:15">06 &mdash; Configuration</div>
+  <h2 class="animate" style="--i:15">models.yaml Structure</h2>
+
+  <div class="config-block animate" style="--i:16">
+    <div class="config-block__header">config/models.yaml</div>
+    <div class="config-block__body"><span class="ck">gateway</span>:
+  <span class="ck">litellm_base_url</span>: <span class="cv">"http://localhost:4000"</span>
+  <span class="ck">timeout_seconds</span>: <span class="cv">30</span>
+
+<span class="ck">tiers</span>:
+  <span class="ck">cheap</span>:
+    <span class="ck">primary_model</span>: <span class="cv">"claude-haiku-4-5-20251001"</span>
+    <span class="ck">fallback_chain</span>: [<span class="cv">"gpt-4o-mini"</span>, <span class="cv">"ollama/llama3"</span>]
+  <span class="ck">mid</span>:
+    <span class="ck">primary_model</span>: <span class="cv">"claude-sonnet-4-6"</span>
+    <span class="ck">fallback_chain</span>: [<span class="cv">"gpt-4o"</span>, <span class="cv">"gemini-pro"</span>]
+  <span class="ck">frontier</span>:
+    <span class="ck">primary_model</span>: <span class="cv">"claude-opus-4-6"</span>
+    <span class="ck">fallback_chain</span>: [<span class="cv">"gpt-4o"</span>, <span class="cv">"claude-sonnet-4-6"</span>]
+
+<span class="ck">providers</span>:                          <span class="cc"># API endpoints per vendor</span>
+  <span class="ck">anthropic</span>: { <span class="ck">base_url</span>: <span class="cv">"https://api.anthropic.com"</span> }
+  <span class="ck">openai</span>:    { <span class="ck">base_url</span>: <span class="cv">"https://api.openai.com"</span> }
+  <span class="ck">ollama</span>:    { <span class="ck">base_url</span>: <span class="cv">"http://localhost:11434"</span> }
+
+<span class="ck">cost_per_million_tokens</span>:              <span class="cc"># pricing table for EstimateCost()</span>
+  <span class="ck">claude-haiku-4-5-20251001</span>: { <span class="ck">input</span>: <span class="cv">0.80</span>, <span class="ck">output</span>: <span class="cv">4.00</span> }
+  <span class="ck">claude-sonnet-4-6</span>:         { <span class="ck">input</span>: <span class="cv">3.00</span>, <span class="ck">output</span>: <span class="cv">15.00</span> }
+  <span class="ck">claude-opus-4-6</span>:           { <span class="ck">input</span>: <span class="cv">15.00</span>, <span class="ck">output</span>: <span class="cv">75.00</span> }</div>
+  </div>
+
+  <!-- TASK DEPENDENCY -->
+  <div class="section-label animate" style="--i:17">07 &mdash; Dependencies</div>
+  <h2 class="animate" style="--i:17">Task Dependency Graph</h2>
+
+  <section class="diagram-shell animate" style="--i:18" id="dep-diagram">
+    <p class="diagram-shell__hint">
+      Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit
+    </p>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+flowchart LR
+    T1["T1<br/>Gateway Interface<br/>& Types"]
+    T2["T2<br/>LiteLLM Client"]
+    T3["T3<br/>Provider Adapters"]
+    T4["T4<br/>Judge-Router"]
+    T5["T5<br/>Config Loader"]
+    T6["T6<br/>Fallback Chains"]
+    T7["T7<br/>Cost Tracking"]
+    T8["T8<br/>Orchestrator<br/>Wiring"]
+    T9["T9<br/>Integration<br/>Tests"]
+
+    T1 --> T2
+    T1 --> T5
+    T2 --> T3
+    T2 --> T4
+    T2 --> T7
+    T5 --> T6
+    T2 --> T6
+    T7 --> T8
+    T8 --> T9
+    </script>
+  </section>
+
+  <!-- RISKS -->
+  <div class="section-label animate" style="--i:19">08 &mdash; Risks</div>
+  <h2 class="animate" style="--i:19">Key Risks &amp; Mitigations</h2>
+
+  <div class="interface-table-wrap animate" style="--i:20">
+    <table>
+      <thead>
+        <tr>
+          <th>Risk</th>
+          <th>Likelihood</th>
+          <th>Mitigation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Judge model misclassifies task complexity</td>
+          <td><span style="color:var(--amber);font-weight:600">Medium</span></td>
+          <td>Log routing decisions; human override flag; tune with feedback loop</td>
+        </tr>
+        <tr>
+          <td>LiteLLM proxy adds ~10ms latency per call</td>
+          <td><span style="color:var(--sage);font-weight:600">Low</span></td>
+          <td>Acceptable for agent workloads; batch mode amortises for bulk</td>
+        </tr>
+        <tr>
+          <td>DeepSeek pricing varies by cache hit/miss (10&times;)</td>
+          <td><span style="color:var(--amber);font-weight:600">Medium</span></td>
+          <td>Track cache-hit rate separately; alert on unexpected cost spikes</td>
+        </tr>
+        <tr>
+          <td>Provider adapter misformats requests</td>
+          <td><span style="color:var(--sage);font-weight:600">Low</span></td>
+          <td>Each adapter has dedicated unit tests; roundtrip integration tests in T9</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- EXIT CRITERIA -->
+  <div class="section-label animate" style="--i:21">09 &mdash; Exit Criteria</div>
+  <h2 class="animate" style="--i:21">Definition of Done</h2>
+
+  <ul class="exit-list animate" style="--i:22">
+    <li><span class="exit-check">&square;</span> All Must-Have acceptance scenarios pass in CI</li>
+    <li><span class="exit-check">&square;</span> No regressions on Epic 1 (orchestrator core) features</li>
+    <li><span class="exit-check">&square;</span> Judge-Router correctly classifies at least 3 task complexity levels</li>
+    <li><span class="exit-check">&square;</span> Fallback chains recover from single-provider outage</li>
+    <li><span class="exit-check">&square;</span> Cost report shows measurable savings vs. all-frontier baseline</li>
+    <li><span class="exit-check">&square;</span> Provider adapters tested for Anthropic, OpenAI, and Ollama formats</li>
+    <li><span class="exit-check">&square;</span> Config validated at startup &mdash; invalid YAML fails fast with clear error</li>
+  </ul>
+
+  <!-- FOOTER -->
+  <div class="footer animate" style="--i:23">
+    <span>agenKic-orKistrator &middot; Epic 3 &middot; Model Gateway / Judge-Router</span>
+    <span>Generated 2026-03-22 &middot; Clault KiperS 4.6</span>
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = {
+    fitPadding: 28,
+    minHeight: 360,
+    maxHeightPx: 960,
+    maxHeightVh: 0.84,
+    maxInitialZoom: 1.8,
+    minZoom: 0.08,
+    maxZoom: 6.5,
+    zoomStep: 0.14,
+    readabilityFloor: 0.58
+  };
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontSize: '14px',
+      primaryColor: isDark ? '#163832' : '#e6f5f0',
+      primaryBorderColor: isDark ? '#34d399' : '#0e7c6b',
+      primaryTextColor: isDark ? '#d4ece6' : '#0f2e2a',
+      secondaryColor: isDark ? '#1c2e4a' : '#e8f0fa',
+      secondaryBorderColor: isDark ? '#7db0de' : '#3d5a80',
+      secondaryTextColor: isDark ? '#d4ece6' : '#0f2e2a',
+      tertiaryColor: isDark ? '#2e2618' : '#fef3e0',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      tertiaryTextColor: isDark ? '#d4ece6' : '#0f2e2a',
+      lineColor: isDark ? '#7fada2' : '#4a6e68',
+      noteBkgColor: isDark ? '#163832' : '#fefce8',
+      noteTextColor: isDark ? '#d4ece6' : '#0f2e2a',
+      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const rW = svgW * zoom, rH = svgH * zoom;
+      const pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% \u2014 ' + fitMode;
+    }
+
+    function canPan() {
+      return svgW * zoom + config.fitPadding * 2 > viewport.clientWidth
+          || svgH * zoom + config.fitPadding * 2 > viewport.clientHeight;
+    }
+
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2);
+      const aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; }
+        else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom);
+      const ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY);
+      zoom = next; fitMode = 'custom'; applyTransform();
+    }
+
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true);
+      clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0a1f1c' : '#f0f5f4';
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Diagram</title><style>
+      body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:${bg};padding:40px;box-sizing:border-box}
+      svg{max-width:100%;max-height:90vh;height:auto}
+      </style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        canvas.innerHTML = '';
+        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'Render failed');
+      }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram,
+      'zoom-one': setOneToOne,
+      'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([a, h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fitDiagram);
+
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep), e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = {
+        onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); },
+        onEnd: () => wrap.classList.remove('is-panning')
+      };
+    });
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; }
+      else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchDist = Math.sqrt(dx * dx + dy * dy);
+        const r = viewport.getBoundingClientRect();
+        touchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        touchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && canPan()) {
+        if (touchDist > 0) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; touchDist = 0; }
+        e.preventDefault();
+        panX = spx + (e.touches[0].clientX - sx); panY = spy + (e.touches[0].clientY - sy); applyTransform();
+      } else if (e.touches.length === 2 && touchDist > 0) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        zoomAround(d / touchDist, touchCx, touchCy); touchDist = d;
+      }
+    }, { passive: false });
+
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+
+</body>
+</html>
