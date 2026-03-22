@@ -26,13 +26,9 @@ func (a *OpenAIAdapter) ParseModelName(model string) bool {
 // models do not accept a temperature parameter.
 func (a *OpenAIAdapter) FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest {
 	if strings.HasPrefix(req.Model, "o1-") || strings.HasPrefix(req.Model, "o3-") {
-		return gateway.CompletionRequest{
-			Model:       req.Model,
-			Messages:    req.Messages,
-			MaxTokens:   req.MaxTokens,
-			Temperature: -1, // negative → use provider default (omitted in serialisation)
-			Metadata:    req.Metadata,
-		}
+		out := req           // shallow copy preserves all fields
+		out.Temperature = -1 // negative → use provider default (omitted in serialisation)
+		return out
 	}
 	return req
 }

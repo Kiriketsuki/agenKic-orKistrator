@@ -112,6 +112,38 @@ func TestAnthropicAdapter_FormatRequest_PassthroughValid(t *testing.T) {
 	}
 }
 
+func TestAnthropicAdapter_FormatRequest_PreservesAllFields(t *testing.T) {
+	a := &providers.AnthropicAdapter{}
+
+	req := gateway.CompletionRequest{
+		Model:        "claude-haiku-4-5",
+		Messages:     []gateway.Message{{Role: "user", Content: "hi"}},
+		SystemPrompt: "You are a helpful assistant",
+		MaxTokens:    100,
+		Temperature:  1.5, // triggers clamping
+		Stream:       true,
+		Tier:         gateway.TierCheap,
+		Metadata:     map[string]string{"key": "val"},
+	}
+	got := a.FormatRequest(req)
+
+	if got.Temperature != 1.0 {
+		t.Errorf("temperature not clamped: got %v, want 1.0", got.Temperature)
+	}
+	if got.SystemPrompt != req.SystemPrompt {
+		t.Errorf("SystemPrompt dropped: got %q, want %q", got.SystemPrompt, req.SystemPrompt)
+	}
+	if got.Stream != req.Stream {
+		t.Errorf("Stream dropped: got %v, want %v", got.Stream, req.Stream)
+	}
+	if got.Tier != req.Tier {
+		t.Errorf("Tier dropped: got %v, want %v", got.Tier, req.Tier)
+	}
+	if got.Metadata["key"] != "val" {
+		t.Errorf("Metadata dropped: got %v, want map[key:val]", got.Metadata)
+	}
+}
+
 // ── OpenAIAdapter ────────────────────────────────────────────────────────────
 
 func TestOpenAIAdapter_ParseModelName(t *testing.T) {
@@ -167,6 +199,41 @@ func TestOpenAIAdapter_FormatRequest_GPTPassthrough(t *testing.T) {
 	}
 	if got.MaxTokens != req.MaxTokens {
 		t.Errorf("max_tokens changed: got %d, want %d", got.MaxTokens, req.MaxTokens)
+	}
+}
+
+func TestOpenAIAdapter_FormatRequest_PreservesAllFields(t *testing.T) {
+	a := &providers.OpenAIAdapter{}
+
+	req := gateway.CompletionRequest{
+		Model:        "o1-preview",
+		Messages:     []gateway.Message{{Role: "user", Content: "hi"}},
+		SystemPrompt: "You are a reasoning engine",
+		MaxTokens:    200,
+		Temperature:  0.7,
+		Stream:       true,
+		Tier:         gateway.TierFrontier,
+		Metadata:     map[string]string{"task": "reason"},
+	}
+	got := a.FormatRequest(req)
+
+	if got.Temperature >= 0 {
+		t.Errorf("temperature should be negative for reasoning model, got %v", got.Temperature)
+	}
+	if got.SystemPrompt != req.SystemPrompt {
+		t.Errorf("SystemPrompt dropped: got %q, want %q", got.SystemPrompt, req.SystemPrompt)
+	}
+	if got.Stream != req.Stream {
+		t.Errorf("Stream dropped: got %v, want %v", got.Stream, req.Stream)
+	}
+	if got.Tier != req.Tier {
+		t.Errorf("Tier dropped: got %v, want %v", got.Tier, req.Tier)
+	}
+	if got.MaxTokens != req.MaxTokens {
+		t.Errorf("MaxTokens dropped: got %d, want %d", got.MaxTokens, req.MaxTokens)
+	}
+	if got.Metadata["task"] != "reason" {
+		t.Errorf("Metadata dropped: got %v, want map[task:reason]", got.Metadata)
 	}
 }
 

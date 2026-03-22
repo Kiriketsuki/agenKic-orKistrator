@@ -229,4 +229,3 @@ func TestLiteLLMClient_ContextCancellation(t *testing.T) {
 		t.Fatal("expected error on cancelled context, got nil")
 	}
 }
-

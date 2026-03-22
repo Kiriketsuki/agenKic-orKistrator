@@ -22,13 +22,9 @@ func (a *AnthropicAdapter) ParseModelName(model string) bool {
 // All other fields pass through unchanged.
 func (a *AnthropicAdapter) FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest {
 	if req.Temperature > 1.0 {
-		return gateway.CompletionRequest{
-			Model:       req.Model,
-			Messages:    req.Messages,
-			MaxTokens:   req.MaxTokens,
-			Temperature: 1.0,
-			Metadata:    req.Metadata,
-		}
+		out := req // shallow copy preserves all fields
+		out.Temperature = 1.0
+		return out
 	}
 	return req
 }

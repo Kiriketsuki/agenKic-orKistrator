@@ -16,10 +16,10 @@ const (
 
 // liteLLMRequest is the OpenAI-compatible request body sent to the LiteLLM proxy.
 type liteLLMRequest struct {
-	Model       string          `json:"model"`
+	Model       string           `json:"model"`
 	Messages    []liteLLMMessage `json:"messages"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
+	MaxTokens   int              `json:"max_tokens,omitempty"`
+	Temperature *float64         `json:"temperature,omitempty"`
 }
 
 type liteLLMMessage struct {
