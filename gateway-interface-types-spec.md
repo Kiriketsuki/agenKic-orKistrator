@@ -143,6 +143,7 @@ type CostRecord struct {
     InputTokens   int
     OutputTokens  int
     EstimatedCost float64 // USD
+    CacheHit      bool
     Metadata      map[string]string
 }
 

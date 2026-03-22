@@ -273,6 +273,18 @@ func TestProviderConfig_String_RedactsAPIKey(t *testing.T) {
 	}
 }
 
+func TestCostRecord_CacheHit(t *testing.T) {
+	rec := CostRecord{
+		RequestID: "req-1",
+		Model:     "deepseek-v3",
+		Tier:      TierCheap,
+		CacheHit:  true,
+	}
+	if !rec.CacheHit {
+		t.Fatal("CostRecord.CacheHit = false, want true")
+	}
+}
+
 // TestInterfaceComposition verifies at compile time that a struct delegating
 // to Router, Completer, and CostTracker can satisfy the Gateway interface.
 func TestInterfaceComposition(t *testing.T) {
