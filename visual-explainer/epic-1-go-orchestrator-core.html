@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epic 1 — Go Orchestrator Core</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --slate: #64748b;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .anim { animation: fadeUp 0.5s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 640px;
+    line-height: 1.7;
+  }
+
+  /* ── STATUS STRIP ── */
+  .status-strip {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .status-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .status-num {
+    font-family: var(--font-display);
+    font-size: 32px;
+    color: var(--text);
+    line-height: 1;
+  }
+  .status-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    margin-top: 56px;
+  }
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+  }
+  .section-hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: -12px;
+    margin-bottom: 20px;
+  }
+
+  /* ── MERMAID ── */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    cursor: grab;
+  }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px;
+    border: none; background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .zoom-label {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim); padding: 0 6px; white-space: nowrap;
+    display: flex; align-items: center;
+  }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 300px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px !important; }
+
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    opacity: 0.6;
+  }
+
+  /* ── MODULE CARDS ── */
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .mod-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .mod-card:hover { border-color: var(--border-strong); }
+  .mod-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .mod-icon {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .mod-card-head h3 {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .mod-card-head .mod-path {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .mod-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .mod-files {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .mod-files li {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: var(--surface-alt);
+    color: var(--text-dim);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── STATE MACHINE ── */
+  .state-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    padding: 32px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+  }
+  .state-node {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .state-arrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .state-arrow-line { color: var(--slate); font-size: 16px; }
+  .state-arrow-label { font-size: 9px; color: var(--text-dim); }
+
+  .s-idle { background: var(--teal-dim); color: var(--teal); border: 1.5px solid var(--teal); }
+  .s-assigned { background: var(--gold-dim); color: var(--gold); border: 1.5px solid var(--gold); }
+  .s-working { background: var(--navy-light); color: var(--navy); border: 1.5px solid var(--navy); }
+  .s-reporting { background: var(--rose-dim); color: var(--rose); border: 1.5px solid var(--rose); }
+
+  .fail-reset {
+    margin-top: 16px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 8px 16px;
+    background: var(--rose-dim);
+    border-radius: 6px;
+    display: inline-block;
+  }
+  .fail-reset strong { color: var(--rose); }
+
+  /* ── DATA FLOW ── */
+  .flow-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .flow-step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+  }
+  .flow-step-num {
+    font-family: var(--font-display);
+    font-size: 28px;
+    color: var(--gold);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .flow-step h4 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .flow-step p {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ── IMPLEMENTATION TABLE ── */
+  .impl-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  .impl-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .impl-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .impl-table th {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    background: var(--surface-alt);
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .impl-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .impl-table tr:last-child td { border-bottom: none; }
+  .impl-table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+  @media (prefers-color-scheme: dark) {
+    .impl-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .badge-merged { background: var(--teal-dim); color: var(--teal); }
+  .badge-open { background: var(--gold-dim); color: var(--gold); }
+  .badge-pending { background: var(--surface-alt); color: var(--text-dim); }
+
+  /* ── LEGEND ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-top: 20px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .page { padding: 24px 16px 60px; }
+    .status-strip { gap: 16px; }
+    .module-grid { grid-template-columns: 1fr; }
+    .state-flow { gap: 4px; padding: 20px 12px; }
+    .state-node { font-size: 11px; padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ HERO ═══ -->
+  <header class="hero anim" style="--i:0">
+    <div class="hero-label">Epic #1 &mdash; agenKic-orKistrator</div>
+    <h1>Go Orchestrator Core</h1>
+    <p class="hero-desc">
+      Supervisor process that spawns, monitors, and coordinates AI agent workers &mdash;
+      with OTP-style fault tolerance, a DAG task engine, gRPC control plane, and Redis state persistence.
+    </p>
+    <div class="status-strip">
+      <div class="status-item"><span class="status-num">5</span><span class="status-label">features merged</span></div>
+      <div class="status-item"><span class="status-num">3</span><span class="status-label">PRs open</span></div>
+      <div class="status-item"><span class="status-num">10</span><span class="status-label">Go packages</span></div>
+      <div class="status-item"><span class="status-num">11</span><span class="status-label">E2E scenarios</span></div>
+    </div>
+  </header>
+
+  <!-- ═══ ARCHITECTURE OVERVIEW ═══ -->
+  <div class="section-head anim" style="--i:1">
+    <div class="section-dot" style="background:var(--navy)"></div>
+    <h2>System Architecture</h2>
+  </div>
+  <p class="section-hint anim" style="--i:1">Ctrl/Cmd + wheel to zoom. Scroll to pan. Double-click to fit.</p>
+
+  <section class="diagram-shell anim" style="--i:2">
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+      graph TD
+        ENTRY["cmd/orchestrator<br/><i>main.go entrypoint</i>"]
+        SV["internal/supervisor<br/><i>Supervision tree</i>"]
+        AG["internal/agent<br/><i>State machine</i>"]
+        DAG["internal/dag<br/><i>DAG engine</i>"]
+        IPC["internal/ipc<br/><i>gRPC handlers</i>"]
+        ST["internal/state<br/><i>Redis store</i>"]
+        GW["internal/gateway<br/><i>Model gateway</i>"]
+        HP["internal/health<br/><i>Health probes</i>"]
+        TM["internal/terminal<br/><i>Terminal substrate</i>"]
+        PROTO["proto/<br/><i>orchestrator.proto</i>"]
+
+        ENTRY --> SV
+        ENTRY --> IPC
+        ENTRY --> HP
+
+        IPC -->|"RegisterAgent<br/>SubmitTask<br/>GetAgentState"| SV
+        IPC -->|"SubmitDAG<br/>GetDAGStatus"| DAG
+
+        SV -->|"ApplyEvent<br/>state transitions"| AG
+        SV -->|"heartbeat + assign"| ST
+        SV -->|"RestartPolicy<br/>backoff + circuit"| SV
+
+        AG -->|"read/write state"| ST
+        DAG -->|"enqueue tasks"| ST
+
+        GW -.->|"route to model<br/>(future)"| SV
+        TM -.->|"terminal panes<br/>(future)"| SV
+
+        PROTO -.->|"generates"| IPC
+
+        classDef core fill:#1e3a5f,stroke:#4a7ab5,color:#e8e4dc
+        classDef store fill:#0e7c6b,stroke:#34d4b0,color:#e8e4dc
+        classDef future fill:#64748b,stroke:#94a3b8,color:#e8e4dc,stroke-dasharray:5 5
+        classDef proto fill:#c07d20,stroke:#d4a73a,color:#1a2332
+
+        class ENTRY,SV,AG,DAG,IPC,HP core
+        class ST store
+        class GW,TM future
+        class PROTO proto
+    </script>
+  </section>
+
+  <div class="legend anim" style="--i:3">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--navy)"></div> Core packages</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--teal)"></div> State store</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--slate)"></div> Future (not yet implemented)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> Proto definitions</div>
+  </div>
+
+  <!-- ═══ AGENT STATE MACHINE ═══ -->
+  <div class="section-head anim" style="--i:4">
+    <div class="section-dot" style="background:var(--teal)"></div>
+    <h2>Agent State Machine</h2>
+  </div>
+
+  <div class="anim" style="--i:5">
+    <div class="state-flow">
+      <div class="state-node s-idle">Idle</div>
+      <div class="state-arrow">
+        <span class="state-arrow-label">TaskAssigned</span>
+        <span class="state-arrow-line">&rarr;</span>
+      </div>
+      <div class="state-node s-assigned">Assigned</div>
+      <div class="state-arrow">
+        <span class="state-arrow-label">WorkStarted</span>
+        <span class="state-arrow-line">&rarr;</span>
+      </div>
+      <div class="state-node s-working">Working</div>
+      <div class="state-arrow">
+        <span class="state-arrow-label">OutputReady</span>
+        <span class="state-arrow-line">&rarr;</span>
+      </div>
+      <div class="state-node s-reporting">Reporting</div>
+      <div class="state-arrow">
+        <span class="state-arrow-label">OutputDelivered</span>
+        <span class="state-arrow-line">&rarr;</span>
+      </div>
+      <div class="state-node s-idle">Idle</div>
+    </div>
+    <div style="text-align:center; margin-top:12px;">
+      <span class="fail-reset"><strong>EventAgentFailed</strong> &mdash; resets to Idle from any state</span>
+    </div>
+  </div>
+
+  <div class="callout anim" style="--i:6">
+    <strong>Immutable snapshots.</strong> Every <code>ApplyEvent</code> call returns an <code>AgentSnapshot</code>
+    with <code>PreviousState</code>, <code>State</code>, and <code>Event</code>. The Machine has no internal
+    mutable state &mdash; all state lives in the StateStore. Callers serialize per-agent via the supervisor's
+    per-agent mutex.
+  </div>
+
+  <!-- ═══ MODULE BREAKDOWN ═══ -->
+  <div class="section-head anim" style="--i:7">
+    <div class="section-dot" style="background:var(--gold)"></div>
+    <h2>Module Breakdown</h2>
+  </div>
+
+  <div class="module-grid anim" style="--i:8">
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--navy-light);color:var(--navy)">SV</div>
+        <div><h3>supervisor</h3><span class="mod-path">internal/supervisor/</span></div>
+      </div>
+      <p class="mod-desc">Manages the agent pool: heartbeat monitoring, task assignment loop, crash handling with OTP-style restart policy (exponential backoff + circuit breaker). Per-agent cooldown and circuit-open maps gate assignment eligibility.</p>
+      <ul class="mod-files">
+        <li>supervisor.go</li>
+        <li>restart.go</li>
+        <li>errors.go</li>
+        <li>export_e2e.go</li>
+      </ul>
+    </div>
+
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--teal-dim);color:var(--teal)">AG</div>
+        <div><h3>agent</h3><span class="mod-path">internal/agent/</span></div>
+      </div>
+      <p class="mod-desc">Pure state machine. Reads current state from store, validates transition via the transition table, writes new state back. Returns immutable AgentSnapshot. No internal mutable state.</p>
+      <ul class="mod-files">
+        <li>types.go</li>
+        <li>machine.go</li>
+        <li>transition.go</li>
+        <li>errors.go</li>
+      </ul>
+    </div>
+
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--gold-dim);color:var(--gold)">DG</div>
+        <div><h3>dag</h3><span class="mod-path">internal/dag/</span></div>
+      </div>
+      <p class="mod-desc">DAG task engine. Topological sort, parallel fork execution, node status tracking. StoreSubmitter enqueues ready nodes into the task queue. Executor manages concurrent execution contexts.</p>
+      <ul class="mod-files">
+        <li>dag.go</li>
+        <li>executor.go</li>
+        <li>submitter.go</li>
+      </ul>
+    </div>
+
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--navy-light);color:var(--navy)">GP</div>
+        <div><h3>ipc</h3><span class="mod-path">internal/ipc/</span></div>
+      </div>
+      <p class="mod-desc">gRPC service handlers implementing OrchestratorService: RegisterAgent, SubmitTask, GetAgentState, SubmitDAG, GetDAGStatus. Wires to supervisor and DAG executor.</p>
+      <ul class="mod-files">
+        <li>server.go</li>
+        <li>handlers.go</li>
+      </ul>
+    </div>
+
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--teal-dim);color:var(--teal)">ST</div>
+        <div><h3>state</h3><span class="mod-path">internal/state/</span></div>
+      </div>
+      <p class="mod-desc">StateStore interface: agent hashes, task queue (sorted set), event stream. MockStore for testing, RedisStore for production. Immutable pattern &mdash; SetAgentState returns new copy.</p>
+      <ul class="mod-files">
+        <li>store.go</li>
+        <li>redis.go</li>
+        <li>mock.go</li>
+        <li>errors.go</li>
+      </ul>
+    </div>
+
+    <div class="mod-card">
+      <div class="mod-card-head">
+        <div class="mod-icon" style="background:var(--rose-dim);color:var(--rose)">HP</div>
+        <div><h3>health</h3><span class="mod-path">internal/health/</span></div>
+      </div>
+      <p class="mod-desc">Health probe endpoints: liveness (is the process alive?), readiness (can it accept work?). Checks Redis connectivity and supervisor state.</p>
+      <ul class="mod-files">
+        <li>health.go</li>
+        <li>probes.go</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══ TASK DATA FLOW ═══ -->
+  <div class="section-head anim" style="--i:9">
+    <div class="section-dot" style="background:var(--rose)"></div>
+    <h2>Task Data Flow</h2>
+  </div>
+
+  <div class="flow-steps anim" style="--i:10">
+    <div class="flow-step">
+      <div class="flow-step-num">1</div>
+      <h4>Submit</h4>
+      <p>Client calls <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-light);color:var(--navy);padding:1px 4px;border-radius:3px;">SubmitTask</code> via gRPC. Handler enqueues task into the sorted-set queue with priority.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">2</div>
+      <h4>Assign</h4>
+      <p>Supervisor's <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-light);color:var(--navy);padding:1px 4px;border-radius:3px;">taskAssignLoop</code> dequeues, finds an idle agent (skipping cooldown/circuit-open), applies EventTaskAssigned.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">3</div>
+      <h4>Execute</h4>
+      <p>Agent transitions: Assigned &rarr; Working. Agent processes the task, streams output. State tracked in Redis hashes.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">4</div>
+      <h4>Report</h4>
+      <p>Agent transitions: Working &rarr; Reporting &rarr; Idle. Output delivered, policy records success, cooldown cleared.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">5</div>
+      <h4>Fail &amp; Recover</h4>
+      <p>On crash: EventAgentFailed resets to Idle. RestartPolicy computes backoff. Circuit breaker opens after threshold exceeded.</p>
+    </div>
+  </div>
+
+  <!-- ═══ IMPLEMENTATION STATUS ═══ -->
+  <div class="section-head anim" style="--i:11">
+    <div class="section-dot" style="background:var(--teal)"></div>
+    <h2>Implementation Status</h2>
+  </div>
+
+  <div class="impl-table-wrap anim" style="--i:12">
+    <table class="impl-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Issue</th>
+          <th>PR</th>
+          <th>Status</th>
+          <th>Scope</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>F1 &mdash; Foundation</strong></td>
+          <td>#5</td>
+          <td>#10</td>
+          <td><span class="badge badge-merged">merged</span></td>
+          <td>go mod, proto, Redis state, agent state machine</td>
+        </tr>
+        <tr>
+          <td><strong>F2 &mdash; gRPC + Supervisor</strong></td>
+          <td>#6</td>
+          <td>#11</td>
+          <td><span class="badge badge-merged">merged</span></td>
+          <td>gRPC server, supervisor heartbeat + assign loops</td>
+        </tr>
+        <tr>
+          <td><strong>F3 &mdash; DAG Task Engine</strong></td>
+          <td>#7</td>
+          <td>#12</td>
+          <td><span class="badge badge-merged">merged</span></td>
+          <td>Topological sort, parallel fork, executor</td>
+        </tr>
+        <tr>
+          <td><strong>F2-F3 Integration</strong></td>
+          <td>#19</td>
+          <td>#20</td>
+          <td><span class="badge badge-merged">merged</span></td>
+          <td>Wire DAG executor into gRPC handlers</td>
+        </tr>
+        <tr>
+          <td><strong>F4 &mdash; Health Probes</strong></td>
+          <td>#8</td>
+          <td>#13</td>
+          <td><span class="badge badge-merged">merged</span></td>
+          <td>Liveness, readiness endpoints</td>
+        </tr>
+        <tr>
+          <td><strong>F5 &mdash; E2E Lifecycle Tests</strong></td>
+          <td>#9</td>
+          <td>#21</td>
+          <td><span class="badge badge-open">open</span></td>
+          <td>11 E2E scenarios, supervisor&harr;policy wiring</td>
+        </tr>
+        <tr>
+          <td><strong>Optimistic Locking</strong></td>
+          <td>#15</td>
+          <td>#22</td>
+          <td><span class="badge badge-open">open</span></td>
+          <td>CompareAndSetAgentState for StateStore</td>
+        </tr>
+        <tr>
+          <td><strong>Event Stream Consumption</strong></td>
+          <td>#17</td>
+          <td>#23</td>
+          <td><span class="badge badge-open">open</span></td>
+          <td>Stream consumption methods for StateStore</td>
+        </tr>
+        <tr>
+          <td><strong>Gateway Interface</strong></td>
+          <td>#32</td>
+          <td>&mdash;</td>
+          <td><span class="badge badge-pending">pending</span></td>
+          <td>Gateway types, judge-router, LiteLLM client</td>
+        </tr>
+        <tr>
+          <td><strong>Terminal Substrate</strong></td>
+          <td>#42</td>
+          <td>&mdash;</td>
+          <td><span class="badge badge-pending">pending</span></td>
+          <td>tmux session management, command injection</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ SUPERVISION TREE DETAIL ═══ -->
+  <div class="section-head anim" style="--i:13">
+    <div class="section-dot" style="background:var(--navy)"></div>
+    <h2>Supervision &amp; Restart Policy</h2>
+  </div>
+
+  <section class="diagram-shell anim" style="--i:14">
+    <p class="diagram-shell__hint">Crash handling flow &mdash; from heartbeat stale detection to circuit breaker</p>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+      graph TD
+        HB["heartbeatLoop<br/><i>every 5s default</i>"]
+        CHECK{"Heartbeat stale?<br/><i>now - lastHB > threshold</i>"}
+        IDLE_Q{"Agent idle?"}
+        SENT["Pre-populate sentinel<br/><i>24h cooldown</i>"]
+        APPLY["applyEvent<br/><i>EventAgentFailed</i>"]
+        TOCTOU{"PreviousState<br/>== Idle?"}
+        SPUR["Spurious crash<br/><i>delete sentinel, return</i>"]
+        REC["RecordCrash(agentID)"]
+        CIRC{"ShouldRestart?"}
+        COOL["Set cooldown<br/><i>base * 2^(n-1)</i>"]
+        OPEN["Circuit OPEN<br/><i>permanently blocked</i>"]
+        FIND["findIdleAgent<br/><i>skips cooldown + circuit</i>"]
+        ASSIGN["EventTaskAssigned<br/><i>agent back in rotation</i>"]
+
+        HB --> CHECK
+        CHECK -->|"Yes"| IDLE_Q
+        CHECK -->|"No"| HB
+        IDLE_Q -->|"Yes (skip)"| HB
+        IDLE_Q -->|"No"| SENT
+        SENT --> APPLY
+        APPLY --> TOCTOU
+        TOCTOU -->|"Yes"| SPUR
+        TOCTOU -->|"No"| REC
+        REC --> CIRC
+        CIRC -->|"Yes + backoff"| COOL
+        CIRC -->|"No (threshold exceeded)"| OPEN
+        COOL -->|"after expiry"| FIND
+        FIND --> ASSIGN
+
+        classDef decision fill:#c07d20,stroke:#d4a73a,color:#1a2332
+        classDef action fill:#1e3a5f,stroke:#4a7ab5,color:#e8e4dc
+        classDef danger fill:#b4364a,stroke:#f07088,color:#e8e4dc
+        classDef success fill:#0e7c6b,stroke:#34d4b0,color:#e8e4dc
+
+        class CHECK,IDLE_Q,TOCTOU,CIRC decision
+        class HB,SENT,APPLY,REC action
+        class SPUR,OPEN danger
+        class COOL,FIND,ASSIGN success
+    </script>
+  </section>
+
+  <div class="callout anim" style="--i:15">
+    <strong>Sentinel pattern.</strong> Before calling <code>applyEvent</code>, <code>crashAgent</code> pre-populates
+    a 24-hour cooldown sentinel under <code>sv.mu.Lock()</code>. This closes the TOCTOU race window: <code>findIdleAgent</code>
+    reads <code>agentCooldown</code> under <code>sv.mu.RLock()</code> and skips the agent immediately. After <code>applyEvent</code>,
+    the sentinel is either cleaned up (spurious crash) or overwritten with the real backoff duration.
+  </div>
+
+  <!-- ═══ FOOTER ═══ -->
+  <div style="margin-top:56px; padding-top:20px; border-top:1px solid var(--border); font-family:var(--font-mono); font-size:10px; color:var(--text-dim); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+    <span>agenKic-orKistrator &mdash; Epic #1: Go Orchestrator Core</span>
+    <span>Generated 2026-03-22</span>
+  </div>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = {
+    fitPadding: 28, minHeight: 360, maxHeightPx: 960, maxHeightVh: 0.84,
+    maxInitialZoom: 1.8, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.58
+  };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontSize: '15px',
+      primaryColor: isDark ? '#1c2640' : '#e8f0f8',
+      primaryBorderColor: isDark ? '#7eb0e0' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e8e4dc' : '#1a2332',
+      secondaryColor: isDark ? '#0e3c2e' : '#e6f5f0',
+      secondaryBorderColor: isDark ? '#34d4b0' : '#0e7c6b',
+      secondaryTextColor: isDark ? '#e8e4dc' : '#1a2332',
+      tertiaryColor: isDark ? '#3a2e18' : '#fef8e8',
+      tertiaryBorderColor: isDark ? '#e8c15a' : '#c07d20',
+      tertiaryTextColor: isDark ? '#e8e4dc' : '#1a2332',
+      lineColor: isDark ? '#8a95a8' : '#5a6a7e',
+      noteBkgColor: isDark ? '#1c2640' : '#fef8e8',
+      noteTextColor: isDark ? '#e8e4dc' : '#1a2332',
+      noteBorderColor: isDark ? '#e8c15a' : '#c07d20',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% \u2014 ' + fitMode;
+    }
+    function canPan() {
+      return svgW * zoom + config.fitPadding * 2 > viewport.clientWidth || svgH * zoom + config.fitPadding * 2 > viewport.clientHeight;
+    }
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2), aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        z = chartR >= vpR ? aW / svgW : aH / svgH;
+        mode = chartR >= vpR ? 'width-priority' : 'height-priority';
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom);
+      const ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY);
+      zoom = next; fitMode = 'custom'; applyTransform();
+    }
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true); clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0f1724' : '#f8f6f1';
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        canvas.innerHTML = '';
+        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) { console.error('Mermaid render failed:', err); label.textContent = 'Error: ' + (err.message || 'Render failed'); }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([a, h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep), e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning'); sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = {
+        onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); },
+        onEnd: () => wrap.classList.remove('is-panning')
+      };
+    });
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; }
+      else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchDist = Math.sqrt(dx * dx + dy * dy);
+        const r = viewport.getBoundingClientRect();
+        touchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        touchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+      }
+    }, { passive: true });
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && canPan()) {
+        if (touchDist > 0) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; spx = panX; spy = panY; touchDist = 0; }
+        e.preventDefault(); panX = spx + (e.touches[0].clientX - sx); panY = spy + (e.touches[0].clientY - sy); applyTransform();
+      } else if (e.touches.length === 2 && touchDist > 0) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+        const d = Math.sqrt(dx * dx + dy * dy); zoomAround(d / touchDist, touchCx, touchCy); touchDist = d;
+      }
+    }, { passive: false });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+</body>
+</html>
