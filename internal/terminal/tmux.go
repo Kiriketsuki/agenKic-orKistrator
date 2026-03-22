@@ -8,6 +8,7 @@ import (
 )
 
 // TmuxSubstrate implements Substrate using the tmux terminal multiplexer.
+// TODO: add var _ Substrate = (*TmuxSubstrate)(nil) once all 6 interface methods are implemented.
 type TmuxSubstrate struct {
 	tmuxPath string // absolute path to the tmux binary
 }
@@ -38,12 +39,20 @@ func (t *TmuxSubstrate) run(ctx context.Context, args ...string) (string, error)
 
 // SpawnSession creates a new detached tmux session with the given name
 // running the specified command. Name must be valid per ValidateSessionName.
-func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd string) (Session, error) {
+func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd string, opts SessionOptions) (Session, error) {
 	if err := ValidateSessionName(name); err != nil {
 		return Session{}, err
 	}
 
-	args := []string{"new-session", "-d", "-s", name, "-x", "200", "-y", "50"}
+	width, height := opts.Width, opts.Height
+	if width == 0 {
+		width = 200
+	}
+	if height == 0 {
+		height = 50
+	}
+
+	args := []string{"new-session", "-d", "-s", name, "-x", fmt.Sprintf("%d", width), "-y", fmt.Sprintf("%d", height)}
 	if cmd != "" {
 		args = append(args, cmd)
 	}
@@ -54,8 +63,8 @@ func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd strin
 
 	return Session{
 		Name:        name,
-		Width:       200,
-		Height:      50,
+		Width:       width,
+		Height:      height,
 		WindowCount: 1,
 		Attached:    false,
 	}, nil
@@ -63,6 +72,9 @@ func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd strin
 
 // DestroySession kills the named tmux session.
 func (t *TmuxSubstrate) DestroySession(ctx context.Context, name string) error {
+	if err := ValidateSessionName(name); err != nil {
+		return err
+	}
 	if _, err := t.run(ctx, "kill-session", "-t", name); err != nil {
 		return fmt.Errorf("destroy session %q: %w", name, err)
 	}

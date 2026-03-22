@@ -39,10 +39,11 @@ func parseTmuxError(stderr string) error {
 	s := strings.ToLower(stderr)
 	switch {
 	case strings.Contains(s, "session not found") ||
-		strings.Contains(s, "can't find session") ||
-		strings.Contains(s, "can't find window") ||
-		strings.Contains(s, "can't find pane"):
+		strings.Contains(s, "can't find session"):
 		return ErrSessionNotFound
+	case strings.Contains(s, "can't find window") ||
+		strings.Contains(s, "can't find pane"):
+		return ErrPaneNotFound
 	case strings.Contains(s, "duplicate session"):
 		return ErrSessionExists
 	case strings.Contains(s, "create pane failed") || strings.Contains(s, "no room for new pane"):

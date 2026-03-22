@@ -9,7 +9,9 @@ import "context"
 type Substrate interface {
 	// SpawnSession creates a new detached terminal session running cmd.
 	// The session name must pass ValidateSessionName.
-	SpawnSession(ctx context.Context, name string, cmd string) (Session, error)
+	// cmd must be a trusted binary path controlled by the orchestrator;
+	// do not pass externally-influenced or user-supplied strings.
+	SpawnSession(ctx context.Context, name string, cmd string, opts SessionOptions) (Session, error)
 
 	// DestroySession terminates the named session and all its panes.
 	DestroySession(ctx context.Context, name string) error

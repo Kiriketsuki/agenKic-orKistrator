@@ -33,12 +33,22 @@ func TestTmuxVersion(t *testing.T) {
 	}
 }
 
-// TestParseTmuxError_SessionNotFound verifies both "session not found" variants.
+// TestParseTmuxError_SessionNotFound verifies "session not found" variants.
 func TestParseTmuxError_SessionNotFound(t *testing.T) {
 	for _, msg := range []string{"session not found", "can't find session myagent"} {
 		err := parseTmuxError(msg)
 		if !errors.Is(err, ErrSessionNotFound) {
 			t.Errorf("parseTmuxError(%q) = %v, want ErrSessionNotFound", msg, err)
+		}
+	}
+}
+
+// TestParseTmuxError_PaneNotFound verifies window/pane not-found variants.
+func TestParseTmuxError_PaneNotFound(t *testing.T) {
+	for _, msg := range []string{"can't find window 3", "can't find pane %5"} {
+		err := parseTmuxError(msg)
+		if !errors.Is(err, ErrPaneNotFound) {
+			t.Errorf("parseTmuxError(%q) = %v, want ErrPaneNotFound", msg, err)
 		}
 	}
 }

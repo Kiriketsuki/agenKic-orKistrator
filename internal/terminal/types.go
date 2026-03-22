@@ -28,6 +28,13 @@ type Pane struct {
 	Active    bool // whether this pane has focus
 }
 
+// SessionOptions configures optional parameters for SpawnSession.
+// Zero values use defaults (Width=200, Height=50).
+type SessionOptions struct {
+	Width  int // columns; 0 = default (200)
+	Height int // rows; 0 = default (50)
+}
+
 // Sentinel errors returned by Substrate implementations.
 var (
 	// ErrTmuxNotFound is returned when the tmux binary is not on PATH.
@@ -41,6 +48,9 @@ var (
 
 	// ErrPaneLimit is returned when a split would exceed the substrate's pane limit.
 	ErrPaneLimit = errors.New("terminal: pane limit reached")
+
+	// ErrPaneNotFound is returned when the target pane or window does not exist.
+	ErrPaneNotFound = errors.New("terminal: pane not found")
 
 	// ErrInvalidLines is returned when CaptureOutput receives a non-positive line count.
 	ErrInvalidLines = errors.New("terminal: lines must be positive")
