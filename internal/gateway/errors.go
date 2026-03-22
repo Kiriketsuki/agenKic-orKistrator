@@ -35,6 +35,10 @@ type ProviderError struct {
 	Err      error
 }
 
+// Error returns a human-readable string for logging and debugging.
+// This format is an internal contract — external-facing HTTP handlers
+// (T5) must wrap gateway errors with user-safe messages and must not
+// return this string directly in response bodies.
 func (e *ProviderError) Error() string {
 	msg := "gateway: "
 	if e.Op != "" {

@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -140,9 +141,9 @@ func TestCompletionRequest_MultiTurn(t *testing.T) {
 	req := CompletionRequest{
 		Model: "claude-sonnet-4-6",
 		Messages: []Message{
-			{Role: "system", Content: "Be helpful"},
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi there"},
+			{Role: "user", Content: "What's the weather?"},
 		},
 		SystemPrompt: "Be helpful",
 		MaxTokens:    1024,
@@ -253,6 +254,22 @@ func TestFallbackError_ErrorString(t *testing.T) {
 		"  gateway: Complete: provider openai: gateway: provider rate limited"
 	if got != want {
 		t.Fatalf("FallbackError.Error() =\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestProviderConfig_String_RedactsAPIKey(t *testing.T) {
+	cfg := ProviderConfig{
+		Name:    "anthropic",
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "sk-ant-secret-key-12345",
+		Models:  []string{"claude-sonnet-4-6"},
+	}
+	got := cfg.String()
+	if got != "ProviderConfig{Name: anthropic, BaseURL: https://api.anthropic.com, APIKey: [REDACTED]}" {
+		t.Fatalf("String() = %q, want redacted APIKey", got)
+	}
+	if strings.Contains(got, "sk-ant-secret-key-12345") {
+		t.Fatalf("String() leaked APIKey: %q", got)
 	}
 }
 

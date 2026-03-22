@@ -103,12 +103,6 @@ type CompletionResponse struct {
 	ProviderName string
 }
 
-// TokenUsage summarises token consumption for a single request.
-type TokenUsage struct {
-	InputTokens  int
-	OutputTokens int
-}
-
 // CostRecord is a single billing entry written by the cost tracker.
 type CostRecord struct {
 	RequestID     string
@@ -162,6 +156,8 @@ func Today() TimePeriod {
 
 // LastNDays returns a TimePeriod covering the last n days up to now (UTC).
 // If n is negative, it is clamped to 0 (today only).
+// Note: LastNDays(0) returns [midnight, now), not [midnight, midnight+24h).
+// Use Today() for a fixed calendar-day window.
 func LastNDays(n int) TimePeriod {
 	if n < 0 {
 		n = 0
@@ -178,10 +174,17 @@ func Since(t time.Time) TimePeriod {
 
 // ProviderConfig holds the runtime configuration for a single provider.
 type ProviderConfig struct {
-	Name    string
+	Name string
+	// TODO(T2): Completer implementations constructing HTTP clients from BaseURL
+	// must validate the host against a scheme+host allowlist and block private CIDRs.
 	BaseURL string
 	APIKey  string
 	Models  []string
+}
+
+// String returns a human-readable representation with the API key redacted.
+func (p ProviderConfig) String() string {
+	return "ProviderConfig{Name: " + p.Name + ", BaseURL: " + p.BaseURL + ", APIKey: [REDACTED]}"
 }
 
 // TierConfig maps a tier to its primary model and fallback chain.
@@ -207,6 +210,8 @@ type Gateway interface {
 // Router classifies task complexity and selects the appropriate model tier.
 type Router interface {
 	// Classify inspects a task and returns which tier should handle it.
+	// Implementations that forward task.Payload to hosted language models
+	// are responsible for input validation, sanitization, and length limits.
 	Classify(ctx context.Context, task TaskSpec) (RoutingDecision, error)
 }
 
