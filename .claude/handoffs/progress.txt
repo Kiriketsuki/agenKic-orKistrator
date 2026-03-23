@@ -1,3 +1,22 @@
+## 2026-03-22 Handoff
+
+### Decisions
+- T1 (Gateway Interface & Types) squash-merged into epic/3 after 3 adversarial councils
+- ProviderConfig.APIKey kept exported with fmt.Formatter defense-in-depth (not unexported)
+- TokenUsage type deliberately inlined on CompletionResponse and CostRecord
+- CacheHit bool promoted to CostRecord must-have for DeepSeek cached pricing
+- Council report files deleted from repo (session artifacts, not deliverables)
+- Created issue #55 for T7 CostReport aggregation test obligation
+
+### Failed Approaches
+- (none -- all advisory fixes applied cleanly, rebase of feature/33 was clean after skipping redundant T1 commit)
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-22-23h50-t1-merged-t2t3-ready.md
+- Branch: feature/33-feature-litellm-client-provider-adapters-t2-t3
+
+---
+
 ## 2026-03-15 Handoff
 
 ### Decisions
