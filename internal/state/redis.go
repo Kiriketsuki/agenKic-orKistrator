@@ -108,6 +108,52 @@ func (r *RedisStore) GetAgentState(ctx context.Context, agentID string) (string,
 	return val, nil
 }
 
+// casScript atomically compares the current state field of an agent hash and
+// sets it to the new value only if it matches the expected value.
+//
+// KEYS[1] = agent hash key
+// ARGV[1] = expected state
+// ARGV[2] = next state
+//
+// Returns:
+//
+//	1  → swap succeeded
+//	0  → current state did not match expected (conflict)
+//	-1 → key does not exist or has no state field (agent not found)
+var casScript = redis.NewScript(`
+local current = redis.call('HGET', KEYS[1], 'state')
+if current == false then
+    return -1
+end
+if current ~= ARGV[1] then
+    return 0
+end
+redis.call('HSET', KEYS[1], 'state', ARGV[2])
+return 1
+`)
+
+func (r *RedisStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	result, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Int64()
+	if err != nil {
+		return fmt.Errorf("CompareAndSetAgentState %s: %w", agentID, err)
+	}
+	switch result {
+	case 1:
+		return nil
+	case 0:
+		// Fetch current state for the error.
+		actual, getErr := r.client.HGet(ctx, r.agentKey(agentID), fieldState).Result()
+		if getErr != nil {
+			actual = "<unknown>"
+		}
+		return &StateConflictError{Expected: expected, Actual: actual}
+	case -1:
+		return ErrAgentNotFound
+	default:
+		return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result %d", agentID, result)
+	}
+}
+
 // ── Agent full record ─────────────────────────────────────────────────────────
 
 func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
