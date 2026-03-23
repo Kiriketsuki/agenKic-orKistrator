@@ -10,13 +10,20 @@ import (
 // MockStore is a thread-safe, in-memory StateStore implementation for use in
 // unit tests. It has no external dependencies.
 type MockStore struct {
-	mu                   sync.RWMutex
-	agents               map[string]*agentRecord // agentID -> record
-	events               []Event
-	queue                []queueItem // sorted by priority ascending
-	pingErr              error
-	getAllAgentStatesErr error
-	queueLenErr          error
+	mu                    sync.RWMutex
+	agents                map[string]*agentRecord // agentID -> record
+	events                []Event
+	queue                 []queueItem // sorted by priority ascending
+	pingErr               error
+	getAllAgentStatesErr  error
+	queueLenErr           error
+	getAgentFieldsErr     error            // global fallback
+	setAgentFieldsErr     error            // global fallback
+	getAgentFieldsByAgent map[string]error // per-agent overrides
+	setAgentFieldsByAgent map[string]error // per-agent overrides
+	enqueueTaskErr        error
+	dequeueTaskErr        error
+	clearCurrentTaskErr   error
 }
 
 type agentRecord struct {
@@ -31,7 +38,9 @@ type queueItem struct {
 // NewMockStore returns a ready-to-use in-memory store.
 func NewMockStore() *MockStore {
 	return &MockStore{
-		agents: make(map[string]*agentRecord),
+		agents:                make(map[string]*agentRecord),
+		getAgentFieldsByAgent: make(map[string]error),
+		setAgentFieldsByAgent: make(map[string]error),
 	}
 }
 
@@ -66,18 +75,68 @@ func (m *MockStore) GetAgentState(ctx context.Context, agentID string) (string, 
 
 // ── Agent full record ─────────────────────────────────────────────────────────
 
+// SetSetAgentFieldsError configures SetAgentFields to return err.
+// Pass nil to reset to healthy. If agentIDs are provided, the error applies
+// only to those agents; otherwise it sets the global fallback.
+func (m *MockStore) SetSetAgentFieldsError(err error, agentIDs ...string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(agentIDs) == 0 {
+		m.setAgentFieldsErr = err
+	} else {
+		for _, id := range agentIDs {
+			if err == nil {
+				delete(m.setAgentFieldsByAgent, id)
+			} else {
+				m.setAgentFieldsByAgent[id] = err
+			}
+		}
+	}
+}
+
 func (m *MockStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if e, ok := m.setAgentFieldsByAgent[agentID]; ok {
+		return e
+	}
+	if m.setAgentFieldsErr != nil {
+		return m.setAgentFieldsErr
+	}
 	m.agents[agentID] = &agentRecord{fields: fields}
 	return nil
+}
+
+// SetGetAgentFieldsError configures GetAgentFields to return err.
+// Pass nil to reset to healthy. If agentIDs are provided, the error applies
+// only to those agents; otherwise it sets the global fallback.
+func (m *MockStore) SetGetAgentFieldsError(err error, agentIDs ...string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(agentIDs) == 0 {
+		m.getAgentFieldsErr = err
+	} else {
+		for _, id := range agentIDs {
+			if err == nil {
+				delete(m.getAgentFieldsByAgent, id)
+			} else {
+				m.getAgentFieldsByAgent[id] = err
+			}
+		}
+	}
 }
 
 func (m *MockStore) GetAgentFields(ctx context.Context, agentID string) (AgentFields, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	if e, ok := m.getAgentFieldsByAgent[agentID]; ok {
+		return AgentFields{}, e
+	}
+	if m.getAgentFieldsErr != nil {
+		return AgentFields{}, m.getAgentFieldsErr
+	}
 	rec, ok := m.agents[agentID]
 	if !ok {
 		return AgentFields{}, ErrAgentNotFound
@@ -127,6 +186,34 @@ func (m *MockStore) GetAllAgentStates(ctx context.Context) (map[string]string, e
 	return states, nil
 }
 
+// ── Agent task binding ────────────────────────────────────────────────────────
+
+// SetClearCurrentTaskError configures ClearCurrentTask to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetClearCurrentTaskError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clearCurrentTaskErr = err
+}
+
+func (m *MockStore) ClearCurrentTask(ctx context.Context, agentID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.clearCurrentTaskErr != nil {
+		return m.clearCurrentTaskErr
+	}
+	rec, ok := m.agents[agentID]
+	if !ok {
+		return ErrAgentNotFound
+	}
+	updated := rec.fields
+	updated.CurrentTaskID = ""
+	updated.CurrentTaskPriority = 0
+	rec.fields = updated
+	return nil
+}
+
 // ── Event stream ──────────────────────────────────────────────────────────────
 
 func (m *MockStore) PublishEvent(ctx context.Context, event Event) error {
@@ -142,10 +229,21 @@ func (m *MockStore) PublishEvent(ctx context.Context, event Event) error {
 
 // ── Task queue ────────────────────────────────────────────────────────────────
 
+// SetEnqueueTaskError configures EnqueueTask to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetEnqueueTaskError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.enqueueTaskErr = err
+}
+
 func (m *MockStore) EnqueueTask(ctx context.Context, taskID string, priority float64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.enqueueTaskErr != nil {
+		return m.enqueueTaskErr
+	}
 	m.queue = append(m.queue, queueItem{taskID: taskID, priority: priority})
 	sort.Slice(m.queue, func(i, j int) bool {
 		return m.queue[i].priority < m.queue[j].priority
@@ -153,17 +251,28 @@ func (m *MockStore) EnqueueTask(ctx context.Context, taskID string, priority flo
 	return nil
 }
 
-func (m *MockStore) DequeueTask(ctx context.Context) (string, error) {
+// SetDequeueTaskError configures DequeueTask to return err (instead of
+// the normal queue behaviour). Pass nil to reset to healthy.
+func (m *MockStore) SetDequeueTaskError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dequeueTaskErr = err
+}
+
+func (m *MockStore) DequeueTask(ctx context.Context) (string, float64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.dequeueTaskErr != nil {
+		return "", 0, m.dequeueTaskErr
+	}
 	if len(m.queue) == 0 {
-		return "", ErrQueueEmpty
+		return "", 0, ErrQueueEmpty
 	}
 	item := m.queue[0]
 	// Build a new slice rather than modifying in place (immutable pattern).
 	m.queue = append([]queueItem{}, m.queue[1:]...)
-	return item.taskID, nil
+	return item.taskID, item.priority, nil
 }
 
 // SetQueueLengthError configures QueueLength to return err.

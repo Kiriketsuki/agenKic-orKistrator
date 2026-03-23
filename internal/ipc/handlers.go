@@ -99,6 +99,17 @@ func (s *OrchestratorServer) SubmitDAG(ctx context.Context, req *pb.SubmitDAGReq
 	return &pb.SubmitDAGResponse{DagExecutionId: execID}, nil
 }
 
+// CompleteAgent signals that an agent has finished its task (REPORTING → IDLE).
+func (s *OrchestratorServer) CompleteAgent(ctx context.Context, req *pb.CompleteAgentRequest) (*pb.CompleteAgentResponse, error) {
+	if req.AgentId == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent_id is required")
+	}
+	if err := s.supervisor.CompleteAgent(ctx, req.AgentId); err != nil {
+		return nil, status.Errorf(codes.Internal, "complete agent %s: %v", req.AgentId, err)
+	}
+	return &pb.CompleteAgentResponse{}, nil
+}
+
 // GetDAGStatus returns the current execution state of a DAG.
 func (s *OrchestratorServer) GetDAGStatus(ctx context.Context, req *pb.GetDAGStatusRequest) (*pb.GetDAGStatusResponse, error) {
 	if req.DagExecutionId == "" {

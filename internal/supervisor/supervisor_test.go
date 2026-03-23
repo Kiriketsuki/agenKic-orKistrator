@@ -1,3 +1,5 @@
+//go:build testenv
+
 package supervisor_test
 
 import (

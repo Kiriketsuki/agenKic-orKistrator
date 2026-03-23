@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	fieldState         = "state"
-	fieldLastHeartbeat = "last_heartbeat"
-	fieldCurrentTask   = "current_task_id"
-	fieldRegisteredAt  = "registered_at"
+	fieldState           = "state"
+	fieldLastHeartbeat   = "last_heartbeat"
+	fieldCurrentTask     = "current_task_id"
+	fieldCurrentTaskPrio = "current_task_priority"
+	fieldRegisteredAt    = "registered_at"
 
 	streamKey = "events"
 	queueKey  = "task_queue"
@@ -115,6 +116,7 @@ func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields 
 		fieldState, fields.State,
 		fieldLastHeartbeat, strconv.FormatInt(fields.LastHeartbeat, 10),
 		fieldCurrentTask, fields.CurrentTaskID,
+		fieldCurrentTaskPrio, strconv.FormatFloat(fields.CurrentTaskPriority, 'f', -1, 64),
 		fieldRegisteredAt, strconv.FormatInt(fields.RegisteredAt, 10),
 	)
 	pipe.SAdd(ctx, r.key(agentSetKey), agentID)
@@ -148,13 +150,32 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldRegisteredAt, err)
 		}
 	}
+	var ctp float64
+	if v := vals[fieldCurrentTaskPrio]; v != "" {
+		ctp, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldCurrentTaskPrio, err)
+		}
+	}
 
 	return AgentFields{
-		State:         vals[fieldState],
-		LastHeartbeat: lhb,
-		CurrentTaskID: vals[fieldCurrentTask],
-		RegisteredAt:  ra,
+		State:               vals[fieldState],
+		LastHeartbeat:       lhb,
+		CurrentTaskID:       vals[fieldCurrentTask],
+		CurrentTaskPriority: ctp,
+		RegisteredAt:        ra,
 	}, nil
+}
+
+func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
+	err := r.client.HSet(ctx, r.agentKey(agentID),
+		fieldCurrentTask, "",
+		fieldCurrentTaskPrio, "0",
+	).Err()
+	if err != nil {
+		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
+	}
+	return nil
 }
 
 func (r *RedisStore) DeleteAgent(ctx context.Context, agentID string) error {
@@ -246,20 +267,20 @@ func (r *RedisStore) EnqueueTask(ctx context.Context, taskID string, priority fl
 	return nil
 }
 
-func (r *RedisStore) DequeueTask(ctx context.Context) (string, error) {
+func (r *RedisStore) DequeueTask(ctx context.Context) (string, float64, error) {
 	// ZPOPMIN atomically removes and returns the member with the lowest score.
 	results, err := r.client.ZPopMin(ctx, r.key(queueKey), 1).Result()
 	if err != nil {
-		return "", fmt.Errorf("DequeueTask: %w", err)
+		return "", 0, fmt.Errorf("DequeueTask: %w", err)
 	}
 	if len(results) == 0 {
-		return "", ErrQueueEmpty
+		return "", 0, ErrQueueEmpty
 	}
 	member, ok := results[0].Member.(string)
 	if !ok {
-		return "", fmt.Errorf("DequeueTask: unexpected member type %T", results[0].Member)
+		return "", 0, fmt.Errorf("DequeueTask: unexpected member type %T", results[0].Member)
 	}
-	return member, nil
+	return member, results[0].Score, nil
 }
 
 func (r *RedisStore) QueueLength(ctx context.Context) (int64, error) {

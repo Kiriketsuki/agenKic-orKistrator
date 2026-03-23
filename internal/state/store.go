@@ -14,10 +14,11 @@ const (
 
 // AgentFields holds the full set of mutable agent metadata stored in Redis.
 type AgentFields struct {
-	State         string
-	LastHeartbeat int64 // unix millis
-	CurrentTaskID string
-	RegisteredAt  int64 // unix millis
+	State               string
+	LastHeartbeat       int64 // unix millis
+	CurrentTaskID       string
+	CurrentTaskPriority float64 // original priority for crash re-enqueue
+	RegisteredAt        int64   // unix millis
 }
 
 // Event represents an entry published to the event stream.
@@ -59,9 +60,14 @@ type StateStore interface {
 	// ── Event stream ─────────────────────────────────────────────────────────
 	PublishEvent(ctx context.Context, event Event) error
 
+	// ── Agent task binding ──────────────────────────────────────────────────
+	// ClearCurrentTask zeroes CurrentTaskID and CurrentTaskPriority for the
+	// given agent without reading the full record first (blind write).
+	ClearCurrentTask(ctx context.Context, agentID string) error
+
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────
 	EnqueueTask(ctx context.Context, taskID string, priority float64) error
-	DequeueTask(ctx context.Context) (string, error)
+	DequeueTask(ctx context.Context) (string, float64, error)
 	QueueLength(ctx context.Context) (int64, error)
 
 	// ── Lifecycle ────────────────────────────────────────────────────────────
