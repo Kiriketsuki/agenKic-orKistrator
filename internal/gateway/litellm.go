@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -66,12 +67,13 @@ type LiteLLMClient struct {
 type LiteLLMOption func(*LiteLLMClient)
 
 // WithBaseURL sets the base URL of the LiteLLM proxy (default: http://localhost:8000).
-// Only http and https schemes are accepted; other schemes are silently rejected.
+// Only http and https schemes are accepted; other schemes are rejected with a warning log.
 func WithBaseURL(u string) LiteLLMOption {
 	return func(c *LiteLLMClient) {
 		parsed, err := url.Parse(u)
 		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return // reject invalid schemes, keep current baseURL
+			slog.Warn("gateway: WithBaseURL rejected invalid scheme, keeping default", "url", u)
+			return
 		}
 		c.baseURL = u
 	}

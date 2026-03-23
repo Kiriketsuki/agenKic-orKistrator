@@ -165,6 +165,13 @@ type liteLLMResponse struct {
         CompletionTokens int `json:"completion_tokens"`
     } `json:"usage"`
 }
+
+type liteLLMErrorBody struct {
+    Error struct {
+        Message string `json:"message"`
+        Type    string `json:"type"`
+    } `json:"error"`
+}
 ```
 
 ### Temperature Constraint Rules
@@ -181,7 +188,7 @@ type liteLLMResponse struct {
 - `net/http` (stdlib) — HTTP transport
 - `encoding/json` (stdlib) — request/response serialisation
 - `context` (stdlib) — cancellation/deadline propagation
-- `log/slog` (stdlib, Go 1.21+) — structured debug logging
+- `log/slog` (stdlib, Go 1.21+) — structured debug logging *(Should-Have — partial: WithBaseURL warning only in T2/T3; full request/response logging deferred)*
 - No external dependencies required for this feature
 
 **LiteLLM sidecar** must be deployed and reachable at the configured base URL. This is an operational dependency, not a code dependency.

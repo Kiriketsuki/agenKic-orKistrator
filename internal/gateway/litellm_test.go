@@ -291,6 +291,20 @@ func TestLiteLLMClient_WithBaseURL_RejectsInvalidSchemes(t *testing.T) {
 				badURL, rt.lastURL, "http://localhost:8000")
 		}
 	}
+
+	// Valid https:// URL — should be accepted by the guard (not fall back to localhost).
+	rt := &recordingTransport{}
+	httpsClient := gateway.NewLiteLLMClient(
+		gateway.WithBaseURL("https://proxy.example.com"),
+		gateway.WithHTTPClient(&http.Client{Transport: rt}),
+	)
+	_, _ = httpsClient.Complete(context.Background(), req)
+	if rt.lastURL == "" {
+		t.Fatal("https URL: no request was made")
+	}
+	if !strings.HasPrefix(rt.lastURL, "https://proxy.example.com") {
+		t.Errorf("https URL: client targeted %q, want prefix %q", rt.lastURL, "https://proxy.example.com")
+	}
 }
 
 func TestLiteLLMClient_WithAdapterResolver(t *testing.T) {
