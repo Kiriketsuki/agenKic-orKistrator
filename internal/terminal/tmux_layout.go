@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,10 +17,8 @@ func (t *TmuxSubstrate) ListSessions(ctx context.Context) ([]Session, error) {
 	)
 	if err != nil {
 		// tmux exits non-zero when no server is running or no sessions exist.
-		// parseTmuxError maps these to a generic error; we treat them as empty.
-		errStr := err.Error()
-		if strings.Contains(errStr, "no server running") ||
-			strings.Contains(errStr, "no sessions") {
+		// parseTmuxError maps these to ErrNoServer; treat as empty.
+		if errors.Is(err, ErrNoServer) {
 			return []Session{}, nil
 		}
 		return nil, fmt.Errorf("list sessions: %w", err)

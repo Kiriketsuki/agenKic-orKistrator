@@ -9,10 +9,9 @@ import (
 )
 
 func TestCaptureOutput_InvalidLines(t *testing.T) {
-	sub, err := NewTmuxSubstrate()
-	if err != nil {
-		t.Skip("tmux not found on PATH; skipping")
-	}
+	// ErrInvalidLines fires before any tmux subprocess call (tmux_capture.go:14),
+	// so this test does not require tmux on PATH.
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
 
 	ctx := context.Background()
 	for _, lines := range []int{0, -1, -100} {

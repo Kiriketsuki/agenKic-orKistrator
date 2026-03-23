@@ -44,4 +44,7 @@ var (
 
 	// ErrInvalidLines is returned when CaptureOutput receives a non-positive line count.
 	ErrInvalidLines = errors.New("terminal: lines must be positive")
+
+	// ErrNoServer is returned when no tmux server is running (no sessions exist).
+	ErrNoServer = errors.New("terminal: no tmux server running")
 )

@@ -35,6 +35,11 @@ func TestSendCommand_ValidSession(t *testing.T) {
 	}
 }
 
+// TestSendCommand_SpecialCharacters verifies that tmux's send-keys API accepts
+// keystroke sequences containing special characters without returning an error.
+// It does NOT verify shell-side interpretation of these commands. End-to-end
+// command execution (SendCommand + CaptureOutput) is covered by TestFullLifecycle
+// in integration_test.go.
 func TestSendCommand_SpecialCharacters(t *testing.T) {
 	skipIfNoTmux(t)
 
