@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
@@ -144,6 +145,84 @@ func TestMachine_UnrecognisedState_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bogus_state") {
 		t.Fatalf("error should contain seeded state; got: %v", err)
+	}
+}
+
+// racyStore wraps a real StateStore and mutates state between Get and CAS to
+// simulate a concurrent writer. This lets us test that ApplyEvent propagates
+// *StateConflictError when the CAS detects a race.
+type racyStore struct {
+	state.StateStore
+	interceptOnce sync.Once
+	agentID       string
+	raceTo        string
+}
+
+func (r *racyStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	// On the first CAS call for the target agent, sneak in a state change
+	// so the CAS will see a mismatch.
+	if agentID == r.agentID {
+		r.interceptOnce.Do(func() {
+			r.StateStore.SetAgentState(ctx, agentID, r.raceTo) //nolint:errcheck
+		})
+	}
+	return r.StateStore.CompareAndSetAgentState(ctx, agentID, expected, next)
+}
+
+func TestMachine_ApplyEvent_CASConflict(t *testing.T) {
+	base := state.NewMockStore()
+	ctx := context.Background()
+	const id = "agent-cas-conflict"
+
+	if err := base.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Wrap the store so it mutates state to "working" just before CAS fires.
+	racy := &racyStore{StateStore: base, agentID: id, raceTo: string(agent.StateWorking)}
+	m := agent.NewMachine(racy)
+
+	// ApplyEvent reads "idle", computes next="assigned", but CAS sees "working".
+	_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+	if err == nil {
+		t.Fatal("expected error from CAS conflict, got nil")
+	}
+	var conflict *state.StateConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *StateConflictError, got %T: %v", err, err)
+	}
+	if conflict.Expected != string(agent.StateIdle) {
+		t.Fatalf("Expected: want %q, got %q", agent.StateIdle, conflict.Expected)
+	}
+	// State should remain "working" (the concurrent writer's value).
+	got, _ := base.GetAgentState(ctx, id)
+	if got != string(agent.StateWorking) {
+		t.Fatalf("state: want %q, got %q", agent.StateWorking, got)
+	}
+}
+
+func TestMachine_ApplyEvent_HappyPath_UsesCAS(t *testing.T) {
+	m, store := newMachine(t)
+	ctx := context.Background()
+	const id = "agent-cas-happy"
+
+	if err := store.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	snap, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+	if err != nil {
+		t.Fatalf("ApplyEvent: %v", err)
+	}
+	if snap.State != agent.StateAssigned {
+		t.Fatalf("want assigned, got %s", snap.State)
+	}
+	if snap.PreviousState != agent.StateIdle {
+		t.Fatalf("want prevState=idle, got %s", snap.PreviousState)
+	}
+	got, _ := store.GetAgentState(ctx, id)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("persisted state: want assigned, got %s", got)
 	}
 }
 

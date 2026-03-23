@@ -53,8 +53,8 @@ func (m *Machine) ApplyEvent(ctx context.Context, agentID string, event AgentEve
 		return AgentSnapshot{}, err
 	}
 
-	if err := m.store.SetAgentState(ctx, agentID, string(next)); err != nil {
-		return AgentSnapshot{}, fmt.Errorf("persist state for agent %s: %w", agentID, err)
+	if err := m.store.CompareAndSetAgentState(ctx, agentID, rawState, string(next)); err != nil {
+		return AgentSnapshot{}, err
 	}
 
 	return AgentSnapshot{
