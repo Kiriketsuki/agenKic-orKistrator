@@ -35,7 +35,7 @@
 - **Error normalisation** — HTTP 429 maps to `gateway.ErrRateLimited`; HTTP 5xx maps to `gateway.ErrProviderUnavailable`; non-JSON or structurally incomplete responses map to a descriptive error; network errors are wrapped and returned as-is
 - **`FormatAdapter` interface** — `Name() string`, `FormatRequest(req CompletionRequest) CompletionRequest`, `ParseModelName(model string) bool` — each provider implements this to adjust provider-specific fields (temperature clamping, model name normalization) on the typed request before serialization. Note: `FormatRequest` intentionally omits an error return — current adapters only perform infallible field adjustments. When a future adapter needs to reject a request, evolve to `(CompletionRequest, error)` and update `Registry.Resolve` accordingly. Blast radius at time of writing: 3 adapters, 1 call site.
 - **Anthropic adapter** — handles all `claude-*` model names; clamps `Temperature` to `[0.0, 1.0]` (Anthropic rejects values above 1.0); passes `MaxTokens` as `max_tokens`
-- **OpenAI adapter** — handles `gpt-*`, `o1-*`, `o3-*` model names; zeros `Temperature` for reasoning models (`o1-*`, `o3-*`) because they do not support sampling temperature; passes `MaxTokens` as `max_tokens`
+- **OpenAI adapter** — handles `gpt-*`, `o1-*`, `o3-*` model names; omits `Temperature` for reasoning models (`o1-*`, `o3-*`) because they do not support sampling temperature (set to negative sentinel, omitted from JSON); passes `MaxTokens` as `max_tokens`
 - **Ollama adapter** — handles `ollama/*` model names; strips the `ollama/` prefix before forwarding to LiteLLM; passes all fields through without modification (Ollama models do not have special temperature constraints at the gateway level)
 - **Adapter registry** — `Registry` struct with ordered adapter list and two methods: `Find(model string) (FormatAdapter, error)` returns the first matching adapter or `ErrNoProvider`; `Resolve(model string, req CompletionRequest) (CompletionRequest, error)` calls `Find` then `FormatRequest`. `Registry` implements the `gateway.AdapterResolver` interface, which `LiteLLMClient` depends on via dependency inversion
 
@@ -121,7 +121,7 @@ type AdapterResolver interface {
 type LiteLLMClient struct { /* unexported fields */ }
 
 // NewLiteLLMClient constructs a client with the given functional options.
-// Defaults: baseURL = "http://localhost:4000", timeout = 30s.
+// Defaults: baseURL = "http://localhost:8000", timeout = 30s.
 func NewLiteLLMClient(opts ...Option) *LiteLLMClient
 
 // Option is a functional option for LiteLLMClient.
@@ -177,7 +177,7 @@ type usage struct {
 |:--------|:-------------|:----------------------|
 | Anthropic | `claude-*` | Clamp to `[0.0, 1.0]`; values `< 0` use provider default (omit field) |
 | OpenAI | `gpt-*` | Pass through; values `< 0` use provider default (omit field) |
-| OpenAI | `o1-*`, `o3-*` | Always zero the temperature field (reasoning models ignore it but reject non-zero) |
+| OpenAI | `o1-*`, `o3-*` | Always omit the temperature field — set to negative sentinel so it is excluded from JSON (reasoning models reject any explicit temperature parameter) |
 | Ollama | `ollama/*` | Pass through unchanged |
 
 ### Dependencies
@@ -210,8 +210,8 @@ Feature: LiteLLM Client & Provider Adapters
   So that all AI provider calls go through a single, consistent interface
 
   Background:
-    Given a LiteLLM proxy is running at "http://localhost:4000"
-    And an AdapterRegistry is populated with Anthropic, OpenAI, and Ollama adapters
+    Given a LiteLLM proxy is running at "http://localhost:8000"
+    And a Registry is populated with Anthropic, OpenAI, and Ollama adapters
 
   Rule: Successful completion returns normalised response
 
@@ -273,23 +273,23 @@ Feature: LiteLLM Client & Provider Adapters
   Rule: Provider adapter routes to correct adapter by model prefix
 
     Scenario: Model "claude-haiku-4-5" routes to Anthropic adapter
-      When AdapterRegistry.Lookup is called with "claude-haiku-4-5"
+      When Registry.Find is called with "claude-haiku-4-5"
       Then the returned adapter has Name() == "anthropic"
 
     Scenario: Model "gpt-4o" routes to OpenAI adapter
-      When AdapterRegistry.Lookup is called with "gpt-4o"
+      When Registry.Find is called with "gpt-4o"
       Then the returned adapter has Name() == "openai"
 
     Scenario: Model "o1-mini" routes to OpenAI adapter
-      When AdapterRegistry.Lookup is called with "o1-mini"
+      When Registry.Find is called with "o1-mini"
       Then the returned adapter has Name() == "openai"
 
     Scenario: Model "ollama/llama3" routes to Ollama adapter
-      When AdapterRegistry.Lookup is called with "ollama/llama3"
+      When Registry.Find is called with "ollama/llama3"
       Then the returned adapter has Name() == "ollama"
 
     Scenario: Unknown model prefix returns ErrNoProvider
-      When AdapterRegistry.Lookup is called with "unknown-model-xyz"
+      When Registry.Find is called with "unknown-model-xyz"
       Then an error is returned that matches gateway.ErrNoProvider
 
   Rule: Anthropic adapter enforces temperature constraints
@@ -312,19 +312,19 @@ Feature: LiteLLM Client & Provider Adapters
       When FormatRequest is called
       Then the formatted request has temperature set to 0.7
 
-  Rule: OpenAI adapter zeroes temperature for reasoning models
+  Rule: OpenAI adapter omits temperature for reasoning models
 
-    Scenario: o1 reasoning model gets temperature zeroed
+    Scenario: o1 reasoning model gets temperature omitted
       Given an OpenAIAdapter
       And a CompletionRequest with model "o1-mini" and Temperature set to 0.9
       When FormatRequest is called
-      Then the formatted request has temperature set to 0.0
+      Then the formatted request has temperature set to a negative value (omitted from JSON)
 
-    Scenario: o3 reasoning model gets temperature zeroed
+    Scenario: o3 reasoning model gets temperature omitted
       Given an OpenAIAdapter
       And a CompletionRequest with model "o3-mini" and Temperature set to 0.5
       When FormatRequest is called
-      Then the formatted request has temperature set to 0.0
+      Then the formatted request has temperature set to a negative value (omitted from JSON)
 
     Scenario: gpt-4o preserves requested temperature
       Given an OpenAIAdapter
@@ -367,8 +367,8 @@ Feature: LiteLLM Client & Provider Adapters
 - [ ] `LiteLLMClient` compiles and implements `gateway.Completer`
 - [ ] All acceptance scenarios pass as Go unit tests (no external service required — `httptest.NewServer` used throughout)
 - [ ] `FormatAdapter` interface is implemented by all three adapters (Anthropic, OpenAI, Ollama)
-- [ ] `AdapterRegistry.Lookup` correctly routes all model prefixes defined in acceptance scenarios
-- [ ] Temperature clamping: Anthropic adapter rejects Temperature > 1.0 by clamping; OpenAI adapter zeros temperature for o1/o3 models — both verified in tests
+- [ ] `Registry.Find` correctly routes all model prefixes defined in acceptance scenarios
+- [ ] Temperature clamping: Anthropic adapter rejects Temperature > 1.0 by clamping; OpenAI adapter omits temperature for o1/o3 models (negative sentinel, excluded from JSON) — both verified in tests
 - [ ] Error sentinel values (`ErrRateLimited`, `ErrProviderUnavailable`, `ErrNoProvider`) are returned correctly and unwrappable with `errors.Is`
 - [ ] No external dependencies added beyond stdlib
 - [ ] `go vet ./internal/gateway/...` passes clean

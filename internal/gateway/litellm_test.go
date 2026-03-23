@@ -6,10 +6,21 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/gateway"
 )
+
+// recordingTransport captures the URL of the first request made through it.
+type recordingTransport struct {
+	lastURL string
+}
+
+func (t *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.lastURL = req.URL.String()
+	return nil, errors.New("intentional test stop")
+}
 
 func TestLiteLLMClient_Complete(t *testing.T) {
 	successBody := `{
@@ -257,17 +268,27 @@ func TestLiteLLMClient_WithBaseURL_RejectsInvalidSchemes(t *testing.T) {
 	}
 
 	// Invalid schemes — should be rejected, falling back to default (localhost:8000).
-	// Complete will fail because localhost:8000 is not running, proving the
-	// invalid URL was NOT used (the test server IS running and would succeed).
+	// We inject a recording RoundTripper to capture the actual URL the client
+	// targets, proving the guard rejected the bad scheme (not just that some
+	// downstream layer like http.Transport caught it).
 	for _, badURL := range []string{
 		"ftp://evil.com",
 		"file:///etc/passwd",
 		"javascript:alert(1)",
 	} {
-		badClient := gateway.NewLiteLLMClient(gateway.WithBaseURL(badURL))
-		_, err := badClient.Complete(context.Background(), req)
-		if err == nil {
-			t.Errorf("WithBaseURL(%q): expected error (fallback to default), got success — invalid scheme was not rejected", badURL)
+		rt := &recordingTransport{}
+		badClient := gateway.NewLiteLLMClient(
+			gateway.WithBaseURL(badURL),
+			gateway.WithHTTPClient(&http.Client{Transport: rt}),
+		)
+		_, _ = badClient.Complete(context.Background(), req)
+		if rt.lastURL == "" {
+			t.Errorf("WithBaseURL(%q): no request was made", badURL)
+			continue
+		}
+		if !strings.HasPrefix(rt.lastURL, "http://localhost:8000") {
+			t.Errorf("WithBaseURL(%q): client targeted %q, want prefix %q — invalid scheme was not rejected by guard",
+				badURL, rt.lastURL, "http://localhost:8000")
 		}
 	}
 }
