@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,23 +18,24 @@ func TestFullLifecycle(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "integration-lifecycle"
 	// Clean up any stale session from a previous failed run.
-	_ = sub.DestroySession(sessionName)
+	_ = sub.DestroySession(ctx, sessionName)
 
 	// --- SpawnSession ---
-	sess, err := sub.SpawnSession(sessionName, "bash")
+	sess, err := sub.SpawnSession(ctx, sessionName, "bash")
 	if err != nil {
 		t.Fatalf("SpawnSession: %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
 	if sess.Name != sessionName {
 		t.Errorf("SpawnSession: Name got %q, want %q", sess.Name, sessionName)
 	}
 
 	// --- SendCommand ---
-	if err := sub.SendCommand(sessionName, "echo INTEGRATION_MARKER_12345"); err != nil {
+	if err := sub.SendCommand(ctx, sessionName, "echo INTEGRATION_MARKER_12345"); err != nil {
 		t.Fatalf("SendCommand: %v", err)
 	}
 
@@ -41,7 +43,7 @@ func TestFullLifecycle(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// --- CaptureOutput ---
-	out, err := sub.CaptureOutput(sessionName, 50)
+	out, err := sub.CaptureOutput(ctx, sessionName, 50)
 	if err != nil {
 		t.Fatalf("CaptureOutput: %v", err)
 	}
@@ -50,7 +52,7 @@ func TestFullLifecycle(t *testing.T) {
 	}
 
 	// --- SplitPane ---
-	pane, err := sub.SplitPane(sessionName, Horizontal)
+	pane, err := sub.SplitPane(ctx, sessionName, Horizontal)
 	if err != nil {
 		t.Fatalf("SplitPane(Horizontal): %v", err)
 	}
@@ -62,7 +64,7 @@ func TestFullLifecycle(t *testing.T) {
 	}
 
 	// --- ListSessions ---
-	sessions, err := sub.ListSessions()
+	sessions, err := sub.ListSessions(ctx)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
@@ -78,12 +80,12 @@ func TestFullLifecycle(t *testing.T) {
 	}
 
 	// --- DestroySession ---
-	if err := sub.DestroySession(sessionName); err != nil {
+	if err := sub.DestroySession(ctx, sessionName); err != nil {
 		t.Fatalf("DestroySession: %v", err)
 	}
 
 	// Verify session is gone.
-	err = sub.DestroySession(sessionName)
+	err = sub.DestroySession(ctx, sessionName)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("DestroySession after destroy: got %v, want ErrSessionNotFound", err)
 	}
@@ -97,15 +99,16 @@ func TestDuplicateSession(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "integration-duplicate"
-	_ = sub.DestroySession(sessionName)
+	_ = sub.DestroySession(ctx, sessionName)
 
-	if _, err := sub.SpawnSession(sessionName, ""); err != nil {
+	if _, err := sub.SpawnSession(ctx, sessionName, ""); err != nil {
 		t.Fatalf("SpawnSession (first): %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
-	_, err = sub.SpawnSession(sessionName, "")
+	_, err = sub.SpawnSession(ctx, sessionName, "")
 	if !errors.Is(err, ErrSessionExists) {
 		t.Errorf("SpawnSession (duplicate): got %v, want ErrSessionExists", err)
 	}
@@ -118,7 +121,8 @@ func TestSendCommand_NonExistentSession(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
-	err = sub.SendCommand("integration-ghost-session", "echo hello")
+	ctx := context.Background()
+	err = sub.SendCommand(ctx, "integration-ghost-session", "echo hello")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("SendCommand to ghost: got %v, want ErrSessionNotFound", err)
 	}
@@ -131,7 +135,8 @@ func TestCaptureOutput_NonExistentSession(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
-	_, err = sub.CaptureOutput("integration-ghost-session", 10)
+	ctx := context.Background()
+	_, err = sub.CaptureOutput(ctx, "integration-ghost-session", 10)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("CaptureOutput to ghost: got %v, want ErrSessionNotFound", err)
 	}
@@ -144,36 +149,35 @@ func TestMultiPaneGrid(t *testing.T) {
 		t.Fatalf("NewTmuxSubstrate: %v", err)
 	}
 
+	ctx := context.Background()
 	const sessionName = "integration-grid"
-	_ = sub.DestroySession(sessionName)
+	_ = sub.DestroySession(ctx, sessionName)
 
-	if _, err := sub.SpawnSession(sessionName, ""); err != nil {
+	if _, err := sub.SpawnSession(ctx, sessionName, ""); err != nil {
 		t.Fatalf("SpawnSession: %v", err)
 	}
-	t.Cleanup(func() { _ = sub.DestroySession(sessionName) })
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
 
 	// Split into 4 panes: horizontal, then vertical on each half.
-	if _, err := sub.SplitPane(sessionName, Horizontal); err != nil {
+	if _, err := sub.SplitPane(ctx, sessionName, Horizontal); err != nil {
 		t.Fatalf("SplitPane 1 (H): %v", err)
 	}
-	if _, err := sub.SplitPane(sessionName, Vertical); err != nil {
+	if _, err := sub.SplitPane(ctx, sessionName, Vertical); err != nil {
 		t.Fatalf("SplitPane 2 (V): %v", err)
 	}
-	// Select the first pane, then split it vertically too.
-	// We don't have SelectPane yet, so just do another split — we'll have 4 panes.
-	if _, err := sub.SplitPane(sessionName, Vertical); err != nil {
+	if _, err := sub.SplitPane(ctx, sessionName, Vertical); err != nil {
 		t.Fatalf("SplitPane 3 (V): %v", err)
 	}
 
-	// Verify via ListSessions that PaneCount is reasonable (may be more with tabs).
-	sessions, err := sub.ListSessions()
+	// Verify via ListSessions that the session exists.
+	sessions, err := sub.ListSessions(ctx)
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
 	for _, s := range sessions {
 		if s.Name == sessionName {
-			if s.PaneCount < 1 {
-				t.Errorf("PaneCount should be >= 1, got %d", s.PaneCount)
+			if s.WindowCount < 1 {
+				t.Errorf("WindowCount should be >= 1, got %d", s.WindowCount)
 			}
 			return
 		}

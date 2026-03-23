@@ -1,10 +1,14 @@
 package terminal
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
 )
+
+// Compile-time check: TmuxSubstrate must implement Substrate.
+var _ Substrate = (*TmuxSubstrate)(nil)
 
 // TmuxSubstrate implements Substrate using the tmux terminal multiplexer.
 type TmuxSubstrate struct {
@@ -22,52 +26,47 @@ func NewTmuxSubstrate() (*TmuxSubstrate, error) {
 }
 
 // run executes a tmux command with the given arguments and returns stdout.
-// If tmux exits non-zero, the stderr content is returned as the error message.
-func (t *TmuxSubstrate) run(args ...string) (string, error) {
-	cmd := exec.Command(t.tmuxPath, args...)
+// Errors are mapped to typed sentinels via parseTmuxError (case-insensitive).
+func (t *TmuxSubstrate) run(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, t.tmuxPath, args...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("tmux %s: %s", args[0], strings.TrimSpace(stderr.String()))
+		return "", parseTmuxError(strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
 }
 
 // SpawnSession creates a new detached tmux session with the given name
-// running the specified command.
-func (t *TmuxSubstrate) SpawnSession(name string, cmd string) (Session, error) {
+// running the specified command. Name must be valid per ValidateSessionName.
+func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd string) (Session, error) {
+	if err := ValidateSessionName(name); err != nil {
+		return Session{}, err
+	}
+
 	args := []string{"new-session", "-d", "-s", name, "-x", "200", "-y", "50"}
 	if cmd != "" {
 		args = append(args, cmd)
 	}
 
-	if _, err := t.run(args...); err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "duplicate session") {
-			return Session{}, ErrSessionExists
-		}
+	if _, err := t.run(ctx, args...); err != nil {
 		return Session{}, fmt.Errorf("spawn session %q: %w", name, err)
 	}
 
 	return Session{
-		Name:      name,
-		Width:     200,
-		Height:    50,
-		PaneCount: 1,
-		Attached:  false,
+		Name:        name,
+		Width:       200,
+		Height:      50,
+		WindowCount: 1,
+		Attached:    false,
 	}, nil
 }
 
 // DestroySession kills the named tmux session.
-func (t *TmuxSubstrate) DestroySession(name string) error {
-	if _, err := t.run("kill-session", "-t", name); err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "session not found") ||
-			strings.Contains(errStr, "can't find session") {
-			return ErrSessionNotFound
-		}
+func (t *TmuxSubstrate) DestroySession(ctx context.Context, name string) error {
+	if _, err := t.run(ctx, "kill-session", "-t", name); err != nil {
 		return fmt.Errorf("destroy session %q: %w", name, err)
 	}
 	return nil

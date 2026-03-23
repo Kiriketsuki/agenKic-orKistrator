@@ -47,6 +47,10 @@ func parseTmuxError(stderr string) error {
 		return ErrSessionExists
 	case strings.Contains(s, "create pane failed") || strings.Contains(s, "no room for new pane"):
 		return ErrPaneLimit
+	case strings.Contains(s, "no server running") ||
+		strings.Contains(s, "no sessions") ||
+		strings.Contains(s, "error connecting to"):
+		return ErrNoServer
 	default:
 		return fmt.Errorf("tmux: %s", strings.TrimSpace(stderr))
 	}

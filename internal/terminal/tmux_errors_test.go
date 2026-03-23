@@ -61,6 +61,20 @@ func TestParseTmuxError_PaneLimit(t *testing.T) {
 	}
 }
 
+// TestParseTmuxError_NoServer verifies "no server running" and related patterns.
+func TestParseTmuxError_NoServer(t *testing.T) {
+	for _, msg := range []string{
+		"no server running on /tmp/tmux-1000/default",
+		"no sessions",
+		"error connecting to /tmp/tmux-1000/default: No such file or directory",
+	} {
+		err := parseTmuxError(msg)
+		if !errors.Is(err, ErrNoServer) {
+			t.Errorf("parseTmuxError(%q) = %v, want ErrNoServer", msg, err)
+		}
+	}
+}
+
 // TestParseTmuxError_Generic verifies unknown stderr is wrapped as a plain error.
 func TestParseTmuxError_Generic(t *testing.T) {
 	msg := "some unknown tmux error"
@@ -68,7 +82,7 @@ func TestParseTmuxError_Generic(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseTmuxError(unknown) returned nil")
 	}
-	if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExists) || errors.Is(err, ErrPaneLimit) {
+	if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExists) || errors.Is(err, ErrPaneLimit) || errors.Is(err, ErrNoServer) {
 		t.Errorf("parseTmuxError(unknown) matched a sentinel: %v", err)
 	}
 	if !strings.Contains(err.Error(), msg) {
