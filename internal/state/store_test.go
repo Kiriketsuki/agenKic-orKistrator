@@ -264,4 +264,93 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		// Clean up.
 		_, _, _ = store.DequeueTask(ctx)
 	})
+
+	t.Run("CompareAndSetAgentState succeeds when expected matches", func(t *testing.T) {
+		const agentID = "agent-cas-001"
+		if err := store.SetAgentState(ctx, agentID, "idle"); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if err := store.CompareAndSetAgentState(ctx, agentID, "idle", "assigned"); err != nil {
+			t.Fatalf("CAS: %v", err)
+		}
+		got, err := store.GetAgentState(ctx, agentID)
+		if err != nil {
+			t.Fatalf("GetAgentState: %v", err)
+		}
+		if got != "assigned" {
+			t.Fatalf("want state=assigned, got %q", got)
+		}
+	})
+
+	t.Run("CompareAndSetAgentState returns StateConflictError on mismatch", func(t *testing.T) {
+		const agentID = "agent-cas-002"
+		if err := store.SetAgentState(ctx, agentID, "working"); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		err := store.CompareAndSetAgentState(ctx, agentID, "idle", "assigned")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		var conflict *state.StateConflictError
+		if !errors.As(err, &conflict) {
+			t.Fatalf("want *StateConflictError, got %T: %v", err, err)
+		}
+		if conflict.Expected != "idle" {
+			t.Fatalf("Expected field: want \"idle\", got %q", conflict.Expected)
+		}
+		if conflict.Actual != "working" {
+			t.Fatalf("Actual field: want \"working\", got %q", conflict.Actual)
+		}
+		// State must not change.
+		got, _ := store.GetAgentState(ctx, agentID)
+		if got != "working" {
+			t.Fatalf("state should remain \"working\", got %q", got)
+		}
+	})
+
+	t.Run("CompareAndSetAgentState returns ErrAgentNotFound for unknown agent", func(t *testing.T) {
+		err := store.CompareAndSetAgentState(ctx, "agent-cas-ghost", "idle", "assigned")
+		if !errors.Is(err, state.ErrAgentNotFound) {
+			t.Fatalf("want ErrAgentNotFound, got %v", err)
+		}
+	})
+
+	t.Run("CompareAndSetAgentState concurrent race exactly one wins", func(t *testing.T) {
+		const agentID = "agent-cas-race"
+		if err := store.SetAgentState(ctx, agentID, "idle"); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		const n = 10
+		errs := make(chan error, n)
+		for i := 0; i < n; i++ {
+			go func() {
+				errs <- store.CompareAndSetAgentState(ctx, agentID, "idle", "assigned")
+			}()
+		}
+
+		var wins, conflicts int
+		for i := 0; i < n; i++ {
+			err := <-errs
+			if err == nil {
+				wins++
+			} else {
+				var conflict *state.StateConflictError
+				if !errors.As(err, &conflict) {
+					t.Errorf("unexpected error type %T: %v", err, err)
+				}
+				conflicts++
+			}
+		}
+		if wins != 1 {
+			t.Fatalf("want exactly 1 winner, got %d", wins)
+		}
+		if conflicts != n-1 {
+			t.Fatalf("want %d conflicts, got %d", n-1, conflicts)
+		}
+		got, _ := store.GetAgentState(ctx, agentID)
+		if got != "assigned" {
+			t.Fatalf("final state: want \"assigned\", got %q", got)
+		}
+	})
 }

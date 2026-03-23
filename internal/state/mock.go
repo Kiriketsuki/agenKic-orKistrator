@@ -73,6 +73,23 @@ func (m *MockStore) GetAgentState(ctx context.Context, agentID string) (string, 
 	return rec.fields.State, nil
 }
 
+func (m *MockStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	rec, ok := m.agents[agentID]
+	if !ok {
+		return ErrAgentNotFound
+	}
+	if rec.fields.State != expected {
+		return &StateConflictError{Expected: expected, Actual: rec.fields.State}
+	}
+	updated := rec.fields
+	updated.State = next
+	rec.fields = updated
+	return nil
+}
+
 // ── Agent full record ─────────────────────────────────────────────────────────
 
 // SetSetAgentFieldsError configures SetAgentFields to return err.

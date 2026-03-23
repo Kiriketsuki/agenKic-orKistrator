@@ -47,6 +47,11 @@ type StateStore interface {
 	// ── Agent state ──────────────────────────────────────────────────────────
 	SetAgentState(ctx context.Context, agentID string, state string) error
 	GetAgentState(ctx context.Context, agentID string) (string, error)
+	// CompareAndSetAgentState atomically sets the agent's state to next only
+	// if the current state equals expected. Returns *StateConflictError if the
+	// current state does not match expected, or ErrAgentNotFound if the agent
+	// does not exist.
+	CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error
 
 	// ── Agent full record ────────────────────────────────────────────────────
 	SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error
