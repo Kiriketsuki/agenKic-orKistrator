@@ -12,11 +12,11 @@ const (
 
 // Session represents a terminal multiplexer session.
 type Session struct {
-	Name      string // unique session identifier (e.g. "agent-codegen-01")
-	Width     int    // columns
-	Height    int    // rows
-	PaneCount int    // number of panes in the session
-	Attached  bool   // whether a client is attached
+	Name        string // unique session identifier (e.g. "agent-codegen-01")
+	Width       int    // columns; 0 for detached sessions returned by ListSessions
+	Height      int    // rows; 0 for detached sessions returned by ListSessions
+	WindowCount int    // number of windows in the session
+	Attached    bool   // whether a client is attached
 }
 
 // Pane represents a single pane within a session.
@@ -44,4 +44,7 @@ var (
 
 	// ErrInvalidLines is returned when CaptureOutput receives a non-positive line count.
 	ErrInvalidLines = errors.New("terminal: lines must be positive")
+
+	// ErrNoServer is returned when no tmux server is running (no sessions exist).
+	ErrNoServer = errors.New("terminal: no tmux server running")
 )
