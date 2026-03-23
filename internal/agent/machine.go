@@ -22,16 +22,20 @@ func NewMachine(store state.StateStore) *Machine {
 }
 
 // ApplyEvent reads the agent's current state, validates the transition, and
-// persists the new state. It returns an immutable AgentSnapshot on success.
+// atomically persists the new state via CompareAndSetAgentState. It returns an
+// immutable AgentSnapshot on success.
 //
 // Errors:
 //   - state.ErrAgentNotFound if the agent has no record in the store.
 //   - *InvalidTransitionError if the (current, event) pair is not valid.
+//   - *state.StateConflictError if the state changed between read and CAS
+//     (concurrent modification detected).
 //   - Any storage error from the underlying StateStore.
 //
-// Concurrency: callers must serialize ApplyEvent calls per agentID.
-// The supervisor (F2) enforces this invariant; concurrent calls for the
-// same agent produce undefined results.
+// Concurrency: ApplyEvent is safe for concurrent calls on the same agentID at
+// the storage level — CompareAndSetAgentState provides atomicity. The
+// supervisor's per-agent mutex remains as a performance optimisation to reduce
+// contention at Redis, but is no longer the sole correctness guard.
 //
 // Event publishing: the Machine handles only state transitions. Callers
 // are responsible for publishing domain events via StateStore.PublishEvent
