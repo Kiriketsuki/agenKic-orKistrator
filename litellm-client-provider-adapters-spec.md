@@ -122,14 +122,14 @@ type LiteLLMClient struct { /* unexported fields */ }
 
 // NewLiteLLMClient constructs a client with the given functional options.
 // Defaults: baseURL = "http://localhost:8000", timeout = 30s.
-func NewLiteLLMClient(opts ...Option) *LiteLLMClient
+func NewLiteLLMClient(opts ...LiteLLMOption) *LiteLLMClient
 
-// Option is a functional option for LiteLLMClient.
-type Option func(*LiteLLMClient)
+// LiteLLMOption is a functional option for LiteLLMClient.
+type LiteLLMOption func(*LiteLLMClient)
 
-func WithBaseURL(url string) Option
-func WithTimeout(d time.Duration) Option
-func WithHTTPClient(c *http.Client) Option
+func WithBaseURL(url string) LiteLLMOption
+func WithTimeout(d time.Duration) LiteLLMOption
+func WithHTTPClient(c *http.Client) LiteLLMOption
 
 // Complete implements gateway.Completer.
 func (c *LiteLLMClient) Complete(ctx context.Context, req gateway.CompletionRequest) (gateway.CompletionResponse, error)
@@ -141,33 +141,29 @@ func (c *LiteLLMClient) Provider() string
 **OpenAI-compatible wire types** (unexported, used within `litellm.go`):
 
 ```go
-type chatCompletionRequest struct {
-    Model       string               `json:"model"`
-    Messages    []chatMessage        `json:"messages"`
-    MaxTokens   int                  `json:"max_tokens,omitempty"`
-    Temperature *float64             `json:"temperature,omitempty"`
+type liteLLMRequest struct {
+    Model       string           `json:"model"`
+    Messages    []liteLLMMessage `json:"messages"`
+    MaxTokens   int              `json:"max_tokens,omitempty"`
+    Temperature *float64         `json:"temperature,omitempty"`
 }
 
-type chatMessage struct {
+type liteLLMMessage struct {
     Role    string `json:"role"`
     Content string `json:"content"`
 }
 
-type chatCompletionResponse struct {
-    ID      string   `json:"id"`
-    Choices []choice `json:"choices"`
-    Usage   usage    `json:"usage"`
-    Model   string   `json:"model"`
-}
-
-type choice struct {
-    Message      chatMessage `json:"message"`
-    FinishReason string      `json:"finish_reason"`
-}
-
-type usage struct {
-    PromptTokens     int `json:"prompt_tokens"`
-    CompletionTokens int `json:"completion_tokens"`
+type liteLLMResponse struct {
+    Choices []struct {
+        Message struct {
+            Content string `json:"content"`
+        } `json:"message"`
+    } `json:"choices"`
+    Model string `json:"model"`
+    Usage struct {
+        PromptTokens     int `json:"prompt_tokens"`
+        CompletionTokens int `json:"completion_tokens"`
+    } `json:"usage"`
 }
 ```
 
@@ -300,11 +296,13 @@ Feature: LiteLLM Client & Provider Adapters
       When FormatRequest is called
       Then the formatted request has temperature set to 1.0
 
-    Scenario: Negative temperature is omitted
+    Scenario: Negative temperature is preserved by adapter (omitted at serialization)
       Given an AnthropicAdapter
       And a CompletionRequest with Temperature set to -1
       When FormatRequest is called
-      Then the formatted request does not include the temperature field
+      Then the formatted request has Temperature set to -1 (unchanged by adapter)
+      # Note: JSON omission of negative temperatures happens in LiteLLMClient.buildRequest,
+      # not in the adapter. The adapter passes through negative values unchanged.
 
     Scenario: Temperature of 0.7 is preserved
       Given an AnthropicAdapter
@@ -347,7 +345,7 @@ Feature: LiteLLM Client & Provider Adapters
 
 | ID  | Task | Priority | Dependencies | Status |
 |:----|:-----|:---------|:-------------|:-------|
-| T2.1 | Define OpenAI-compatible wire structs (`chatCompletionRequest`, `chatCompletionResponse`, etc.) in `litellm.go` | High | T1 | pending |
+| T2.1 | Define OpenAI-compatible wire structs (`liteLLMRequest`, `liteLLMResponse`, etc.) in `litellm.go` | High | T1 | pending |
 | T2.2 | Implement `LiteLLMClient` struct, `NewLiteLLMClient`, and functional options (`WithBaseURL`, `WithTimeout`, `WithHTTPClient`) | High | T2.1 | pending |
 | T2.3 | Implement `LiteLLMClient.Complete`: marshal request, POST, unmarshal response, map to `CompletionResponse` | High | T2.2 | pending |
 | T2.4 | Implement HTTP error mapping (429 → `ErrRateLimited`, 5xx → `ErrProviderUnavailable`, empty choices → error) | High | T2.3 | pending |
