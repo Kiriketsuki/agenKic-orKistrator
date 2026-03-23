@@ -3,17 +3,8 @@ package terminal
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"testing"
 )
-
-// skipIfNoTmux skips the test if tmux is not available on PATH.
-func skipIfNoTmux(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("tmux"); err != nil {
-		t.Skip("tmux not found on PATH; skipping integration test")
-	}
-}
 
 func TestSendCommand_ValidSession(t *testing.T) {
 	skipIfNoTmux(t)
