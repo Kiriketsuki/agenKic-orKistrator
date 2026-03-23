@@ -60,6 +60,11 @@ type StateStore interface {
 	// ── Event stream ─────────────────────────────────────────────────────────
 	PublishEvent(ctx context.Context, event Event) error
 
+	// ── Agent task binding ──────────────────────────────────────────────────
+	// ClearCurrentTask zeroes CurrentTaskID and CurrentTaskPriority for the
+	// given agent without reading the full record first (blind write).
+	ClearCurrentTask(ctx context.Context, agentID string) error
+
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────
 	EnqueueTask(ctx context.Context, taskID string, priority float64) error
 	DequeueTask(ctx context.Context) (string, float64, error)

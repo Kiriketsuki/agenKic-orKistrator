@@ -167,6 +167,17 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 	}, nil
 }
 
+func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
+	err := r.client.HSet(ctx, r.agentKey(agentID),
+		fieldCurrentTask, "",
+		fieldCurrentTaskPrio, "0",
+	).Err()
+	if err != nil {
+		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
+	}
+	return nil
+}
+
 func (r *RedisStore) DeleteAgent(ctx context.Context, agentID string) error {
 	pipe := r.client.TxPipeline()
 	pipe.Del(ctx, r.agentKey(agentID))

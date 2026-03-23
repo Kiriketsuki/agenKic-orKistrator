@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -276,8 +277,11 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 	}
 
 	taskID, priority, err := sv.store.DequeueTask(ctx)
+	if errors.Is(err, state.ErrQueueEmpty) {
+		return
+	}
 	if err != nil {
-		// ErrQueueEmpty is expected — not a failure.
+		sv.recordAssignError()
 		return
 	}
 
@@ -449,14 +453,10 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	sv.policy.RecordSuccess(agentID)
 
 	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
-	if cur, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil {
-		cur.CurrentTaskID = ""
-		cur.CurrentTaskPriority = 0
-		if err := sv.store.SetAgentFields(ctx, agentID, cur); err != nil {
-			log.Printf("supervisor: CurrentTaskID not cleared for agent %s — duplicate re-enqueue possible on next crash: %v", agentID, err)
-		}
-	} else {
-		log.Printf("supervisor: GetAgentFields failed for agent %s — CurrentTaskID not cleared, duplicate re-enqueue possible on next crash: %v", agentID, fErr)
+	// Uses a blind write (ClearCurrentTask) instead of read-modify-write to
+	// eliminate the stale-CurrentTaskID risk from GetAgentFields failure.
+	if err := sv.store.ClearCurrentTask(ctx, agentID); err != nil {
+		log.Printf("supervisor: CurrentTaskID not cleared for agent %s — duplicate re-enqueue possible on next crash: %v", agentID, err)
 	}
 
 	sv.mu.Lock()
