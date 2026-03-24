@@ -829,21 +829,21 @@
     </div>
     <script type="text/plain" class="diagram-source">
       graph TD
-        A["Developer commits<br/>visual-explainer HTML"] --> B{"PR event?"}
-        B -->|"opened /<br/>ready_for_review"| C["docs-on-pr.yml<br/>discovers *-spec.html"]
-        B -->|"labeled<br/>ready-to-merge"| D["docs-on-pr.yml<br/>discovers *-impl.html"]
-        B -->|"manual dispatch"| E["gh workflow run<br/>publish-doc.yml"]
-        C --> F["Extract &lt;meta&gt; tags<br/>from HTML file"]
+        A["Developer commits HTML"] --> B{"PR event?"}
+        B -->|"opened"| C["Discover *-spec.html"]
+        B -->|"ready-to-merge"| D["Discover *-impl.html"]
+        B -->|"manual"| E["gh workflow run"]
+        C --> F["Extract meta tags"]
         D --> F
         E --> G
-        F --> G["publish-doc.yml<br/>(reusable engine)"]
-        G --> H["Checkout docs branch<br/>into ./docs-branch/"]
-        G --> I["Checkout source ref<br/>into ./source/"]
-        H --> J["Copy HTML to<br/>target-path"]
+        F --> G["publish-doc.yml"]
+        G --> H["Checkout docs-branch/"]
+        G --> I["Checkout source/"]
+        H --> J["Copy HTML to target"]
         I --> J
-        J --> K["Upsert manifest entry<br/>by href match"]
-        K --> L["Commit + push<br/>to docs branch"]
-        L --> M["GitHub Pages<br/>auto-deploys"]
+        J --> K["Upsert manifest"]
+        K --> L["Commit + push"]
+        L --> M["GitHub Pages deploys"]
     </script>
   </section>
 
