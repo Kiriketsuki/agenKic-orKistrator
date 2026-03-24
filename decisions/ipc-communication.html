@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision #2 — IPC Communication</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --amber-dim: rgba(192, 125, 32, 0.08);
+    --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+      --amber: #e8a040;
+      --amber-dim: rgba(232, 160, 64, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes dotPulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes barGrow {
+    from { width: 0; }
+  }
+
+  .anim {
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .section-dot.is-visible {
+    animation: dotPulse 0.5s var(--ease-out-quart) both;
+  }
+
+  .bar-fill {
+    width: 0;
+    transition: width 0.9s var(--ease-out-quart);
+  }
+  .bar-fill.is-visible {
+    width: var(--bar-w);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal     { opacity: 1; transform: none; }
+    .callout.scroll-reveal { opacity: 1; transform: none; }
+    .bar-fill          { width: var(--bar-w) !important; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 680px;
+    line-height: 1.7;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    margin-top: 56px;
+  }
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* ── PROSE ── */
+  .prose {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 760px;
+  }
+  .prose + .prose { margin-top: 16px; }
+  .prose strong { color: var(--text); }
+
+  /* ── OPTION CARDS GRID ── */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .option-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
+    position: relative;
+  }
+  .option-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+  }
+  .option-card.chosen {
+    border-color: var(--teal);
+    background: var(--teal-dim);
+  }
+  .option-card.chosen:hover {
+    border-color: var(--teal);
+    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.12);
+  }
+  .option-card.partial {
+    border-color: var(--amber);
+    background: var(--amber-dim);
+  }
+  .option-card.partial:hover {
+    border-color: var(--amber);
+    box-shadow: 0 6px 20px rgba(192, 125, 32, 0.10);
+  }
+
+  .option-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .option-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .option-tagline {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  .verdict {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .verdict-chosen  { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
+  .verdict-rejected{ background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
+  .verdict-partial { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+
+  .option-lists { display: flex; flex-direction: column; gap: 10px; }
+  .option-list-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .option-list-label.pros { color: var(--teal); }
+  .option-list-label.cons { color: var(--rose); }
+
+  .option-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .option-list li {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding-left: 14px;
+    position: relative;
+  }
+  .option-list li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+  }
+  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+
+  /* ── LATENCY CHART ── */
+  .latency-chart {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+  .latency-chart-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+  .latency-row {
+    display: grid;
+    grid-template-columns: 170px 1fr 90px;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .latency-row:last-child { border-bottom: none; }
+  .latency-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .latency-label.highlight { color: var(--teal); }
+  .latency-bar-track {
+    height: 8px;
+    background: var(--surface-alt);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+  .bar-fill.bar-teal   { background: var(--teal); }
+  .bar-fill.bar-navy   { background: var(--navy); }
+  .bar-fill.bar-gold   { background: var(--gold); }
+  .bar-fill.bar-amber  { background: var(--amber); }
+  .latency-value {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .chart-note {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 16px;
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  /* ── DECISION SECTION ── */
+  .decision-planes {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+  .plane-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: flex-start;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .plane-card:hover {
+    border-color: var(--border-strong);
+    transform: translateX(4px);
+  }
+  .plane-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+  }
+  .plane-icon.grpc  { background: var(--teal-dim);  color: var(--teal); }
+  .plane-icon.redis { background: var(--gold-dim);   color: var(--gold); }
+  .plane-icon.uds   { background: var(--navy-light); color: var(--navy); }
+  .plane-body h4 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .plane-body p {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.65;
+  }
+  .plane-body p + p { margin-top: 8px; }
+  .plane-body code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── TRADEOFFS ── */
+  .tradeoff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tradeoff-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--rose);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    transition: border-left-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .tradeoff-item:hover {
+    border-left-color: var(--amber);
+    transform: translateX(3px);
+  }
+  .tradeoff-item strong { color: var(--text); }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-top: 20px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── FOOTER ── */
+  .page-footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .page { padding: 24px 16px 60px; }
+    .options-grid { grid-template-columns: 1fr; }
+    .latency-row { grid-template-columns: 130px 1fr 70px; gap: 10px; }
+    .plane-card { grid-template-columns: 1fr; }
+    .plane-card:hover { transform: none; }
+    .tradeoff-item:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-label anim" style="--i:0">Decision #2 &mdash; agenKic-orKistrator</div>
+    <h1 class="anim" style="--i:1">Inter-Process Communication</h1>
+    <p class="hero-desc anim" style="--i:2">
+      Why gRPC + Redis Streams over Unix sockets, shared memory, or ZeroMQ
+    </p>
+  </header>
+
+  <!-- THE QUESTION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
+    <h2>The Question</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    How should agents communicate with the orchestrator and each other? The IPC layer must
+    support <strong>type-safe request/response</strong>, <strong>durable event streams</strong>,
+    <strong>backpressure</strong>, and <strong>low latency</strong> &mdash; all while remaining
+    debuggable. The transport choice determines what the control plane looks like, whether
+    events survive crashes, and how hard it is to trace a message from agent spawn to task
+    completion.
+  </p>
+
+  <!-- OPTIONS CONSIDERED -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--gold)"></div>
+    <h2>Options Considered</h2>
+  </div>
+
+  <div class="options-grid">
+
+    <!-- Option 1: CHOSEN -->
+    <div class="option-card chosen scroll-reveal" style="transition-delay:0ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">gRPC + Redis Streams</div>
+          <div class="option-tagline">Type-safe proto contracts with Redis for durable event delivery</div>
+        </div>
+        <span class="verdict verdict-chosen">Chosen</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Protobuf codegen enforces contract at compile time across all agent boundaries</li>
+            <li>gRPC streaming provides native backpressure via HTTP/2 flow control</li>
+            <li>Redis consumer groups give each agent an independent, resumable cursor</li>
+            <li>Full audit log of every event without extra instrumentation</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>5&ndash;20 ms round-trip adds latency versus local sockets</li>
+            <li>Proto compilation step required in every agent build</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 2: PARTIAL -->
+    <div class="option-card partial scroll-reveal" style="transition-delay:40ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Unix Domain Sockets</div>
+          <div class="option-tagline">Kernel-mediated local IPC with ~130 µs latency</div>
+        </div>
+        <span class="verdict verdict-partial">Partial</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Lowest achievable latency for local same-host communication</li>
+            <li>Zero serialization overhead when paired with length-prefixed frames</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No schema or contract enforcement &mdash; breakage is silent</li>
+            <li>No built-in durability; a crashed consumer loses in-flight messages</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:80ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Shared Memory</div>
+          <div class="option-tagline">POSIX mmap with semaphore coordination, sub-100 ns</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Fastest possible transport &mdash; sub-100 ns memory copy</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>POSIX semaphore coordination introduces deadlock surface area</li>
+            <li>Debugging a corrupted shared segment requires kernel-level tooling</li>
+            <li>Unavailable for cross-host or containerised agents</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 4: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:120ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">ZeroMQ</div>
+          <div class="option-tagline">Brokerless REQ/REP and PUB/SUB socket patterns</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Flexible topology &mdash; dealer/router enables complex fan-out patterns</li>
+            <li>Low overhead; no central broker required</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No schema enforcement; protocol versioning is manual</li>
+            <li>No persistence &mdash; slow consumers silently drop messages</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 5: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:160ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">NATS</div>
+          <div class="option-tagline">Cloud-native pub/sub with JetStream persistence option</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Simple subscribe/publish API; JetStream adds durability</li>
+            <li>Mature Go client with good observability hooks</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Additional infrastructure dependency alongside Redis</li>
+            <li>Less operational familiarity than Redis within the team</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 6: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:200ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">POSIX Message Queues</div>
+          <div class="option-tagline">Kernel-managed mq_open / mq_send with priority support</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>OS-native with no external dependencies</li>
+            <li>Built-in message priority queue semantics</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Linux-only &mdash; breaks macOS dev and container portability</li>
+            <li>Fixed maximum message size; fragmentation is manual</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /options-grid -->
+
+  <!-- LATENCY COMPARISON -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--slate)"></div>
+    <h2>Latency Comparison</h2>
+  </div>
+
+  <div class="latency-chart scroll-reveal">
+    <div class="latency-chart-title">Approximate round-trip latency by transport (log-normalised bars)</div>
+
+    <div class="latency-row">
+      <div class="latency-label">Shared Memory</div>
+      <div class="latency-bar-track">
+        <div class="bar-fill bar-navy" style="--bar-w:4%"></div>
+      </div>
+      <div class="latency-value">~100 ns</div>
+    </div>
+
+    <div class="latency-row">
+      <div class="latency-label">Unix Domain Sockets</div>
+      <div class="latency-bar-track">
+        <div class="bar-fill bar-navy" style="--bar-w:20%"></div>
+      </div>
+      <div class="latency-value">~130 µs</div>
+    </div>
+
+    <div class="latency-row">
+      <div class="latency-label highlight">gRPC (local, chosen)</div>
+      <div class="latency-bar-track">
+        <div class="bar-fill bar-teal" style="--bar-w:58%"></div>
+      </div>
+      <div class="latency-value">5&ndash;20 ms</div>
+    </div>
+
+    <div class="latency-row">
+      <div class="latency-label">gRPC (network)</div>
+      <div class="latency-bar-track">
+        <div class="bar-fill bar-gold" style="--bar-w:90%"></div>
+      </div>
+      <div class="latency-value">20&ndash;50 ms</div>
+    </div>
+
+  </div>
+
+  <p class="chart-note scroll-reveal">
+    Bars are log-normalised; raw latency spans seven orders of magnitude. The orchestrator's
+    control-plane calls are infrequent enough (task dispatch, status polls) that the 5&ndash;20 ms
+    gRPC overhead is acceptable in exchange for schema safety and distributed traceability.
+    Unix sockets are retained for the hot path where sub-millisecond matters.
+  </p>
+
+  <!-- THE DECISION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
+    <h2>The Decision</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    The IPC architecture is split into <strong>three complementary layers</strong>, each matched
+    to the latency and durability requirements of the messages it carries.
+  </p>
+
+  <div class="decision-planes scroll-reveal" style="margin-top:20px">
+
+    <div class="plane-card">
+      <div class="plane-icon grpc">gRPC</div>
+      <div class="plane-body">
+        <h4>Control Plane &mdash; gRPC (proto3)</h4>
+        <p>
+          All orchestrator&harr;agent control messages travel over gRPC: task assignment,
+          heartbeat, cancellation, and result acknowledgement. Protobuf contracts are compiled
+          into Go stubs at build time, so an incompatible change fails the build rather than
+          surfacing as a runtime panic at 3 am. HTTP/2 multiplexing means a single connection
+          carries concurrent streams without head-of-line blocking.
+        </p>
+        <p>
+          Bidirectional streaming is used for long-running agent sessions; the orchestrator
+          pushes directive updates while the agent streams back progress deltas. gRPC
+          interceptors attach <code>trace_id</code> propagation to every call, giving
+          end-to-end distributed traces across agent boundaries at zero agent-side effort.
+        </p>
+      </div>
+    </div>
+
+    <div class="plane-card">
+      <div class="plane-icon redis">Redis</div>
+      <div class="plane-body">
+        <h4>Event Plane &mdash; Redis Streams</h4>
+        <p>
+          Asynchronous domain events (agent lifecycle, tool invocations, LLM token usage,
+          audit entries) are written to Redis Streams. Consumer groups give each downstream
+          subscriber its own cursor, so the metrics service, audit logger, and reactive UI
+          feed all consume independently without blocking each other or the agent.
+        </p>
+        <p>
+          Pending-entry lists and <code>XACK</code> ensure at-least-once delivery even when
+          a consumer crashes mid-processing. Retention is capped via <code>MAXLEN ~</code>
+          to bound memory while preserving a rolling audit window. Redis is already in the
+          stack for distributed locking (Decision #1), so this is not a new dependency.
+        </p>
+      </div>
+    </div>
+
+    <div class="plane-card">
+      <div class="plane-icon uds">UDS</div>
+      <div class="plane-body">
+        <h4>Hot Path &mdash; Unix Domain Sockets</h4>
+        <p>
+          A small set of latency-critical paths &mdash; notably the local tool-execution
+          bridge and in-process agent sidecar &mdash; bypass gRPC and communicate over Unix
+          domain sockets with a minimal length-prefixed framing protocol. This keeps
+          tool-call overhead below 200 µs while the rest of the system benefits from
+          gRPC's observability.
+        </p>
+        <p>
+          The UDS layer is internal-only; no external agent ever connects to it. The interface
+          is typed via a shared Go struct rather than a proto file, keeping the hot-path
+          evolution separate from the versioned control-plane contract.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout scroll-reveal">
+    <strong>Why not collapse all three into one?</strong> A single transport would require
+    trading off durability, latency, and schema safety simultaneously. gRPC without Redis
+    means losing the audit log and at-least-once delivery. Redis without gRPC means untyped
+    command dispatch. Unix sockets everywhere means no distributed tracing. The three-layer
+    split is the lowest-complexity design that satisfies all constraints without compromise.
+  </div>
+
+  <!-- TRADE-OFFS -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--rose)"></div>
+    <h2>Trade-offs Accepted</h2>
+  </div>
+
+  <div class="tradeoff-list">
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Proto compilation build step.</strong> Every agent must include protobuf
+        tooling in its build pipeline and regenerate stubs on schema changes. This is
+        manageable with a shared <code>buf.gen.yaml</code> and CI enforcement, but it adds
+        friction for contributors who only want to change business logic.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Redis as an additional runtime dependency.</strong> Redis must be available
+        before any agent can receive work. Failure modes (OOM eviction, replication lag)
+        need explicit handling in the orchestrator's health-check loop. Mitigated by the
+        fact that Redis is already required for distributed locking.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Dual IPC pattern complexity.</strong> Developers must understand when to
+        use gRPC versus Redis Streams versus Unix sockets. Without clear documentation,
+        new contributors default to the wrong layer. Addressed by codifying the
+        decision boundary in the architecture runbook.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Consumer group management overhead.</strong> Adding a new event consumer
+        requires creating its consumer group, handling <code>NOGROUP</code> errors on first
+        start, and configuring retention policy. A helper package wraps this once; all agents
+        import it rather than calling Redis directly.
+      </span>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="page-footer scroll-reveal">
+    <span>agenKic-orKistrator &mdash; Decision: IPC Communication</span>
+    <span>Generated 2026-03-24</span>
+  </footer>
+
+</div><!-- /page -->
+
+<script>
+  (function () {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.scroll-reveal, .bar-fill').forEach(function (el) {
+      observer.observe(el);
+    });
+  })();
+</script>
+
+</body>
+</html>

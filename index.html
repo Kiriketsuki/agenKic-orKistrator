@@ -219,6 +219,29 @@
   .card--epic3 .card__num { color: var(--teal); }
   .card--epic4 .card__num { color: var(--amber); }
 
+  /* Decision cards — no number column */
+  a.card--decision {
+    grid-template-columns: 1fr auto;
+  }
+  a.card--decision .card__title { font-size: 15px; }
+  .card__tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+
+  /* Roadmap card — accent stripe */
+  a.card--roadmap {
+    grid-template-columns: 1fr auto;
+    border-left: 3px solid var(--teal);
+  }
+
+  .section-label + .section-label { margin-top: 36px; }
+
   .footer {
     margin-top: 48px;
     padding-top: 16px;
@@ -292,9 +315,90 @@
     </a>
   </div>
 
-  <div class="footer a" style="--i:9">
+  <div class="section-label a" style="--i:8">Architecture Decisions</div>
+
+  <div class="card-list">
+    <a class="card card--decision a" style="--i:9" href="decisions/orchestration-pattern.html">
+      <div class="card__body">
+        <div class="card__tag">#1</div>
+        <div class="card__title">Orchestration Pattern</div>
+        <div class="card__desc">Supervisor/Worker + DAG over LangGraph, CrewAI, or AutoGen</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:9" href="decisions/ipc-communication.html">
+      <div class="card__body">
+        <div class="card__tag">#2</div>
+        <div class="card__title">Inter-Process Communication</div>
+        <div class="card__desc">gRPC + Redis Streams over Unix sockets, shared memory, or ZeroMQ</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:9" href="decisions/state-management.html">
+      <div class="card__body">
+        <div class="card__tag">#3</div>
+        <div class="card__title">State Management</div>
+        <div class="card__desc">Redis (Streams + Hashes + Sorted Sets) over PostgreSQL, SQLite, or blackboard</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:10" href="decisions/process-supervision.html">
+      <div class="card__body">
+        <div class="card__tag">#4</div>
+        <div class="card__title">Process Supervision</div>
+        <div class="card__desc">OTP-style &ldquo;let it crash&rdquo; over defensive coding, supervisord, or PM2</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:10" href="decisions/terminal-substrate.html">
+      <div class="card__body">
+        <div class="card__tag">#5</div>
+        <div class="card__title">Terminal Substrate</div>
+        <div class="card__desc">tmux CLI wrapper over WezTerm Lua, raw PTY, or X11/Wayland</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:10" href="decisions/desktop-rendering.html">
+      <div class="card__body">
+        <div class="card__tag">#6</div>
+        <div class="card__title">Desktop Rendering</div>
+        <div class="card__desc">Godot 4 + godot-xterm over Tauri, egui, raylib, or SDL2</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:11" href="decisions/model-gateway.html">
+      <div class="card__body">
+        <div class="card__tag">#7</div>
+        <div class="card__title">Model Gateway</div>
+        <div class="card__desc">LiteLLM + Judge-Router over OpenRouter, direct APIs, or manual thresholds</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:11" href="decisions/tui-alternative.html">
+      <div class="card__body">
+        <div class="card__tag">#8</div>
+        <div class="card__title">TUI Alternative</div>
+        <div class="card__desc">Bubbletea + Lip Gloss as the headless fallback to the pixel office</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+  </div>
+
+  <div class="section-label a" style="--i:12">Roadmap</div>
+
+  <div class="card-list">
+    <a class="card card--roadmap a" style="--i:13" href="visual-explainer/roadmap.html">
+      <div class="card__body">
+        <div class="card__title">Project Roadmap</div>
+        <div class="card__desc">Interactive timeline &mdash; from orchestrator core to pixel office, four epics building a visual AI agent coordination platform</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+  </div>
+
+  <div class="footer a" style="--i:14">
     <span><a href="https://github.com/Kiriketsuki/agenKic-orKistrator">GitHub</a> &middot; v26.03.1.0</span>
-    <span>Generated 2026-03-22</span>
+    <span>Generated 2026-03-24</span>
   </div>
 </div>
 

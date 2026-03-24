@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision #5 — Terminal Substrate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --amber-dim: rgba(192, 125, 32, 0.08);
+    --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+      --amber: #e8a040;
+      --amber-dim: rgba(232, 160, 64, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes dotPulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes barGrow {
+    from { width: 0; }
+  }
+
+  .anim {
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .section-dot.is-visible {
+    animation: dotPulse 0.5s var(--ease-out-quart) both;
+  }
+
+  .bar-fill {
+    width: 0;
+    transition: width 0.9s var(--ease-out-quart);
+  }
+  .bar-fill.is-visible {
+    width: var(--bar-w);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal         { opacity: 1; transform: none; }
+    .callout.scroll-reveal { opacity: 1; transform: none; }
+    .bar-fill              { width: var(--bar-w) !important; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 680px;
+    line-height: 1.7;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    margin-top: 56px;
+  }
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* ── PROSE ── */
+  .prose {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 760px;
+  }
+  .prose + .prose { margin-top: 16px; }
+  .prose strong { color: var(--text); }
+
+  /* ── OPTION CARDS GRID ── */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .option-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
+    position: relative;
+  }
+  .option-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+  }
+  .option-card.chosen {
+    border-color: var(--teal);
+    background: var(--teal-dim);
+  }
+  .option-card.chosen:hover {
+    border-color: var(--teal);
+    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.12);
+  }
+  .option-card.partial {
+    border-color: var(--amber);
+    background: var(--amber-dim);
+  }
+  .option-card.partial:hover {
+    border-color: var(--amber);
+    box-shadow: 0 6px 20px rgba(192, 125, 32, 0.10);
+  }
+
+  .option-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .option-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .option-tagline {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  .verdict {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .verdict-chosen  { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
+  .verdict-rejected{ background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
+  .verdict-partial { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+
+  .option-lists { display: flex; flex-direction: column; gap: 10px; }
+  .option-list-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .option-list-label.pros { color: var(--teal); }
+  .option-list-label.cons { color: var(--rose); }
+
+  .option-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .option-list li {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding-left: 14px;
+    position: relative;
+  }
+  .option-list li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+  }
+  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+
+  /* ── INTERFACE MAPPING VISUAL ── */
+  .mapping-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .mapping-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--surface-alt);
+    border-bottom: 1px solid var(--border);
+  }
+  .mapping-header-cell {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 12px 20px;
+  }
+  .mapping-header-cell:first-child {
+    border-right: 1px solid var(--border);
+  }
+  .mapping-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s var(--ease-out-quart);
+  }
+  .mapping-row:last-child { border-bottom: none; }
+  .mapping-row:hover { background: var(--surface-alt); }
+  .mapping-cell {
+    padding: 13px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mapping-cell:first-child {
+    border-right: 1px solid var(--border);
+  }
+  .mapping-arrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .mapping-go {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--teal);
+    background: var(--teal-dim);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .mapping-cmd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+  .mapping-cmd .tmux-prog {
+    color: var(--gold);
+    font-weight: 600;
+  }
+  .mapping-cmd .tmux-sub {
+    color: var(--navy);
+  }
+  .mapping-cmd .tmux-flag {
+    color: var(--amber);
+  }
+  .mapping-cmd .tmux-arg {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  /* ── DECISION PLANES ── */
+  .decision-planes {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+  .plane-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: flex-start;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .plane-card:hover {
+    border-color: var(--border-strong);
+    transform: translateX(4px);
+  }
+  .plane-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+  }
+  .plane-icon.tmux   { background: var(--teal-dim);  color: var(--teal); }
+  .plane-icon.wezterm{ background: var(--amber-dim); color: var(--amber); }
+  .plane-body h4 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .plane-body p {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.65;
+  }
+  .plane-body p + p { margin-top: 8px; }
+  .plane-body code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── TRADEOFFS ── */
+  .tradeoff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tradeoff-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--rose);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    transition: border-left-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .tradeoff-item:hover {
+    border-left-color: var(--amber);
+    transform: translateX(3px);
+  }
+  .tradeoff-item strong { color: var(--text); }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-top: 20px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── FOOTER ── */
+  .page-footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .page { padding: 24px 16px 60px; }
+    .options-grid { grid-template-columns: 1fr; }
+    .mapping-header { grid-template-columns: 1fr; }
+    .mapping-header-cell:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+    .mapping-row { grid-template-columns: 1fr; }
+    .mapping-cell:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+    .plane-card { grid-template-columns: 1fr; }
+    .plane-card:hover { transform: none; }
+    .tradeoff-item:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-label anim" style="--i:0">Decision #5 &mdash; agenKic-orKistrator</div>
+    <h1 class="anim" style="--i:1">Terminal Substrate</h1>
+    <p class="hero-desc anim" style="--i:2">
+      Why tmux over WezTerm Lua, raw PTY, or X11/Wayland positioning
+    </p>
+  </header>
+
+  <!-- THE QUESTION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
+    <h2>The Question</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    Each AI agent needs its own <strong>isolated terminal environment</strong> for executing commands,
+    capturing output, and displaying real-time work. The substrate must allow the orchestrator to
+    spawn sessions on demand, inject commands, read back output, split panes for side-by-side views,
+    and tear down sessions cleanly &mdash; all from Go code without blocking the agent's own goroutine.
+  </p>
+
+  <!-- OPTIONS CONSIDERED -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--gold)"></div>
+    <h2>Options Considered</h2>
+  </div>
+
+  <div class="options-grid">
+
+    <!-- Option 1: CHOSEN -->
+    <div class="option-card chosen scroll-reveal" style="transition-delay:0ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">tmux CLI wrapper</div>
+          <div class="option-tagline">Send-keys / capture-pane over a Go subprocess bridge</div>
+        </div>
+        <span class="verdict verdict-chosen">Chosen</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>30+ years of battle-hardened session multiplexing; every edge case is solved</li>
+            <li>send-keys, capture-pane, split-window, kill-session map 1:1 to Go helper calls</li>
+            <li>Sessions persist across orchestrator restarts &mdash; agents survive a crash</li>
+            <li>No GUI dependency; works headless in CI, containers, and SSH</li>
+            <li>Built-in scrollback buffer captures full historical output without extra plumbing</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>CLI subprocess per operation adds ~5&ndash;15 ms overhead per call</li>
+            <li>No native Windows support; requires WSL or a separate path</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 2: PARTIAL -->
+    <div class="option-card partial scroll-reveal" style="transition-delay:40ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">WezTerm Lua</div>
+          <div class="option-tagline">GPU-rendered terminal with a first-class Lua scripting API</div>
+        </div>
+        <span class="verdict verdict-partial">Partial &mdash; future</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Cross-platform (macOS, Linux, Windows) from a single binary</li>
+            <li>GPU-accelerated rendering supports rich agent UIs out of the box</li>
+            <li>Lua event API allows deep integration without forking the binary</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Relatively newer; fewer production deployments at orchestration scale</li>
+            <li>Lua-to-Go boundary adds an IPC hop for every control action</li>
+            <li>Requires a display server; headless operation is limited</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:80ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Raw PTY spawning</div>
+          <div class="option-tagline">os/exec + golang.org/x/sys/unix pty primitives</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Pure Go stdlib; no external runtime dependency</li>
+            <li>Full control over the PTY lifecycle and I/O framing</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No multiplexing &mdash; each session requires its own goroutine + PTY pair</li>
+            <li>Must build pane management, scrollback, and session persistence from scratch</li>
+            <li>ANSI escape sequence parsing for output capture is non-trivial</li>
+            <li>Sessions disappear on orchestrator restart &mdash; no persistence story</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 4: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:120ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">X11/Wayland positioning</div>
+          <div class="option-tagline">Spawn terminal windows and tile them via EWMH/wlr-foreign-toplevel</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>True window isolation &mdash; each agent occupies its own native window</li>
+            <li>Familiar desktop layout for human observation</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Extremely platform-specific; X11 and Wayland APIs differ significantly</li>
+            <li>Requires a live display; breaks headless, CI, and SSH deployments entirely</li>
+            <li>Window management state is held by the compositor, not the orchestrator</li>
+            <li>No programmatic output capture &mdash; scraping requires additional tooling</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /options-grid -->
+
+  <!-- INTERFACE MAPPING VISUAL -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--slate)"></div>
+    <h2>Interface Mapping</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    Every orchestrator operation maps to exactly one tmux subcommand. A single
+    <strong><code>execTmux</code></strong> helper wraps <code>os/exec</code> and surfaces errors; no
+    other abstraction is needed. The table below shows the full surface area.
+  </p>
+
+  <div class="mapping-table scroll-reveal" style="margin-top:20px">
+    <div class="mapping-header">
+      <div class="mapping-header-cell">Go Interface</div>
+      <div class="mapping-header-cell">tmux Command</div>
+    </div>
+
+    <div class="mapping-row">
+      <div class="mapping-cell">
+        <span class="mapping-go">SpawnSession</span>
+      </div>
+      <div class="mapping-cell">
+        <span class="mapping-cmd">
+          <span class="tmux-prog">tmux</span>
+          <span class="tmux-sub"> new-session</span>
+          <span class="tmux-flag"> -d -s </span>
+          <span class="tmux-arg">{name}</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="mapping-row">
+      <div class="mapping-cell">
+        <span class="mapping-go">SendCommand</span>
+      </div>
+      <div class="mapping-cell">
+        <span class="mapping-cmd">
+          <span class="tmux-prog">tmux</span>
+          <span class="tmux-sub"> send-keys</span>
+          <span class="tmux-flag"> -t </span>
+          <span class="tmux-arg">{session} {cmd}</span>
+          <span class="tmux-flag"> Enter</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="mapping-row">
+      <div class="mapping-cell">
+        <span class="mapping-go">CaptureOutput</span>
+      </div>
+      <div class="mapping-cell">
+        <span class="mapping-cmd">
+          <span class="tmux-prog">tmux</span>
+          <span class="tmux-sub"> capture-pane</span>
+          <span class="tmux-flag"> -t </span>
+          <span class="tmux-arg">{session}</span>
+          <span class="tmux-flag"> -p -S -</span>
+          <span class="tmux-arg">{lines}</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="mapping-row">
+      <div class="mapping-cell">
+        <span class="mapping-go">SplitPane</span>
+      </div>
+      <div class="mapping-cell">
+        <span class="mapping-cmd">
+          <span class="tmux-prog">tmux</span>
+          <span class="tmux-sub"> split-window</span>
+          <span class="tmux-flag"> {-h|-v} -t </span>
+          <span class="tmux-arg">{session}</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="mapping-row">
+      <div class="mapping-cell">
+        <span class="mapping-go">DestroySession</span>
+      </div>
+      <div class="mapping-cell">
+        <span class="mapping-cmd">
+          <span class="tmux-prog">tmux</span>
+          <span class="tmux-sub"> kill-session</span>
+          <span class="tmux-flag"> -t </span>
+          <span class="tmux-arg">{name}</span>
+        </span>
+      </div>
+    </div>
+
+  </div><!-- /mapping-table -->
+
+  <!-- THE DECISION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
+    <h2>The Decision</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    tmux is the primary terminal substrate. A thin Go wrapper named <strong>execTmux</strong> shells
+    out to the tmux binary for all session operations. WezTerm remains a named future alternative
+    for cross-platform deployments where GPU rendering or Windows support becomes a requirement.
+  </p>
+
+  <div class="decision-planes scroll-reveal" style="margin-top:20px">
+
+    <div class="plane-card">
+      <div class="plane-icon tmux">tmux</div>
+      <div class="plane-body">
+        <h4>Primary &mdash; tmux via execTmux helper</h4>
+        <p>
+          The orchestrator calls <code>execTmux(args ...string)</code> for every terminal operation.
+          The helper constructs the <code>tmux</code> subprocess, captures stdout/stderr, and returns
+          structured errors. No session state is held in memory &mdash; tmux owns the session tree.
+          This means the orchestrator can restart without killing any agent&rsquo;s work-in-progress.
+        </p>
+        <p>
+          Session names follow the pattern <code>agk-{agentID}</code> to allow the orchestrator to
+          enumerate all live sessions via <code>tmux list-sessions</code> and reconcile against its
+          own registry on startup. Sessions that exist in tmux but not in the registry are treated
+          as orphans and killed after a grace period.
+        </p>
+      </div>
+    </div>
+
+    <div class="plane-card">
+      <div class="plane-icon wezterm">WZ</div>
+      <div class="plane-body">
+        <h4>Future Alternative &mdash; WezTerm Lua API</h4>
+        <p>
+          If the system expands to Windows or requires rich GPU-rendered agent UIs, WezTerm provides
+          a Lua scripting surface that exposes pane, tab, and window management. The Go orchestrator
+          would send JSON commands over a local socket to a WezTerm Lua listener, preserving the
+          same <code>SpawnSession / SendCommand / CaptureOutput</code> interface contract.
+        </p>
+        <p>
+          No WezTerm code is written today. The interface boundary is kept clean precisely so this
+          swap is a single-file change in the terminal adapter layer.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout scroll-reveal">
+    <strong>Why not raw PTY?</strong> The 1:1 mapping between the orchestrator interface and tmux
+    subcommands is the deciding factor. Raw PTY would require implementing session persistence,
+    scrollback, and pane splitting &mdash; all things tmux already provides and has tested across
+    decades of edge cases. The <code>execTmux</code> wrapper is under 60 lines of Go; a raw PTY
+    equivalent would be several hundred with ongoing maintenance.
+  </div>
+
+  <!-- TRADE-OFFS -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--rose)"></div>
+    <h2>Trade-offs Accepted</h2>
+  </div>
+
+  <div class="tradeoff-list">
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>No native Windows support.</strong> tmux does not run on Windows without WSL. Any
+        deployment targeting bare Windows requires the WezTerm path or a separate PTY backend.
+        Documented as a known gap; WSL is the accepted workaround for development environments.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>CLI subprocess overhead per operation.</strong> Each <code>execTmux</code> call forks
+        a process and parses output. At typical orchestration frequency (one command per agent task
+        step) the 5&ndash;15 ms overhead is acceptable. High-frequency polling patterns (e.g., streaming
+        output at &lt;100 ms intervals) must batch <code>capture-pane</code> calls or use a polling
+        goroutine rather than issuing per-line subprocesses.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>stderr pattern matching for error detection.</strong> tmux writes error messages to
+        stderr without machine-readable codes. The <code>execTmux</code> helper must pattern-match
+        known error strings (e.g., <code>no server running</code>, <code>can't find session</code>)
+        to surface typed Go errors. New tmux versions may change these strings; requires a test
+        fixture against the pinned tmux version.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Enter as a separate argument in send-keys.</strong> tmux <code>send-keys</code>
+        requires the <code>Enter</code> key literal as a final argument to submit a command. This
+        means every <code>SendCommand</code> call appends <code>"Enter"</code> after the command
+        string, which is invisible to callers but must be documented clearly to avoid double-Enter
+        bugs when callers pre-append newlines.
+      </span>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="page-footer scroll-reveal">
+    <span>agenKic-orKistrator &mdash; Decision: Terminal Substrate</span>
+    <span>Generated 2026-03-24</span>
+  </footer>
+
+</div><!-- /page -->
+
+<script>
+  (function () {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.scroll-reveal, .bar-fill').forEach(function (el) {
+      observer.observe(el);
+    });
+  })();
+</script>
+
+</body>
+</html>

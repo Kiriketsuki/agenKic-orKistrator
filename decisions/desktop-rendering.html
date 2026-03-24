@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision #6 — Desktop Rendering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --amber-dim: rgba(192, 125, 32, 0.08);
+    --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+      --amber: #e8a040;
+      --amber-dim: rgba(232, 160, 64, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes dotPulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes barGrow {
+    from { width: 0; }
+  }
+
+  .anim {
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .section-dot.is-visible {
+    animation: dotPulse 0.5s var(--ease-out-quart) both;
+  }
+
+  .bar-fill {
+    width: 0;
+    transition: width 0.9s var(--ease-out-quart);
+  }
+  .bar-fill.is-visible {
+    width: var(--bar-w);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal     { opacity: 1; transform: none; }
+    .callout.scroll-reveal { opacity: 1; transform: none; }
+    .bar-fill          { width: var(--bar-w) !important; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 680px;
+    line-height: 1.7;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    margin-top: 56px;
+  }
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* ── PROSE ── */
+  .prose {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 760px;
+  }
+  .prose + .prose { margin-top: 16px; }
+  .prose strong { color: var(--text); }
+
+  /* ── OPTIONS GRID ── */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .option-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
+    position: relative;
+  }
+  .option-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+  }
+  .option-card.chosen {
+    border-color: var(--teal);
+    background: var(--teal-dim);
+  }
+  .option-card.chosen:hover {
+    border-color: var(--teal);
+    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.12);
+  }
+
+  .option-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .option-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .option-tagline {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  .verdict {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .verdict-chosen  { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
+  .verdict-rejected{ background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
+
+  .option-lists { display: flex; flex-direction: column; gap: 10px; }
+  .option-list-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .option-list-label.pros { color: var(--teal); }
+  .option-list-label.cons { color: var(--rose); }
+
+  .option-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .option-list li {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding-left: 14px;
+    position: relative;
+  }
+  .option-list li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+  }
+  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+
+  /* ── CAPABILITY MATRIX ── */
+  .matrix-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+  }
+  .matrix-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .matrix-table thead th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt);
+  }
+  .matrix-table thead th:first-child {
+    width: 200px;
+  }
+  .matrix-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .matrix-table tbody tr:last-child { border-bottom: none; }
+  .matrix-table tbody tr:hover { background: var(--surface-alt); }
+  .matrix-table tbody td {
+    padding: 11px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    vertical-align: middle;
+  }
+  .matrix-table tbody td:first-child {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .matrix-table tbody tr.chosen-row td:first-child { color: var(--teal); }
+  .cap {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .cap-yes   { background: var(--teal-dim);  color: var(--teal);  }
+  .cap-no    { background: var(--rose-dim);  color: var(--rose);  }
+  .cap-part  { background: var(--amber-dim); color: var(--amber); }
+
+  /* ── DECISION CARDS ── */
+  .decision-planes {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+  .plane-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: flex-start;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .plane-card:hover {
+    border-color: var(--border-strong);
+    transform: translateX(4px);
+  }
+  .plane-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .plane-icon.pixel  { background: var(--teal-dim);  color: var(--teal); }
+  .plane-icon.term   { background: var(--navy-light); color: var(--navy); }
+  .plane-icon.grpc   { background: var(--gold-dim);   color: var(--gold); }
+  .plane-body h4 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .plane-body p {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.65;
+  }
+  .plane-body p + p { margin-top: 8px; }
+  .plane-body code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── CALLOUT BOXES ── */
+  .callout-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .callout.callout-warn {
+    border-left-color: var(--amber);
+  }
+  .callout.callout-info {
+    border-left-color: var(--navy);
+  }
+  .callout strong { color: var(--text); }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-light);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ── TRADE-OFFS ── */
+  .tradeoff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tradeoff-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--rose);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    transition: border-left-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+  }
+  .tradeoff-item:hover {
+    border-left-color: var(--amber);
+    transform: translateX(3px);
+  }
+  .tradeoff-item strong { color: var(--text); }
+
+  /* ── FOOTER ── */
+  .page-footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .page { padding: 24px 16px 60px; }
+    .options-grid { grid-template-columns: 1fr; }
+    .matrix-table thead th:first-child { width: 120px; }
+    .matrix-table tbody td, .matrix-table thead th { padding: 10px 10px; }
+    .plane-card { grid-template-columns: 1fr; }
+    .plane-card:hover { transform: none; }
+    .tradeoff-item:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-label anim" style="--i:0">Decision #6 &mdash; agenKic-orKistrator</div>
+    <h1 class="anim" style="--i:1">Desktop Rendering</h1>
+    <p class="hero-desc anim" style="--i:2">
+      Why Godot 4 + godot-xterm over Tauri, egui, raylib, or SDL2
+    </p>
+  </header>
+
+  <!-- THE QUESTION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
+    <h2>The Question</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    The pixel office needs a <strong>game-like rendering engine</strong> that supports
+    <strong>sprite animation</strong>, <strong>tilemap layouts</strong>, and
+    <strong>embedded terminal panels</strong>. The renderer must feel like a real-time game
+    environment &mdash; not a web page dressed up with CSS tricks &mdash; while retaining the ability
+    to host live PTY sessions inside individual office tiles. These two requirements together
+    are what make this the most researched decision in the project.
+  </p>
+
+  <!-- OPTIONS CONSIDERED -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--gold)"></div>
+    <h2>Options Considered</h2>
+  </div>
+
+  <div class="options-grid">
+
+    <!-- Option 1: CHOSEN -->
+    <div class="option-card chosen scroll-reveal" style="transition-delay:0ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Godot 4 + godot-xterm</div>
+          <div class="option-tagline">Visual editor, Pixelorama integration, embedded PTY terminals</div>
+        </div>
+        <span class="verdict verdict-chosen">Chosen</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>First-class pixel-art workflow: TileMaps, AnimatedSprite2D, CanvasLayer</li>
+            <li>godot-xterm embeds a full VTE-backed terminal as a scene node</li>
+            <li>Pixelorama integrates directly as an in-engine sprite editor</li>
+            <li>GDScript hot-reload keeps iteration cycles under 1 second</li>
+            <li>Integer scaling built in via <code>Window.content_scale_mode</code></li>
+            <li>MIT-licensed; no royalty or build-fee at any revenue threshold</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>godot-xterm PTY support is Linux/macOS only; Windows is display-only</li>
+            <li>godot-xterm has no stable v1.0 release; must pin to a specific commit</li>
+            <li>gRPC client requires a GDExtension (C++) wrapper &mdash; no pure GDScript option</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 2: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:40ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Tauri + CSS Pixel Art</div>
+          <div class="option-tagline">WebView shell under 1 MB; web dev skills transfer directly</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Binary under 1 MB; familiar HTML/CSS/JS development model</li>
+            <li>xterm.js provides a polished terminal component out of the box</li>
+            <li>Rust backend with typed IPC commands via Tauri invoke</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No native sprite engine &mdash; pixel art via CSS <code>image-rendering: pixelated</code> is brittle</li>
+            <li>Tilemap system requires a full canvas game library (Phaser, etc.) adding complexity</li>
+            <li>WebView GPU compositing is inconsistent across Linux desktop environments</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:80ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">egui (Rust)</div>
+          <div class="option-tagline">Immediate-mode Rust GUI; compiles to native or WebAssembly</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Single Rust binary; trivial to cross-compile</li>
+            <li>Immediate-mode API keeps layout logic close to render logic</li>
+            <li>egui_extras provides image and texture support</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No pixel font rendering &mdash; sub-pixel antialiasing blurs pixel art at low resolutions</li>
+            <li>No tilemap primitives; every game-like element must be hand-built</li>
+            <li>Not game-like: the retained/immediate model is fundamentally different from a scene graph</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 4: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:120ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">raylib + Go</div>
+          <div class="option-tagline">Proven by MasterPlan; 120+ examples, C-compatible bindings</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Proven for pixel-art productivity apps (MasterPlan uses raylib + Go)</li>
+            <li>120+ official examples; pixel-perfect rendering with integer scaling</li>
+            <li>Minimal dependency surface; single statically-linked binary</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>No visual editor; every sprite and tile must be positioned in code</li>
+            <li>Custom UI widgets required from scratch (buttons, panels, scroll areas)</li>
+            <li>Terminal embedding requires a full PTY + VTE implementation in Go/C</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 5: REJECTED -->
+    <div class="option-card scroll-reveal" style="transition-delay:160ms">
+      <div class="option-header">
+        <div>
+          <div class="option-name">SDL2</div>
+          <div class="option-tagline">26-year AAA pedigree; used in hundreds of shipped titles</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Battle-hardened: 26-year production history across AAA and indie titles</li>
+            <li>Fine-grained control over every pixel, input event, and audio frame</li>
+            <li>Go bindings (<code>veandco/go-sdl2</code>) are mature and stable</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Everything is manual: scene graph, sprite batching, input routing, UI layout</li>
+            <li>Terminal embedding is completely unsupported; requires vendoring libvte or similar</li>
+            <li>Heavy boilerplate before a single sprite appears on screen</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /options-grid -->
+
+  <!-- CAPABILITY MATRIX -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--slate)"></div>
+    <h2>Capability Matrix</h2>
+  </div>
+
+  <div class="matrix-wrap scroll-reveal">
+    <div class="matrix-title">Required capabilities vs. evaluated options</div>
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th>Godot 4</th>
+          <th>Tauri</th>
+          <th>egui</th>
+          <th>raylib</th>
+          <th>SDL2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="chosen-row">
+          <td>Sprite animation</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-part">Partial</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+        </tr>
+        <tr class="chosen-row">
+          <td>Tilemap system</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-part">Partial</span></td>
+          <td><span class="cap cap-no">No</span></td>
+        </tr>
+        <tr class="chosen-row">
+          <td>Embedded PTY terminal</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+        </tr>
+        <tr>
+          <td>Visual scene editor</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+        </tr>
+        <tr>
+          <td>Integer pixel scaling</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-part">Partial</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+        </tr>
+        <tr>
+          <td>Hot-reload scripting</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+          <td><span class="cap cap-no">No</span></td>
+        </tr>
+        <tr>
+          <td>MIT / open license</td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+          <td><span class="cap cap-yes">Yes</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- THE DECISION -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
+    <h2>The Decision</h2>
+  </div>
+
+  <p class="prose scroll-reveal">
+    Godot 4 is the <strong>only option that satisfies both the pixel-art workflow requirement
+    and the terminal embedding requirement simultaneously</strong>. Every alternative either has
+    the game engine capabilities without a terminal (raylib, SDL2) or has a terminal without a
+    game engine (Tauri). egui satisfies neither. This is not a close call.
+  </p>
+
+  <div class="decision-planes scroll-reveal" style="margin-top:20px">
+
+    <div class="plane-card">
+      <div class="plane-icon pixel">PIX</div>
+      <div class="plane-body">
+        <h4>Pixel-Art Rendering &mdash; Godot TileMap + AnimatedSprite2D</h4>
+        <p>
+          The office world is built as a TileMap scene with a 16&times;16 tile atlas. Individual
+          agent tiles use <code>AnimatedSprite2D</code> nodes so state changes (idle, working,
+          waiting, error) map directly to named animation tracks &mdash; no bespoke animation
+          state machine needed. <code>Window.content_scale_mode = integer</code> enforces
+          pixel-perfect upscaling at every viewport size without blurring.
+        </p>
+        <p>
+          Pixelorama, a Godot-native pixel editor, opens directly within the engine so asset
+          iteration never leaves the development environment. Changes to the sprite atlas
+          hot-reload into the running scene in under a second.
+        </p>
+      </div>
+    </div>
+
+    <div class="plane-card">
+      <div class="plane-icon term">PTY</div>
+      <div class="plane-body">
+        <h4>Terminal Embedding &mdash; godot-xterm as a Scene Node</h4>
+        <p>
+          godot-xterm exposes a <code>Terminal</code> node backed by libvterm. Any scene can
+          instantiate a <code>Terminal</code> child, set its PTY to an agent subprocess, and
+          receive live output as a standard Godot signal. The terminal panel that appears when
+          clicking on an agent tile is literally a Godot node &mdash; subject to the same
+          z-ordering, shader, and animation system as every other scene element.
+        </p>
+        <p>
+          Because the terminal is a first-class scene node, interactions like "slide the panel
+          in from the right" or "shake the frame on error" are Tween animations, not custom
+          compositor hacks. This integration depth is not achievable in any other evaluated option.
+        </p>
+      </div>
+    </div>
+
+    <div class="plane-card">
+      <div class="plane-icon grpc">RPC</div>
+      <div class="plane-body">
+        <h4>Orchestrator Bridge &mdash; GDExtension gRPC Client</h4>
+        <p>
+          The Godot client communicates with the Go orchestrator over gRPC. Because there is no
+          pure GDScript gRPC library, a thin GDExtension module in C++ wraps the official gRPC
+          C core and exposes typed calls as Godot signals. The extension is compiled once and
+          distributed as a shared library alongside the project binary.
+        </p>
+        <p>
+          The extension surface is deliberately minimal: <code>connect(address)</code>,
+          <code>send_command(type, payload)</code>, and a <code>message_received</code> signal.
+          All protocol buffer parsing happens in the C++ layer; GDScript only sees native
+          Godot <code>Dictionary</code> objects, keeping the scripting layer decoupled from the
+          wire format.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CAVEATS -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--amber)"></div>
+    <h2>Caveats and Constraints</h2>
+  </div>
+
+  <div class="callout-group">
+
+    <div class="callout callout-warn scroll-reveal">
+      <strong>godot-xterm PTY support is Linux/macOS only.</strong> On Windows, the
+      <code>Terminal</code> node renders output but the PTY layer is not implemented; the
+      subprocess pipe is display-only. This is acceptable for the initial target platform
+      (Linux developer workstations) but blocks a future Windows port unless an upstream
+      maintainer or a project contributor adds <code>ConPTY</code> support to godot-xterm.
+    </div>
+
+    <div class="callout callout-warn scroll-reveal">
+      <strong>Pin godot-xterm to a specific commit hash.</strong> The library has no stable
+      v1.0 release and the API surface changes between commits. The project
+      <code>addons/godot-xterm</code> directory tracks a pinned commit via a git submodule
+      lock. Any upstream update requires an explicit review and re-pin rather than a passive
+      <code>git submodule update</code>.
+    </div>
+
+    <div class="callout callout-info scroll-reveal">
+      <strong>Integer scaling must be enforced at the project level.</strong> Set
+      <code>display/window/stretch/mode = viewport</code> and
+      <code>display/window/stretch/scale_mode = integer</code> in
+      <code>project.godot</code>. If either setting is absent, the engine uses fractional
+      scaling and pixel art becomes blurry at non-integer zoom levels. This must be guarded
+      in CI via a project settings lint step.
+    </div>
+
+    <div class="callout callout-info scroll-reveal">
+      <strong>gRPC client via GDExtension requires a C++ toolchain in CI.</strong> The
+      extension links against the gRPC C core (<code>grpc</code>, <code>grpc++</code>) and
+      the Godot headers for the target Godot version. The build is pinned to a specific
+      Godot minor version; upgrading Godot requires recompiling the extension. A pre-built
+      <code>.so</code> / <code>.dylib</code> is committed to the repository to avoid
+      requiring every contributor to have a C++ toolchain installed.
+    </div>
+
+  </div>
+
+  <!-- TRADE-OFFS -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--rose)"></div>
+    <h2>Trade-offs Accepted</h2>
+  </div>
+
+  <div class="tradeoff-list">
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>Full game engine may be overkill for a developer tool.</strong> Godot ships
+        with a physics engine, 3D renderer, audio bus, and networking stack that the pixel
+        office will never use. The binary is larger than a minimal Tauri shell and the engine
+        has a longer startup time. This overhead is accepted because the engine-level
+        capabilities (TileMap, AnimatedSprite2D, scene hot-reload) are not available in
+        lighter alternatives.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>GDScript is a niche language with a shallow talent pool.</strong> New
+        contributors must learn GDScript before they can modify the office rendering layer.
+        There is no type inference in older GDScript; type annotations are opt-in. The risk
+        is mitigated by keeping the GDScript surface area small: scene logic only, with all
+        business logic delegated to the Go orchestrator over gRPC.
+      </span>
+    </div>
+
+    <div class="tradeoff-item scroll-reveal">
+      <span>
+        <strong>godot-xterm is a single-maintainer dependency with no LTS commitment.</strong>
+        If the maintainer abandons the project or breaks the API on a Godot 4.x minor update,
+        the project must either fork and maintain godot-xterm internally or migrate to an
+        alternative terminal embedding strategy. A fork plan is documented in the architecture
+        runbook as a contingency.
+      </span>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="page-footer scroll-reveal">
+    <span>agenKic-orKistrator &mdash; Decision: Desktop Rendering</span>
+    <span>Generated 2026-03-24</span>
+  </footer>
+
+</div><!-- /page -->
+
+<script>
+  (function () {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.scroll-reveal, .bar-fill').forEach(function (el) {
+      observer.observe(el);
+    });
+  })();
+</script>
+
+</body>
+</html>

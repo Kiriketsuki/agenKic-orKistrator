@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision #8 — TUI Alternative</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --amber-dim: rgba(192, 125, 32, 0.08);
+    --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+      --amber: #e8a040;
+      --amber-dim: rgba(232, 160, 64, 0.08);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes dotPulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes terminalCaret {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  @keyframes scanLine {
+    from { transform: translateY(-100%); opacity: 0.06; }
+    to   { transform: translateY(100%);  opacity: 0; }
+  }
+
+  .anim {
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .section-dot.is-visible {
+    animation: dotPulse 0.5s var(--ease-out-quart) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal         { opacity: 1; transform: none; }
+    .callout.scroll-reveal { opacity: 1; transform: none; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 680px;
+    line-height: 1.7;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    margin-top: 56px;
+  }
+  .section-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+  }
+
+  /* ── PROSE ── */
+  .prose {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-dim);
+    max-width: 760px;
+  }
+  .prose + .prose { margin-top: 16px; }
+  .prose strong { color: var(--text); }
+
+  /* ── OPTIONS GRID ── */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .option-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.2s var(--ease-out-quart),
+                transform 0.2s var(--ease-out-quart),
+                box-shadow 0.2s var(--ease-out-quart);
+    position: relative;
+  }
+  .option-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+  }
+  .option-card.chosen {
+    border-color: var(--teal);
+    background: var(--teal-dim);
+  }
+  .option-card.chosen:hover {
+    border-color: var(--teal);
+    box-shadow: 0 6px 20px rgba(14,124,107,0.12);
+  }
+
+  .option-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .option-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .option-tagline {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+
+  .verdict {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .verdict-chosen   { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
+  .verdict-rejected { background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
+
+  .option-lists { display: flex; flex-direction: column; gap: 10px; }
+  .option-list-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .option-list-label.pros { color: var(--teal); }
+  .option-list-label.cons { color: var(--rose); }
+
+  .option-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .option-list li {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding-left: 14px;
+    position: relative;
+  }
+  .option-list li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+  }
+  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+
+  /* ── INTERFACE COMPARISON ── */
+  .comparison-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 4px;
+  }
+  @media (max-width: 720px) {
+    .comparison-wrap { grid-template-columns: 1fr; }
+  }
+
+  .comparison-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .comparison-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt);
+  }
+  .comparison-header-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.3px;
+  }
+  .comparison-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-navy  { background: var(--navy-light); color: var(--navy); }
+  .badge-teal  { background: var(--teal-dim);  color: var(--teal); }
+  .comparison-body { padding: 20px 18px; flex: 1; }
+
+  /* pixel office mockup */
+  .pixel-office {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .desk-cell {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-height: 72px;
+    position: relative;
+    transition: border-color 0.3s;
+  }
+  .desk-cell.active { border-color: var(--teal); }
+  .desk-cell.idle   { border-color: var(--border); opacity: 0.6; }
+  .desk-cell.busy   { border-color: var(--amber); }
+  .desk-cell.error  { border-color: var(--rose); }
+
+  .sprite {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+  .sprite-active { background: var(--teal-dim);  color: var(--teal); }
+  .sprite-idle   { background: var(--navy-light); color: var(--navy); }
+  .sprite-busy   { background: var(--amber-dim);  color: var(--amber); }
+  .sprite-error  { background: var(--rose-dim);   color: var(--rose); }
+
+  .desk-label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .state-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    position: absolute;
+    top: 7px;
+    right: 7px;
+  }
+  .dot-active { background: var(--teal); }
+  .dot-idle   { background: var(--slate); }
+  .dot-busy   { background: var(--amber); }
+  .dot-error  { background: var(--rose); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .desk-cell.active .state-dot {
+      animation: dotPulse 2s ease-in-out infinite;
+    }
+    .desk-cell.busy .state-dot {
+      animation: dotPulse 1.2s ease-in-out infinite;
+    }
+  }
+
+  .pixel-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+  .legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  /* terminal mockup */
+  .terminal-screen {
+    background: #0d1117;
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    position: relative;
+  }
+  .terminal-bar {
+    background: #1c2128;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .terminal-dot-row { display: flex; gap: 5px; }
+  .t-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .t-dot-red    { background: #ff5f56; }
+  .t-dot-yellow { background: #ffbd2e; }
+  .t-dot-green  { background: #27c93f; }
+  .terminal-title {
+    font-size: 10px;
+    color: #6e7681;
+    margin-left: 8px;
+    letter-spacing: 0.3px;
+  }
+  .terminal-content { padding: 14px 14px 10px; }
+
+  .t-row {
+    display: flex;
+    gap: 0;
+    padding: 2px 0;
+  }
+  .t-header {
+    color: #6e7681;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 0 0 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 4px;
+    display: grid;
+    grid-template-columns: 100px 60px 80px 1fr;
+    gap: 0;
+    width: 100%;
+  }
+  .t-data-row {
+    display: grid;
+    grid-template-columns: 100px 60px 80px 1fr;
+    gap: 0;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .t-data-row:last-child { border-bottom: none; }
+  .t-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tc-active  { color: #34d4b0; }
+  .tc-idle    { color: #6e7681; }
+  .tc-busy    { color: #e8a040; }
+  .tc-error   { color: #f07088; }
+  .tc-dim     { color: #6e7681; }
+  .tc-text    { color: #c9d1d9; }
+  .tc-task    { color: #8b949e; font-size: 10px; }
+
+  .t-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 8px 0;
+  }
+
+  .t-section-label {
+    font-size: 9px;
+    color: #6e7681;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .t-log-line {
+    font-size: 10px;
+    color: #8b949e;
+    padding: 1.5px 0;
+    display: flex;
+    gap: 8px;
+  }
+  .t-log-time { color: #3d444d; flex-shrink: 0; }
+  .t-log-lvl-info  { color: #34d4b0; flex-shrink: 0; width: 36px; }
+  .t-log-lvl-warn  { color: #e8a040; flex-shrink: 0; width: 36px; }
+  .t-log-lvl-err   { color: #f07088; flex-shrink: 0; width: 36px; }
+
+  .t-prompt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 8px;
+    font-size: 11px;
+  }
+  .t-prompt-char { color: #34d4b0; }
+  .t-caret {
+    display: inline-block;
+    width: 7px;
+    height: 13px;
+    background: #34d4b0;
+    opacity: 0.9;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .t-caret { animation: terminalCaret 1.1s step-end infinite; }
+  }
+
+  .comparison-shared-label {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: var(--gold-dim);
+    border: 1px solid rgba(212,167,58,0.18);
+    border-radius: 7px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.3px;
+    text-align: center;
+  }
+
+  /* ── DECISION RATIONALE ── */
+  .rationale-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  @media (max-width: 640px) {
+    .rationale-grid { grid-template-columns: 1fr; }
+  }
+
+  .rationale-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .rationale-icon {
+    font-size: 18px;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .rationale-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.2px;
+  }
+  .rationale-body {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--surface);
+    border-left: 3px solid var(--teal);
+    border-radius: 0 10px 10px 0;
+    padding: 20px 24px;
+    margin-top: 4px;
+  }
+  .callout-text {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(15px, 2vw, 18px);
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  /* ── TRADE-OFFS TABLE ── */
+  .tradeoff-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .tradeoff-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .tradeoff-table thead th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+    padding: 14px 20px;
+    text-align: left;
+    background: var(--surface-alt);
+    border-bottom: 1px solid var(--border);
+  }
+  .tradeoff-table thead th:not(:first-child) {
+    border-left: 1px solid var(--border);
+  }
+  .tradeoff-table tbody tr:not(:last-child) td {
+    border-bottom: 1px solid var(--border);
+  }
+  .tradeoff-table tbody td {
+    padding: 13px 20px;
+    font-size: 13px;
+    vertical-align: top;
+  }
+  .tradeoff-table tbody td:not(:first-child) {
+    border-left: 1px solid var(--border);
+  }
+  .tradeoff-table tbody td:first-child {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    background: var(--surface-alt);
+    width: 160px;
+  }
+  .tradeoff-body { color: var(--text-dim); line-height: 1.6; }
+
+  .impact-pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .impact-medium { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(192,125,32,0.25); }
+  .impact-low    { background: var(--teal-dim);  color: var(--teal);  border: 1px solid rgba(14,124,107,0.25); }
+
+  /* ── FOOTER ── */
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .footer-left {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .footer-right {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── HERO ── -->
+  <header class="hero">
+    <p class="hero-label anim" style="--i:0">Decision #8</p>
+    <h1 class="anim" style="--i:1">TUI Alternative</h1>
+    <p class="hero-desc anim" style="--i:2">
+      Why Bubbletea + Lip Gloss as the headless fallback to the pixel office
+    </p>
+  </header>
+
+  <!-- ── THE QUESTION ── -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot" style="background:var(--navy)"></div>
+    <h2>The Question</h2>
+  </div>
+  <p class="prose scroll-reveal">
+    Not everyone wants a game-like desktop app. <strong>Server environments, SSH sessions, and CI need
+    text-based visibility with the same coordination awareness.</strong> The orchestrator must be observable
+    without a display server, a GPU, or a native window manager. The question is which TUI framework —
+    if any — earns a place alongside the pixel office as a first-class interface.
+  </p>
+
+  <!-- ── OPTIONS ── -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot" style="background:var(--gold)"></div>
+    <h2>Options Considered</h2>
+  </div>
+
+  <div class="options-grid">
+
+    <!-- Option 1: Bubbletea — CHOSEN -->
+    <div class="option-card chosen scroll-reveal" style="--i:0">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Bubbletea + Lip Gloss (Go)</div>
+          <div class="option-tagline">Elm architecture, same language as orchestrator</div>
+        </div>
+        <span class="verdict verdict-chosen">Chosen</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>No IPC bridge — shares the Go runtime directly</li>
+            <li>Elm architecture guarantees render/state parity</li>
+            <li>Lip Gloss enables styled, responsive layouts in the terminal</li>
+            <li>Bubbletea's message loop mirrors the orchestrator's event model</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Less visually expressive than a pixel renderer</li>
+            <li>Limited animation — no sprite movement</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 2: Ratatui -->
+    <div class="option-card scroll-reveal" style="--i:1">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Ratatui (Rust)</div>
+          <div class="option-tagline">Immediate-mode TUI framework</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Extremely fast rendering with fine-grained control</li>
+            <li>Rich widget library out of the box</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Rust is a different language — requires an IPC bridge to the Go orchestrator</li>
+            <li>Adds a second runtime and a serialization layer</li>
+            <li>State drift risk across the process boundary</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3: Textual -->
+    <div class="option-card scroll-reveal" style="--i:2">
+      <div class="option-header">
+        <div>
+          <div class="option-name">Textual (Python)</div>
+          <div class="option-tagline">CSS-like styling for terminal UIs</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Rapid prototyping — CSS-like layout feels familiar</li>
+            <li>Rich theming and component model</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Requires Python runtime — third language in the stack</li>
+            <li>IPC bridge unavoidable; adds serialization overhead</li>
+            <li>No compelling advantage over Bubbletea given the Go context</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 4: No TUI -->
+    <div class="option-card scroll-reveal" style="--i:3">
+      <div class="option-header">
+        <div>
+          <div class="option-name">No TUI — API Only</div>
+          <div class="option-tagline">Expose gRPC / REST for external consumers</div>
+        </div>
+        <span class="verdict verdict-rejected">Rejected</span>
+      </div>
+      <div class="option-lists">
+        <div>
+          <div class="option-list-label pros">Pros</div>
+          <ul class="option-list pros-list">
+            <li>Minimal maintenance surface — no rendering code</li>
+            <li>Integrates with any tooling that speaks gRPC or REST</li>
+          </ul>
+        </div>
+        <div>
+          <div class="option-list-label cons">Cons</div>
+          <ul class="option-list cons-list">
+            <li>Poor DX for operators in SSH sessions or CI pipelines</li>
+            <li>No visual story — leaves the headless context without first-class support</li>
+            <li>Debugging becomes raw log-reading</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── INTERFACE COMPARISON ── -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot" style="background:var(--teal)"></div>
+    <h2>Interface Comparison</h2>
+  </div>
+
+  <div class="comparison-wrap">
+
+    <!-- LEFT: Pixel Office -->
+    <div class="comparison-panel scroll-reveal">
+      <div class="comparison-header">
+        <span class="comparison-header-title">Pixel Office</span>
+        <span class="comparison-badge badge-navy">Desktop</span>
+      </div>
+      <div class="comparison-body">
+        <div class="pixel-office">
+          <div class="desk-cell active">
+            <div class="state-dot dot-active"></div>
+            <div class="sprite sprite-active">P</div>
+            <div class="desk-label">planner<br>running</div>
+          </div>
+          <div class="desk-cell busy">
+            <div class="state-dot dot-busy"></div>
+            <div class="sprite sprite-busy">C</div>
+            <div class="desk-label">coder<br>working</div>
+          </div>
+          <div class="desk-cell idle">
+            <div class="state-dot dot-idle"></div>
+            <div class="sprite sprite-idle">R</div>
+            <div class="desk-label">reviewer<br>idle</div>
+          </div>
+          <div class="desk-cell error">
+            <div class="state-dot dot-error"></div>
+            <div class="sprite sprite-error">T</div>
+            <div class="desk-label">tester<br>error</div>
+          </div>
+        </div>
+        <div class="pixel-legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--teal)"></div> Running
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--amber)"></div> Working
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--slate)"></div> Idle
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--rose)"></div> Error
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-top:14px;line-height:1.55;">
+          Agent sprites at desks with animated state transitions, spatial awareness, and desk-to-desk handoff visuals.
+        </p>
+      </div>
+      <div style="padding:0 18px 18px;">
+        <div class="comparison-shared-label">Same gRPC state stream</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Bubbletea TUI -->
+    <div class="comparison-panel scroll-reveal">
+      <div class="comparison-header">
+        <span class="comparison-header-title">Bubbletea TUI</span>
+        <span class="comparison-badge badge-teal">Headless</span>
+      </div>
+      <div class="comparison-body">
+        <div class="terminal-screen">
+          <div class="terminal-bar">
+            <div class="terminal-dot-row">
+              <div class="t-dot t-dot-red"></div>
+              <div class="t-dot t-dot-yellow"></div>
+              <div class="t-dot t-dot-green"></div>
+            </div>
+            <span class="terminal-title">agenKic-orKistrator &mdash; agents</span>
+          </div>
+          <div class="terminal-content">
+            <div class="t-header">
+              <span>AGENT</span>
+              <span>STATUS</span>
+              <span>TASK</span>
+              <span>UPTIME</span>
+            </div>
+            <div class="t-data-row">
+              <span class="t-col tc-text">planner</span>
+              <span class="t-col tc-active">● running</span>
+              <span class="t-col tc-task">plan-042</span>
+              <span class="t-col tc-dim">00:03:12</span>
+            </div>
+            <div class="t-data-row">
+              <span class="t-col tc-text">coder</span>
+              <span class="t-col tc-busy">◑ working</span>
+              <span class="t-col tc-task">feat/auth</span>
+              <span class="t-col tc-dim">00:07:55</span>
+            </div>
+            <div class="t-data-row">
+              <span class="t-col tc-text">reviewer</span>
+              <span class="t-col tc-idle">○ idle</span>
+              <span class="t-col tc-task">—</span>
+              <span class="t-col tc-dim">00:12:01</span>
+            </div>
+            <div class="t-data-row">
+              <span class="t-col tc-text">tester</span>
+              <span class="t-col tc-error">✗ error</span>
+              <span class="t-col tc-task">suite-7</span>
+              <span class="t-col tc-dim">00:01:08</span>
+            </div>
+            <hr class="t-divider">
+            <div class="t-section-label">Recent log</div>
+            <div class="t-log-line">
+              <span class="t-log-time">15:42:03</span>
+              <span class="t-log-lvl-info">INFO</span>
+              <span>planner dispatched task plan-042</span>
+            </div>
+            <div class="t-log-line">
+              <span class="t-log-time">15:42:11</span>
+              <span class="t-log-lvl-info">INFO</span>
+              <span>coder accepted feat/auth</span>
+            </div>
+            <div class="t-log-line">
+              <span class="t-log-time">15:43:22</span>
+              <span class="t-log-lvl-warn">WARN</span>
+              <span>tester: suite-7 timeout exceeded</span>
+            </div>
+            <div class="t-prompt">
+              <span class="t-prompt-char">&#x276F;</span>
+              <span class="t-caret"></span>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim);margin-top:14px;line-height:1.55;">
+          Tabular agent list, status indicators, scrolling log, and task queue — readable over SSH with no display server.
+        </p>
+      </div>
+      <div style="padding:0 18px 18px;">
+        <div class="comparison-shared-label">Same gRPC state stream</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── THE DECISION ── -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot" style="background:var(--amber)"></div>
+    <h2>The Decision</h2>
+  </div>
+  <p class="prose scroll-reveal">
+    Bubbletea shares the Go runtime with the orchestrator, eliminating any IPC bridge. Its <strong>Elm
+    architecture</strong> — a single model, a pure update function, and a view function — maps cleanly onto the
+    orchestrator's own event model. State mutations that happen inside the orchestrator produce messages
+    that flow directly into the Bubbletea update loop; the TUI view is always a deterministic function
+    of the current model, which makes render/state parity a structural guarantee rather than a discipline.
+  </p>
+  <p class="prose scroll-reveal">
+    Lip Gloss handles layout and styling without a DOM: adaptive columns, colour themes, and borders work
+    across terminal capabilities from 256-colour to basic ANSI. The result is a UI that degrades gracefully
+    rather than failing silently in constrained environments.
+  </p>
+
+  <div class="section-head scroll-reveal" style="margin-top:32px;">
+    <div class="section-dot" style="background:var(--teal)"></div>
+    <h2>Why It Works</h2>
+  </div>
+
+  <div class="rationale-grid">
+    <div class="rationale-item scroll-reveal">
+      <div class="rationale-icon">&#x26A1;</div>
+      <div class="rationale-title">No IPC bridge</div>
+      <div class="rationale-body">
+        Both the orchestrator and the TUI live in the same binary. State updates are function calls,
+        not socket messages — zero serialization overhead and no version mismatch surface.
+      </div>
+    </div>
+    <div class="rationale-item scroll-reveal">
+      <div class="rationale-icon">&#x21C4;</div>
+      <div class="rationale-title">Render / state parity</div>
+      <div class="rationale-body">
+        Elm's unidirectional data flow means the view can never race against the model. What you
+        see in the TUI is exactly the state the orchestrator holds at that tick.
+      </div>
+    </div>
+    <div class="rationale-item scroll-reveal">
+      <div class="rationale-icon">&#x1F5A5;</div>
+      <div class="rationale-title">Server-native DX</div>
+      <div class="rationale-body">
+        Operators in SSH sessions and CI pipelines get the same awareness as a local desktop user —
+        agent status, task queue, and log tail — without installing a display server or forwarding X11.
+      </div>
+    </div>
+    <div class="rationale-item scroll-reveal">
+      <div class="rationale-icon">&#x1F3A8;</div>
+      <div class="rationale-title">Styled layouts with Lip Gloss</div>
+      <div class="rationale-body">
+        Lip Gloss provides composable, adaptive layout primitives. Status columns, colour-coded
+        state indicators, and box borders render correctly from xterm-256color down to basic terminals.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CALLOUT ── -->
+  <div class="section-head scroll-reveal" style="margin-top: 48px; margin-bottom: 8px;">
+    <div class="section-dot" style="background:var(--teal)"></div>
+    <h2>Perspective</h2>
+  </div>
+  <div class="callout scroll-reveal">
+    <p class="callout-text">
+      "The TUI is not a lesser version &mdash; it's the right tool for its context. Server operators,
+      SSH sessions, and CI pipelines deserve first-class visibility too."
+    </p>
+  </div>
+
+  <!-- ── TRADE-OFFS ── -->
+  <div class="section-head scroll-reveal">
+    <div class="section-dot" style="background:var(--rose)"></div>
+    <h2>Trade-offs Accepted</h2>
+  </div>
+
+  <div class="tradeoff-table-wrap scroll-reveal">
+    <table class="tradeoff-table">
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Concern</th>
+          <th>Impact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Spatial awareness</td>
+          <td class="tradeoff-body">
+            The TUI cannot match the spatial metaphor of the pixel office. Agent-to-agent handoffs
+            are logged events, not visible movements across a floor plan.
+          </td>
+          <td>
+            <span class="impact-pill impact-medium">Medium</span>
+          </td>
+        </tr>
+        <tr>
+          <td>Two UIs to maintain</td>
+          <td class="tradeoff-body">
+            A shared gRPC state stream reduces coupling, but changes to agent state shape must be
+            reflected in both the pixel office and the TUI view functions.
+          </td>
+          <td>
+            <span class="impact-pill impact-medium">Medium</span>
+          </td>
+        </tr>
+        <tr>
+          <td>Elm boilerplate</td>
+          <td class="tradeoff-body">
+            Every new piece of state requires a message type, a case in the update switch, and a
+            view fragment. The pattern is mechanical but verbose for large models.
+          </td>
+          <td>
+            <span class="impact-pill impact-low">Low</span>
+          </td>
+        </tr>
+        <tr>
+          <td>Terminal capability variance</td>
+          <td class="tradeoff-body">
+            Lip Gloss adapts to terminal capability, but some environments (minimal Docker images,
+            legacy CI runners) may render box-drawing characters as garbage.
+          </td>
+          <td>
+            <span class="impact-pill impact-low">Low</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── FOOTER ── -->
+  <footer class="footer">
+    <span class="footer-left">agenKic-orKistrator &mdash; Decision: TUI Alternative</span>
+    <span class="footer-right">Generated 2026-03-24</span>
+  </footer>
+
+</div>
+
+<script>
+  // scroll-reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const delay = (parseInt(el.dataset.i || el.style.getPropertyValue('--i') || '0', 10)) * 70;
+        setTimeout(() => el.classList.add('is-visible'), delay);
+        observer.unobserve(el);
+      }
+    });
+  }, { threshold: 0.08 });
+
+  document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+
+  // section dots pulse on reveal
+  document.querySelectorAll('.section-dot').forEach(dot => {
+    const head = dot.closest('.section-head');
+    if (!head) return;
+    const headObserver = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        dot.classList.add('is-visible');
+        headObserver.disconnect();
+      }
+    }, { threshold: 0.5 });
+    headObserver.observe(head);
+  });
+</script>
+</body>
+</html>

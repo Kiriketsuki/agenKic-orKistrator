@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roadmap — agenKic-orKistrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-alt: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-light: rgba(30, 58, 95, 0.08);
+    --navy-dim: rgba(30, 58, 95, 0.12);
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --rose: #b4364a;
+    --rose-dim: rgba(180, 54, 74, 0.08);
+    --amber: #c07d20;
+    --amber-dim: rgba(192, 125, 32, 0.10);
+    --slate: #64748b;
+    --slate-dim: rgba(100, 116, 139, 0.10);
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1c2640;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.16);
+      --text: #e8e4dc;
+      --text-dim: #8a95a8;
+
+      --navy: #7eb0e0;
+      --navy-light: rgba(126, 176, 224, 0.10);
+      --navy-dim: rgba(126, 176, 224, 0.14);
+      --gold: #e8c15a;
+      --gold-dim: rgba(232, 193, 90, 0.10);
+      --teal: #34d4b0;
+      --teal-dim: rgba(52, 212, 176, 0.08);
+      --rose: #f07088;
+      --rose-dim: rgba(240, 112, 136, 0.08);
+      --amber: #d4a73a;
+      --amber-dim: rgba(212, 167, 58, 0.10);
+      --slate: #94a3b8;
+      --slate-dim: rgba(148, 163, 184, 0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes timelinePulse {
+    0%   { box-shadow: 0 0 0 0px color-mix(in srgb, currentColor 60%, transparent); }
+    60%  { box-shadow: 0 0 0 8px color-mix(in srgb, currentColor 0%, transparent); }
+    100% { box-shadow: 0 0 0 0px color-mix(in srgb, currentColor 0%, transparent); }
+  }
+
+  @keyframes progressFill {
+    from { width: 0%; }
+    to   { width: var(--progress-target, 35%); }
+  }
+
+  @keyframes lineGrow {
+    from { height: 0%; }
+    to   { height: 100%; }
+  }
+
+  .anim { animation: fadeUp 0.5s var(--ease-out-quart) both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal { opacity: 1; transform: none; }
+    .timeline-line-fill { height: 100% !important; }
+    .progress-bar-fill { width: var(--progress-target, 35%) !important; }
+  }
+
+  .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── HERO ── */
+  .hero { margin-bottom: 56px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 640px;
+    line-height: 1.7;
+  }
+
+  /* ── PROGRESS STRIP ── */
+  .progress-strip {
+    margin-top: 28px;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .progress-strip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .progress-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .progress-pct {
+    font-family: var(--font-display);
+    font-size: 24px;
+    color: var(--navy);
+  }
+  .progress-track {
+    height: 6px;
+    background: var(--surface-alt);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    --progress-target: 35%;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--teal), var(--navy));
+    border-radius: 3px;
+    animation: progressFill 1.2s var(--ease-out-quart) 0.5s forwards;
+  }
+  .progress-phases {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .progress-phase-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .progress-phase-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .progress-phase-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  /* ── TIMELINE WRAPPER ── */
+  .timeline-outer {
+    position: relative;
+    margin-top: 48px;
+  }
+
+  /* The vertical line */
+  .timeline-track {
+    position: absolute;
+    left: 24px;
+    top: 12px;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .timeline-line-fill {
+    width: 100%;
+    height: 0%;
+    background: linear-gradient(to bottom, var(--teal), var(--navy) 50%, var(--border) 50%);
+    border-radius: 1px;
+    animation: lineGrow 1.4s var(--ease-out-quart) 0.3s forwards;
+  }
+
+  /* ── MILESTONE CARD ── */
+  .milestone {
+    position: relative;
+    padding-left: 60px;
+    padding-bottom: 40px;
+  }
+  .milestone:last-child {
+    padding-bottom: 0;
+  }
+
+  /* The dot on the timeline */
+  .milestone-dot {
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2.5px solid currentColor;
+    z-index: 2;
+    transition: transform 0.2s var(--ease-out-quart);
+  }
+  .milestone-dot.is-active {
+    animation: timelinePulse 2s ease-in-out infinite;
+  }
+
+  .milestone-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    cursor: pointer;
+    transition:
+      border-color 0.2s var(--ease-out-quart),
+      transform 0.2s var(--ease-out-quart),
+      box-shadow 0.2s var(--ease-out-quart),
+      opacity 0.3s var(--ease-out-quart);
+  }
+  .milestone-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px) translateX(2px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.07);
+    opacity: 1 !important;
+  }
+  .milestone-card:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 2px;
+  }
+
+  /* Dim future / planned cards until hovered */
+  .milestone-card.is-future {
+    opacity: 0.72;
+  }
+
+  .milestone-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .milestone-phase {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .milestone-title {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1.2;
+    color: var(--text);
+  }
+
+  /* ── STATUS BADGE ── */
+  .status-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .badge-in-progress {
+    background: var(--gold-dim);
+    color: var(--gold);
+    border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  }
+  .badge-planned {
+    background: var(--slate-dim);
+    color: var(--slate);
+    border: 1px solid color-mix(in srgb, var(--slate) 25%, transparent);
+  }
+  .badge-future {
+    background: var(--rose-dim);
+    color: var(--rose);
+    border: 1px solid color-mix(in srgb, var(--rose) 20%, transparent);
+  }
+  .badge-complete {
+    background: var(--teal-dim);
+    color: var(--teal);
+    border: 1px solid color-mix(in srgb, var(--teal) 25%, transparent);
+  }
+
+  /* ── FEATURE LISTS ── */
+  .feature-section {
+    margin-top: 14px;
+  }
+  .feature-section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .feature-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .feature-item::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+  .feature-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface-alt);
+    color: var(--text-dim);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .feature-tag.done {
+    color: var(--teal);
+    border-color: color-mix(in srgb, var(--teal) 20%, transparent);
+    background: var(--teal-dim);
+    text-decoration: none;
+  }
+  .feature-tag.open {
+    color: var(--gold);
+    border-color: color-mix(in srgb, var(--gold) 20%, transparent);
+    background: var(--gold-dim);
+  }
+
+  /* ── STAT CALLOUT ── */
+  .stat-callout {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border-left: 3px solid currentColor;
+  }
+  .stat-callout-num {
+    font-family: var(--font-display);
+    font-size: 28px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .stat-callout-text {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .stat-callout-text strong {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 1px;
+  }
+
+  /* Color themes per phase */
+  .phase-navy  { color: var(--navy); }
+  .phase-slate { color: var(--slate); }
+  .phase-teal  { color: var(--teal); }
+  .phase-amber { color: var(--amber); }
+  .phase-rose  { color: var(--rose); }
+
+  .stat-navy  { background: var(--navy-dim);  color: var(--navy);  }
+  .stat-slate { background: var(--slate-dim); color: var(--slate); }
+  .stat-teal  { background: var(--teal-dim);  color: var(--teal);  }
+  .stat-amber { background: var(--amber-dim); color: var(--amber); }
+  .stat-rose  { background: var(--rose-dim);  color: var(--rose);  }
+
+  /* Connecting arrow hint between phases */
+  .phase-connector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 60px;
+    padding-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+  .phase-connector-line {
+    height: 1px;
+    width: 32px;
+    background: var(--border);
+  }
+
+  /* ── HORIZON BULLETS (Post-MVP) ── */
+  .horizon-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .horizon-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .horizon-item::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--rose);
+    opacity: 0.6;
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+
+  /* ── DEPENDENCY HINT ── */
+  .dep-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    opacity: 0.7;
+  }
+  .dep-hint-arrow {
+    font-size: 12px;
+  }
+
+  /* ── ACCORDION (expanded details) ── */
+  .milestone-details {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.4s var(--ease-out-quart);
+  }
+  .milestone-details.is-open {
+    max-height: 600px;
+  }
+  .milestone-details-inner {
+    border-top: 1px solid var(--border);
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+
+  .expand-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 12px;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+  }
+  .expand-hint:hover { opacity: 1; }
+  .expand-chevron {
+    display: inline-block;
+    transition: transform 0.3s var(--ease-out-quart);
+  }
+  .expand-chevron.is-open { transform: rotate(180deg); }
+
+  /* ── SECTION DIVIDER ── */
+  .section-divider {
+    margin: 0 0 24px 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  @media (max-width: 600px) {
+    .page { padding: 32px 20px 64px; }
+    .milestone { padding-left: 48px; }
+    .phase-connector { padding-left: 48px; }
+    .timeline-track { left: 20px; }
+    .milestone-dot { left: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ HERO ═══ -->
+  <div class="hero">
+    <div class="hero-label anim" style="--i:0">ROADMAP &mdash; agenKic-orKistrator</div>
+    <h1 class="anim" style="--i:1">Project Roadmap</h1>
+    <p class="hero-desc anim" style="--i:2">From orchestrator core to pixel office &mdash; four epics building a visual AI agent coordination platform.</p>
+
+    <!-- Progress overview -->
+    <div class="progress-strip anim" style="--i:3">
+      <div class="progress-strip-head">
+        <span class="progress-label">Overall Completion</span>
+        <span class="progress-pct">~35%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar-fill"></div>
+      </div>
+      <div class="progress-phases">
+        <div class="progress-phase-item">
+          <div class="progress-phase-dot" style="background:var(--navy)"></div>
+          <span class="progress-phase-name">Epic 1 &mdash; In Progress</span>
+        </div>
+        <div class="progress-phase-item">
+          <div class="progress-phase-dot" style="background:var(--slate)"></div>
+          <span class="progress-phase-name">Epic 2 &mdash; In Progress</span>
+        </div>
+        <div class="progress-phase-item">
+          <div class="progress-phase-dot" style="background:var(--teal)"></div>
+          <span class="progress-phase-name">Epic 3 &mdash; Planned</span>
+        </div>
+        <div class="progress-phase-item">
+          <div class="progress-phase-dot" style="background:var(--amber)"></div>
+          <span class="progress-phase-name">Epic 4 &mdash; Future</span>
+        </div>
+        <div class="progress-phase-item">
+          <div class="progress-phase-dot" style="background:var(--rose)"></div>
+          <span class="progress-phase-name">Post-MVP &mdash; Future</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TIMELINE ═══ -->
+  <div class="section-divider scroll-reveal">Timeline</div>
+
+  <div class="timeline-outer">
+    <!-- Vertical track -->
+    <div class="timeline-track">
+      <div class="timeline-line-fill"></div>
+    </div>
+
+    <!-- ───────────────────────────────────────────
+         PHASE 1: FOUNDATION (Epic 1)
+    ─────────────────────────────────────────────── -->
+    <div class="milestone scroll-reveal">
+      <div class="milestone-dot phase-navy is-active" aria-hidden="true"></div>
+      <div
+        class="milestone-card"
+        tabindex="0"
+        role="button"
+        aria-expanded="false"
+        data-milestone="1"
+      >
+        <div class="milestone-head">
+          <div>
+            <div class="milestone-phase">Phase 1 &mdash; Foundation</div>
+            <div class="milestone-title">Epic 1: Go Orchestrator Core</div>
+          </div>
+          <span class="status-badge badge-in-progress">In Progress</span>
+        </div>
+
+        <!-- Features completed -->
+        <div class="feature-section">
+          <div class="feature-section-label">Completed</div>
+          <div class="feature-list">
+            <span class="feature-tag done">Agent state machine</span>
+            <span class="feature-tag done">Redis state store</span>
+            <span class="feature-tag done">gRPC proto</span>
+            <span class="feature-tag done">DAG engine</span>
+            <span class="feature-tag done">Supervisor</span>
+            <span class="feature-tag done">Health probes</span>
+          </div>
+        </div>
+
+        <!-- Features open -->
+        <div class="feature-section" style="margin-top:10px;">
+          <div class="feature-section-label">Open</div>
+          <div class="feature-list">
+            <span class="feature-tag open">E2E lifecycle tests</span>
+            <span class="feature-tag open">Optimistic locking (CAS)</span>
+            <span class="feature-tag open">Event stream consumption</span>
+          </div>
+        </div>
+
+        <!-- Stat -->
+        <div class="stat-callout stat-navy">
+          <span class="stat-callout-num">10</span>
+          <div class="stat-callout-text">
+            <strong>Go packages</strong>
+            5 features merged &middot; 3 PRs open
+          </div>
+        </div>
+
+        <!-- Expand toggle -->
+        <div class="expand-hint" aria-hidden="true">
+          <span>Details</span>
+          <span class="expand-chevron">&#8964;</span>
+        </div>
+
+        <!-- Expanded details -->
+        <div class="milestone-details">
+          <div class="milestone-details-inner">
+            <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
+              The orchestrator core establishes the agent lifecycle foundation: immutable state snapshots, OTP-style supervisor with circuit-breaker restart policies, a DAG task scheduler, and a Redis-backed state store. gRPC proto definitions drive the IPC layer. Remaining work focuses on CAS-based optimistic locking and end-to-end lifecycle testing.
+            </p>
+            <span class="dep-hint">
+              <span>Required by all subsequent epics</span>
+              <span class="dep-hint-arrow">&#8594;</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="phase-connector scroll-reveal">
+      <span>depends on</span>
+      <div class="phase-connector-line"></div>
+    </div>
+
+    <!-- ───────────────────────────────────────────
+         PHASE 2: TERMINAL LAYER (Epic 2)
+    ─────────────────────────────────────────────── -->
+    <div class="milestone scroll-reveal">
+      <div class="milestone-dot phase-slate" aria-hidden="true"></div>
+      <div
+        class="milestone-card"
+        tabindex="0"
+        role="button"
+        aria-expanded="false"
+        data-milestone="2"
+      >
+        <div class="milestone-head">
+          <div>
+            <div class="milestone-phase">Phase 2 &mdash; Terminal Layer</div>
+            <div class="milestone-title">Epic 2: Terminal Substrate</div>
+          </div>
+          <span class="status-badge badge-in-progress">In Progress</span>
+        </div>
+
+        <!-- Features -->
+        <div class="feature-section">
+          <div class="feature-section-label">Features</div>
+          <div class="feature-list">
+            <span class="feature-tag">Substrate interface</span>
+            <span class="feature-tag">tmux session management</span>
+            <span class="feature-tag">Command injection</span>
+            <span class="feature-tag">Output capture</span>
+            <span class="feature-tag">Layout management</span>
+            <span class="feature-tag">Integration tests</span>
+          </div>
+        </div>
+
+        <!-- Stat -->
+        <div class="stat-callout stat-slate">
+          <span class="stat-callout-num">6</span>
+          <div class="stat-callout-text">
+            <strong>Interface methods</strong>
+            4 features &middot; 7 Go files
+          </div>
+        </div>
+
+        <!-- Expand toggle -->
+        <div class="expand-hint" aria-hidden="true">
+          <span>Details</span>
+          <span class="expand-chevron">&#8964;</span>
+        </div>
+
+        <!-- Expanded details -->
+        <div class="milestone-details">
+          <div class="milestone-details-inner">
+            <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
+              The terminal substrate provides a clean abstraction over tmux: agents run inside tmux panes, and the substrate handles session lifecycle, pane layout, command injection, and output streaming back to the orchestrator. The interface design ensures a Windows SSH-bridge fallback can be swapped in post-MVP without changing orchestrator code.
+            </p>
+            <span class="dep-hint">
+              <span>Connects Epic 1 agents to real terminals</span>
+              <span class="dep-hint-arrow">&#8594;</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="phase-connector scroll-reveal">
+      <span>feeds context to</span>
+      <div class="phase-connector-line"></div>
+    </div>
+
+    <!-- ───────────────────────────────────────────
+         PHASE 3: INTELLIGENCE (Epic 3)
+    ─────────────────────────────────────────────── -->
+    <div class="milestone scroll-reveal">
+      <div class="milestone-dot phase-teal" aria-hidden="true"></div>
+      <div
+        class="milestone-card is-future"
+        tabindex="0"
+        role="button"
+        aria-expanded="false"
+        data-milestone="3"
+      >
+        <div class="milestone-head">
+          <div>
+            <div class="milestone-phase">Phase 3 &mdash; Intelligence</div>
+            <div class="milestone-title">Epic 3: Model Gateway</div>
+          </div>
+          <span class="status-badge badge-planned">Planned</span>
+        </div>
+
+        <!-- Features -->
+        <div class="feature-section">
+          <div class="feature-section-label">Planned Features</div>
+          <div class="feature-list">
+            <span class="feature-tag">LiteLLM proxy integration</span>
+            <span class="feature-tag">Judge-Router (Haiku&#8594;Sonnet&#8594;Opus)</span>
+            <span class="feature-tag">Provider adapters</span>
+            <span class="feature-tag">Fallback chains</span>
+            <span class="feature-tag">Cost tracking dashboard</span>
+          </div>
+        </div>
+
+        <!-- Stat -->
+        <div class="stat-callout stat-teal">
+          <span class="stat-callout-num">3</span>
+          <div class="stat-callout-text">
+            <strong>Routing tiers</strong>
+            60&ndash;90% cost savings target
+          </div>
+        </div>
+
+        <!-- Expand toggle -->
+        <div class="expand-hint" aria-hidden="true">
+          <span>Details</span>
+          <span class="expand-chevron">&#8964;</span>
+        </div>
+
+        <!-- Expanded details -->
+        <div class="milestone-details">
+          <div class="milestone-details-inner">
+            <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
+              The model gateway introduces intelligent routing: lightweight tasks go to Haiku, mid-complexity to Sonnet, deep reasoning to Opus. A judge evaluates output quality and can escalate or retry at a higher tier. LiteLLM provides the unified provider interface. Cost tracking surfaces per-agent, per-task spend in real time.
+            </p>
+            <span class="dep-hint">
+              <span>Routes model calls from Epic 1 supervisor</span>
+              <span class="dep-hint-arrow">&#8594;</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="phase-connector scroll-reveal">
+      <span>visualized by</span>
+      <div class="phase-connector-line"></div>
+    </div>
+
+    <!-- ───────────────────────────────────────────
+         PHASE 4: INTERFACE (Epic 4)
+    ─────────────────────────────────────────────── -->
+    <div class="milestone scroll-reveal">
+      <div class="milestone-dot phase-amber" aria-hidden="true"></div>
+      <div
+        class="milestone-card is-future"
+        tabindex="0"
+        role="button"
+        aria-expanded="false"
+        data-milestone="4"
+      >
+        <div class="milestone-head">
+          <div>
+            <div class="milestone-phase">Phase 4 &mdash; Interface</div>
+            <div class="milestone-title">Epic 4: Pixel Office UI</div>
+          </div>
+          <span class="status-badge badge-future">Future</span>
+        </div>
+
+        <!-- Features -->
+        <div class="feature-section">
+          <div class="feature-section-label">Planned Features</div>
+          <div class="feature-list">
+            <span class="feature-tag">Godot 4 project setup</span>
+            <span class="feature-tag">Pixel-art agent sprites</span>
+            <span class="feature-tag">godot-xterm embedding</span>
+            <span class="feature-tag">Real-time agent visualization</span>
+            <span class="feature-tag">Panel layout system</span>
+          </div>
+        </div>
+
+        <!-- Stat -->
+        <div class="stat-callout stat-amber">
+          <span class="stat-callout-num" style="font-size:18px;font-family:var(--font-mono)">Pixel</span>
+          <div class="stat-callout-text">
+            <strong>Pixel-art office aesthetic</strong>
+            Real-time agent coordination view
+          </div>
+        </div>
+
+        <!-- Expand toggle -->
+        <div class="expand-hint" aria-hidden="true">
+          <span>Details</span>
+          <span class="expand-chevron">&#8964;</span>
+        </div>
+
+        <!-- Expanded details -->
+        <div class="milestone-details">
+          <div class="milestone-details-inner">
+            <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
+              The Pixel Office is a Godot 4 application that renders a top-down pixel-art office where each AI agent is a character sprite at their workstation. Terminals are embedded via godot-xterm directly inside the scene. Agent state (idle, working, reporting) drives sprite animations. The panel layout system allows flexible arrangement of agent views and the cost dashboard.
+            </p>
+            <span class="dep-hint">
+              <span>Consumes real-time state from Epics 1, 2, 3</span>
+              <span class="dep-hint-arrow">&#8594;</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connector -->
+    <div class="phase-connector scroll-reveal">
+      <span>extended by</span>
+      <div class="phase-connector-line"></div>
+    </div>
+
+    <!-- ───────────────────────────────────────────
+         POST-MVP HORIZONS
+    ─────────────────────────────────────────────── -->
+    <div class="milestone scroll-reveal">
+      <div class="milestone-dot phase-rose" aria-hidden="true"></div>
+      <div
+        class="milestone-card is-future"
+        tabindex="0"
+        role="button"
+        aria-expanded="false"
+        data-milestone="5"
+      >
+        <div class="milestone-head">
+          <div>
+            <div class="milestone-phase">Post-MVP</div>
+            <div class="milestone-title">Horizons</div>
+          </div>
+          <span class="status-badge badge-future">Future</span>
+        </div>
+
+        <ul class="horizon-list">
+          <li class="horizon-item">Windows terminal fallback via SSH bridge</li>
+          <li class="horizon-item">Plugin system for custom agent types</li>
+          <li class="horizon-item">Multi-workspace support</li>
+          <li class="horizon-item">Cloud deployment mode</li>
+        </ul>
+
+        <!-- Expand toggle -->
+        <div class="expand-hint" aria-hidden="true">
+          <span>Details</span>
+          <span class="expand-chevron">&#8964;</span>
+        </div>
+
+        <!-- Expanded details -->
+        <div class="milestone-details">
+          <div class="milestone-details-inner">
+            <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
+              Post-MVP work focuses on portability and extensibility. The SSH bridge enables Windows users to reach a Linux tmux host transparently. The plugin API lets teams register domain-specific agent personas with custom sprites and behaviors. Multi-workspace support allows parallel office scenes per project. Cloud mode replaces the local tmux substrate with remote VMs while keeping the Godot UI local.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.timeline-outer -->
+
+  <!-- ═══ FOOTER ═══ -->
+  <div style="margin-top:56px; padding-top:20px; border-top:1px solid var(--border); font-family:var(--font-mono); font-size:10px; color:var(--text-dim); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+    <span>agenKic-orKistrator &mdash; Roadmap</span>
+    <span>Generated 2026-03-24</span>
+  </div>
+
+</div><!-- /.page -->
+
+<script>
+(function() {
+  // ── Reduced-motion guard ──
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── Scroll-reveal observer ──
+  if (!reducedMotion) {
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -32px 0px' });
+
+    document.querySelectorAll('.scroll-reveal').forEach(function(el) {
+      observer.observe(el);
+    });
+  } else {
+    document.querySelectorAll('.scroll-reveal').forEach(function(el) {
+      el.classList.add('is-visible');
+    });
+  }
+
+  // ── Accordion (milestone card expand/collapse) ──
+  document.querySelectorAll('.milestone-card').forEach(function(card) {
+    var details  = card.querySelector('.milestone-details');
+    var chevron  = card.querySelector('.expand-chevron');
+    var hint     = card.querySelector('.expand-hint');
+
+    if (!details) return;
+
+    function toggle(e) {
+      // Prevent double-fire if click lands on a child
+      e.stopPropagation();
+      var isOpen = details.classList.contains('is-open');
+      details.classList.toggle('is-open', !isOpen);
+      if (chevron) chevron.classList.toggle('is-open', !isOpen);
+      card.setAttribute('aria-expanded', String(!isOpen));
+    }
+
+    card.addEventListener('click', toggle);
+    card.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle(e);
+      }
+    });
+  });
+
+  // ── Progress bar (reduced-motion fallback) ──
+  if (reducedMotion) {
+    var fill = document.querySelector('.progress-bar-fill');
+    if (fill) fill.style.width = '35%';
+  }
+})();
+</script>
+</body>
+</html>
