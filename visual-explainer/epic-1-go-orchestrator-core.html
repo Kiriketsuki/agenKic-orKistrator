@@ -31,6 +31,8 @@
     --rose-dim: rgba(180, 54, 74, 0.08);
     --amber: #c07d20;
     --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -64,13 +66,77 @@
     min-height: 100vh;
   }
 
+  /* ── ANIMATIONS ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .anim { animation: fadeUp 0.5s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  @keyframes dotPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes badgeShimmer {
+    0% { background-position: -100% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Hero elements animate on load */
+  .anim { animation: fadeUp 0.5s var(--ease-out-quart) both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  /* Scroll-triggered reveals */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Callout overrides scroll-reveal transform to slide from left */
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* Section dot pulse on scroll-into-view */
+  .section-dot.is-visible {
+    animation: dotPulse 0.5s var(--ease-out-quart) both;
+  }
+
+  /* Badge shimmer */
+  .badge-merged {
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+    background-size: 200% 100%;
+    background-position: -100% 0;
+  }
+  .badge-merged.is-visible {
+    animation: badgeShimmer 1.2s var(--ease-out-quart) 0.3s both;
+  }
+
+  /* Mermaid fade-in after render */
+  .mermaid-wrap {
+    opacity: 0;
+    transition: opacity 0.4s var(--ease-out-quart);
+  }
+  .mermaid-wrap.is-rendered {
+    opacity: 1;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    .scroll-reveal { opacity: 1; transform: none; }
+    .callout.scroll-reveal { opacity: 1; transform: none; }
+    .mermaid-wrap { opacity: 1; }
   }
 
   .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
@@ -193,7 +259,7 @@
     font-family: var(--font-mono); font-size: 14px;
     cursor: pointer; border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s var(--ease-out-quart), color 0.15s var(--ease-out-quart);
   }
   .zoom-controls button:hover { background: var(--border); color: var(--text); }
   .zoom-label {
@@ -227,9 +293,16 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 20px;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
-  .mod-card:hover { border-color: var(--border-strong); }
+  .mod-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  .mod-card:hover .mod-icon {
+    transform: scale(1.05);
+  }
   .mod-card-head {
     display: flex;
     align-items: center;
@@ -242,6 +315,7 @@
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono); font-size: 13px; font-weight: 600;
     flex-shrink: 0;
+    transition: transform 0.2s var(--ease-out-quart);
   }
   .mod-card-head h3 {
     font-family: var(--font-mono);
@@ -300,6 +374,18 @@
     letter-spacing: 0.5px;
     white-space: nowrap;
   }
+  /* State machine sequential reveal via inline animation-delay (set by JS) */
+  .state-node.scroll-reveal,
+  .state-arrow.scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.4s var(--ease-out-quart), transform 0.4s var(--ease-out-quart);
+  }
+  .state-node.scroll-reveal.is-visible,
+  .state-arrow.scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
   .state-arrow {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -343,6 +429,16 @@
     border-radius: 10px;
     padding: 16px;
     position: relative;
+  }
+  /* Flow step stagger: opacity/transform managed by scroll-reveal + inline transition-delay set by JS */
+  .flow-step.scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .flow-step.scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
   }
   .flow-step-num {
     font-family: var(--font-display);
@@ -403,6 +499,8 @@
   @media (prefers-color-scheme: dark) {
     .impl-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
   }
+  .impl-table tbody tr { transition: background 0.15s var(--ease-out-quart); }
+  .impl-table tbody tr:hover td { background: var(--navy-light); }
 
   .badge {
     display: inline-block;
@@ -468,6 +566,31 @@
 </style>
 </head>
 <body>
+
+<script>
+  // Status number counter animation
+  (function() {
+    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.addEventListener('DOMContentLoaded', function() {
+      if (reducedMotion) return;
+      document.querySelectorAll('.status-num').forEach(function(el) {
+        var target = parseInt(el.textContent, 10);
+        if (isNaN(target)) return;
+        el.textContent = '0';
+        var duration = 800;
+        var start = performance.now();
+        function tick(now) {
+          var t = Math.min((now - start) / duration, 1);
+          var eased = 1 - Math.pow(1 - t, 4);
+          el.textContent = Math.round(eased * target);
+          if (t < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    });
+  })();
+</script>
+
 <div class="page">
 
   <!-- ═══ HERO ═══ -->
@@ -487,13 +610,13 @@
   </header>
 
   <!-- ═══ ARCHITECTURE OVERVIEW ═══ -->
-  <div class="section-head anim" style="--i:1">
-    <div class="section-dot" style="background:var(--navy)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
     <h2>System Architecture</h2>
   </div>
-  <p class="section-hint anim" style="--i:1">Ctrl/Cmd + wheel to zoom. Scroll to pan. Double-click to fit.</p>
+  <p class="section-hint scroll-reveal">Ctrl/Cmd + wheel to zoom. Scroll to pan. Double-click to fit.</p>
 
-  <section class="diagram-shell anim" style="--i:2">
+  <section class="diagram-shell scroll-reveal">
     <div class="mermaid-wrap">
       <div class="zoom-controls">
         <button type="button" data-action="zoom-in" title="Zoom in">+</button>
@@ -551,7 +674,7 @@
     </script>
   </section>
 
-  <div class="legend anim" style="--i:3">
+  <div class="legend scroll-reveal">
     <div class="legend-item"><div class="legend-swatch" style="background:var(--navy)"></div> Core packages</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--teal)"></div> State store</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--slate)"></div> Future (not yet implemented)</div>
@@ -559,41 +682,41 @@
   </div>
 
   <!-- ═══ AGENT STATE MACHINE ═══ -->
-  <div class="section-head anim" style="--i:4">
-    <div class="section-dot" style="background:var(--teal)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
     <h2>Agent State Machine</h2>
   </div>
 
-  <div class="anim" style="--i:5">
+  <div class="scroll-reveal">
     <div class="state-flow">
-      <div class="state-node s-idle">Idle</div>
-      <div class="state-arrow">
+      <div class="state-node s-idle scroll-reveal" style="transition-delay:0ms">Idle</div>
+      <div class="state-arrow scroll-reveal" style="transition-delay:100ms">
         <span class="state-arrow-label">TaskAssigned</span>
         <span class="state-arrow-line">&rarr;</span>
       </div>
-      <div class="state-node s-assigned">Assigned</div>
-      <div class="state-arrow">
+      <div class="state-node s-assigned scroll-reveal" style="transition-delay:200ms">Assigned</div>
+      <div class="state-arrow scroll-reveal" style="transition-delay:300ms">
         <span class="state-arrow-label">WorkStarted</span>
         <span class="state-arrow-line">&rarr;</span>
       </div>
-      <div class="state-node s-working">Working</div>
-      <div class="state-arrow">
+      <div class="state-node s-working scroll-reveal" style="transition-delay:400ms">Working</div>
+      <div class="state-arrow scroll-reveal" style="transition-delay:500ms">
         <span class="state-arrow-label">OutputReady</span>
         <span class="state-arrow-line">&rarr;</span>
       </div>
-      <div class="state-node s-reporting">Reporting</div>
-      <div class="state-arrow">
+      <div class="state-node s-reporting scroll-reveal" style="transition-delay:600ms">Reporting</div>
+      <div class="state-arrow scroll-reveal" style="transition-delay:700ms">
         <span class="state-arrow-label">OutputDelivered</span>
         <span class="state-arrow-line">&rarr;</span>
       </div>
-      <div class="state-node s-idle">Idle</div>
+      <div class="state-node s-idle scroll-reveal" style="transition-delay:800ms">Idle</div>
     </div>
     <div style="text-align:center; margin-top:12px;">
       <span class="fail-reset"><strong>EventAgentFailed</strong> &mdash; resets to Idle from any state</span>
     </div>
   </div>
 
-  <div class="callout anim" style="--i:6">
+  <div class="callout scroll-reveal">
     <strong>Immutable snapshots.</strong> Every <code>ApplyEvent</code> call returns an <code>AgentSnapshot</code>
     with <code>PreviousState</code>, <code>State</code>, and <code>Event</code>. The Machine has no internal
     mutable state &mdash; all state lives in the StateStore. Callers serialize per-agent via the supervisor's
@@ -601,12 +724,12 @@
   </div>
 
   <!-- ═══ MODULE BREAKDOWN ═══ -->
-  <div class="section-head anim" style="--i:7">
-    <div class="section-dot" style="background:var(--gold)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--gold)"></div>
     <h2>Module Breakdown</h2>
   </div>
 
-  <div class="module-grid anim" style="--i:8">
+  <div class="module-grid scroll-reveal">
     <div class="mod-card">
       <div class="mod-card-head">
         <div class="mod-icon" style="background:var(--navy-light);color:var(--navy)">SV</div>
@@ -688,33 +811,33 @@
   </div>
 
   <!-- ═══ TASK DATA FLOW ═══ -->
-  <div class="section-head anim" style="--i:9">
-    <div class="section-dot" style="background:var(--rose)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--rose)"></div>
     <h2>Task Data Flow</h2>
   </div>
 
-  <div class="flow-steps anim" style="--i:10">
-    <div class="flow-step">
+  <div class="flow-steps">
+    <div class="flow-step scroll-reveal" style="transition-delay:0ms">
       <div class="flow-step-num">1</div>
       <h4>Submit</h4>
       <p>Client calls <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-light);color:var(--navy);padding:1px 4px;border-radius:3px;">SubmitTask</code> via gRPC. Handler enqueues task into the sorted-set queue with priority.</p>
     </div>
-    <div class="flow-step">
+    <div class="flow-step scroll-reveal" style="transition-delay:80ms">
       <div class="flow-step-num">2</div>
       <h4>Assign</h4>
       <p>Supervisor's <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-light);color:var(--navy);padding:1px 4px;border-radius:3px;">taskAssignLoop</code> dequeues, finds an idle agent (skipping cooldown/circuit-open), applies EventTaskAssigned.</p>
     </div>
-    <div class="flow-step">
+    <div class="flow-step scroll-reveal" style="transition-delay:160ms">
       <div class="flow-step-num">3</div>
       <h4>Execute</h4>
       <p>Agent transitions: Assigned &rarr; Working. Agent processes the task, streams output. State tracked in Redis hashes.</p>
     </div>
-    <div class="flow-step">
+    <div class="flow-step scroll-reveal" style="transition-delay:240ms">
       <div class="flow-step-num">4</div>
       <h4>Report</h4>
       <p>Agent transitions: Working &rarr; Reporting &rarr; Idle. Output delivered, policy records success, cooldown cleared.</p>
     </div>
-    <div class="flow-step">
+    <div class="flow-step scroll-reveal" style="transition-delay:320ms">
       <div class="flow-step-num">5</div>
       <h4>Fail &amp; Recover</h4>
       <p>On crash: EventAgentFailed resets to Idle. RestartPolicy computes backoff. Circuit breaker opens after threshold exceeded.</p>
@@ -722,12 +845,12 @@
   </div>
 
   <!-- ═══ IMPLEMENTATION STATUS ═══ -->
-  <div class="section-head anim" style="--i:11">
-    <div class="section-dot" style="background:var(--teal)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
     <h2>Implementation Status</h2>
   </div>
 
-  <div class="impl-table-wrap anim" style="--i:12">
+  <div class="impl-table-wrap scroll-reveal">
     <table class="impl-table">
       <thead>
         <tr>
@@ -743,35 +866,35 @@
           <td><strong>F1 &mdash; Foundation</strong></td>
           <td>#5</td>
           <td>#10</td>
-          <td><span class="badge badge-merged">merged</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>go mod, proto, Redis state, agent state machine</td>
         </tr>
         <tr>
           <td><strong>F2 &mdash; gRPC + Supervisor</strong></td>
           <td>#6</td>
           <td>#11</td>
-          <td><span class="badge badge-merged">merged</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>gRPC server, supervisor heartbeat + assign loops</td>
         </tr>
         <tr>
           <td><strong>F3 &mdash; DAG Task Engine</strong></td>
           <td>#7</td>
           <td>#12</td>
-          <td><span class="badge badge-merged">merged</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>Topological sort, parallel fork, executor</td>
         </tr>
         <tr>
           <td><strong>F2-F3 Integration</strong></td>
           <td>#19</td>
           <td>#20</td>
-          <td><span class="badge badge-merged">merged</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>Wire DAG executor into gRPC handlers</td>
         </tr>
         <tr>
           <td><strong>F4 &mdash; Health Probes</strong></td>
           <td>#8</td>
           <td>#13</td>
-          <td><span class="badge badge-merged">merged</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>Liveness, readiness endpoints</td>
         </tr>
         <tr>
@@ -814,12 +937,12 @@
   </div>
 
   <!-- ═══ SUPERVISION TREE DETAIL ═══ -->
-  <div class="section-head anim" style="--i:13">
-    <div class="section-dot" style="background:var(--navy)"></div>
+  <div class="section-head scroll-reveal">
+    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
     <h2>Supervision &amp; Restart Policy</h2>
   </div>
 
-  <section class="diagram-shell anim" style="--i:14">
+  <section class="diagram-shell scroll-reveal">
     <p class="diagram-shell__hint">Crash handling flow &mdash; from heartbeat stale detection to circuit breaker</p>
     <div class="mermaid-wrap">
       <div class="zoom-controls">
@@ -877,7 +1000,7 @@
     </script>
   </section>
 
-  <div class="callout anim" style="--i:15">
+  <div class="callout scroll-reveal">
     <strong>Sentinel pattern.</strong> Before calling <code>applyEvent</code>, <code>crashAgent</code> pre-populates
     a 24-hour cooldown sentinel under <code>sv.mu.Lock()</code>. This closes the TOCTOU race window: <code>findIdleAgent</code>
     reads <code>agentCooldown</code> under <code>sv.mu.RLock()</code> and skips the agent immediately. After <code>applyEvent</code>,
@@ -891,6 +1014,31 @@
   </div>
 
 </div>
+
+<script>
+  // Scroll-triggered IntersectionObserver for .scroll-reveal elements
+  (function() {
+    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      // Make all scroll-reveal elements immediately visible
+      document.querySelectorAll('.scroll-reveal').forEach(function(el) {
+        el.classList.add('is-visible');
+      });
+      return;
+    }
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.scroll-reveal').forEach(function(el) {
+      observer.observe(el);
+    });
+  })();
+</script>
 
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
@@ -1034,6 +1182,7 @@
         svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
         svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
         setAdaptiveHeight(); fitDiagram();
+        wrap.classList.add('is-rendered');
       } catch (err) { console.error('Mermaid render failed:', err); label.textContent = 'Error: ' + (err.message || 'Render failed'); }
     }
 

@@ -6,15 +6,16 @@
 <title>Epic 3 — Model Gateway / Judge-Router</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
-    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-    --bg: #f0f5f4;
+    --bg: #f8f6f1;
     --surface: #ffffff;
-    --surface-alt: #e8efed;
+    --surface-alt: #f1ede6;
     --surface-recessed: #f7faf9;
     --border: rgba(15, 80, 72, 0.10);
     --border-strong: rgba(15, 80, 72, 0.20);
@@ -32,14 +33,16 @@
     --rose-dim: rgba(159, 18, 57, 0.08);
     --sage: #3d7a5f;
     --sage-dim: rgba(61, 122, 95, 0.08);
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0a1f1c;
-      --surface: #122b27;
-      --surface-alt: #163832;
-      --surface-recessed: #0e2422;
+      --bg: #0f1724;
+      --surface: #182032;
+      --surface-alt: #1e2a40;
+      --surface-recessed: #131e2e;
       --border: rgba(200, 240, 230, 0.08);
       --border-strong: rgba(200, 240, 230, 0.16);
       --text: #d4ece6;
@@ -73,19 +76,49 @@
     min-height: 100vh;
   }
 
+  /* =========== ANIMATIONS =========== */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
   }
+
+  @keyframes dotPulse {
+    0%   { transform: scale(1); opacity: 1; }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Hero elements: animate on load */
   .animate {
-    animation: fadeUp 0.4s ease-out both;
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
     animation-delay: calc(var(--i, 0) * 0.07s);
   }
+
+  /* Scroll-triggered reveals */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Section dot pulse on reveal */
+  .section-label.is-visible::before {
+    animation: dotPulse 0.6s var(--ease-out-quart) both;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       animation-delay: 0ms !important;
       transition-duration: 0.01ms !important;
+    }
+    .scroll-reveal {
+      opacity: 1;
+      transform: none;
     }
   }
 
@@ -105,9 +138,15 @@
     padding: 4px 10px;
     border-radius: 4px;
     margin-bottom: 12px;
+    transition: transform 0.15s var(--ease-out-quart);
+  }
+
+  .epic-tag:hover {
+    transform: scale(1.05);
   }
 
   h1 {
+    font-family: var(--font-body);
     font-size: 36px;
     font-weight: 700;
     letter-spacing: -0.8px;
@@ -145,6 +184,13 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px 18px;
+    transition: transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart), border-color 0.2s;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.10);
+    border-color: var(--border-strong);
   }
 
   .stat-card__label {
@@ -187,12 +233,14 @@
     height: 6px;
     border-radius: 50%;
     background: var(--teal);
+    flex-shrink: 0;
   }
 
   h2 {
-    font-size: 24px;
-    font-weight: 600;
-    letter-spacing: -0.3px;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 400;
+    letter-spacing: -0.2px;
     margin-bottom: 12px;
   }
 
@@ -342,11 +390,13 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 24px;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
 
   .ve-card:hover {
     border-color: var(--border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.08);
   }
 
   .ve-card--wide {
@@ -363,6 +413,11 @@
     padding: 2px 8px;
     border-radius: 3px;
     margin-bottom: 10px;
+    transition: transform 0.15s var(--ease-out-quart);
+  }
+
+  .ve-card__tag:hover {
+    transform: scale(1.05);
   }
 
   .ve-card__tag--teal { color: var(--teal); background: var(--teal-dim); }
@@ -424,6 +479,12 @@
     background: var(--surface-alt);
     color: var(--text-dim);
     border: 1px solid var(--border);
+    transition: transform 0.15s var(--ease-out-quart), background 0.15s;
+  }
+
+  .scope-chip:hover {
+    transform: scale(1.05);
+    background: var(--teal-dim);
   }
 
   /* =========== INTERFACE TABLE =========== */
@@ -463,10 +524,23 @@
     padding: 10px 16px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
+    transition: background 0.15s;
+  }
+
+  tbody tr {
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover td {
+    background: var(--teal-dim);
   }
 
   tbody tr:nth-child(even) td {
     background: var(--surface-recessed);
+  }
+
+  tbody tr:nth-child(even):hover td {
+    background: var(--teal-dim);
   }
 
   tbody tr:last-child td {
@@ -494,6 +568,12 @@
     border-radius: 10px;
     padding: 20px;
     text-align: center;
+    transition: transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
+  }
+
+  .tier-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
   }
 
   .tier-box--cheap {
@@ -561,6 +641,12 @@
     padding: 18px 16px;
     position: relative;
     text-align: center;
+    transition: background 0.2s, box-shadow 0.2s var(--ease-out-quart);
+  }
+
+  .lifecycle-step:hover {
+    background: var(--teal-dim);
+    box-shadow: inset 0 0 0 1px var(--teal-mid);
   }
 
   .lifecycle-step:first-child { border-radius: 10px 0 0 10px; }
@@ -677,6 +763,14 @@
     border-bottom: 1px solid var(--border);
     font-size: 14px;
     line-height: 1.5;
+    transition: background 0.15s;
+  }
+
+  .exit-list li:hover {
+    background: var(--teal-dim);
+    padding-left: 6px;
+    margin-left: -6px;
+    border-radius: 4px;
   }
 
   .exit-list li:last-child { border-bottom: none; }
@@ -746,7 +840,7 @@
   <div class="stats-row animate" style="--i:3">
     <div class="stat-card">
       <div class="stat-card__label">Features</div>
-      <div class="stat-card__value">5</div>
+      <div class="stat-card__value" data-count="5">5</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__label">Spec Tasks</div>
@@ -754,11 +848,11 @@
     </div>
     <div class="stat-card">
       <div class="stat-card__label">Routing Tiers</div>
-      <div class="stat-card__value--slate stat-card__value">3</div>
+      <div class="stat-card__value--slate stat-card__value" data-count="3">3</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__label">Providers</div>
-      <div class="stat-card__value--rose stat-card__value">4</div>
+      <div class="stat-card__value--rose stat-card__value" data-count="4">4</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__label">Cost Savings</div>
@@ -767,15 +861,15 @@
   </div>
 
   <!-- ARCHITECTURE DIAGRAM -->
-  <div class="section-label animate" style="--i:4">01 &mdash; Architecture</div>
-  <h2 class="animate" style="--i:4">Request Flow</h2>
-  <p class="section-desc animate" style="--i:4">
+  <div class="section-label scroll-reveal">01 &mdash; Architecture</div>
+  <h2 class="scroll-reveal">Request Flow</h2>
+  <p class="section-desc scroll-reveal">
     Every task enters through the <code>Gateway</code> interface. The Judge-Router classifies complexity,
     the config maps tiers to concrete models, the LiteLLM client dispatches via provider adapters,
     and cost is recorded on every response.
   </p>
 
-  <section class="diagram-shell animate" style="--i:5">
+  <section class="diagram-shell scroll-reveal">
     <p class="diagram-shell__hint">
       Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit
     </p>
@@ -864,21 +958,21 @@ flowchart TD
     </script>
   </section>
 
-  <div class="legend animate" style="--i:6">
+  <div class="legend scroll-reveal">
     <div class="legend-item"><div class="legend-swatch" style="background:var(--teal)"></div> Core gateway flow</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--slate)"></div> External providers</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> Config / cost tracking</div>
   </div>
 
   <!-- ROUTING TIERS -->
-  <div class="section-label animate" style="--i:7">02 &mdash; Routing Tiers</div>
-  <h2 class="animate" style="--i:7">Three-Tier Model Strategy</h2>
-  <p class="section-desc animate" style="--i:7">
+  <div class="section-label scroll-reveal">02 &mdash; Routing Tiers</div>
+  <h2 class="scroll-reveal">Three-Tier Model Strategy</h2>
+  <p class="section-desc scroll-reveal">
     The judge model classifies every task into one of three tiers. Each tier has a primary model and a fallback chain
     configured in <code>config/models.yaml</code>.
   </p>
 
-  <div class="tier-strip animate" style="--i:8">
+  <div class="tier-strip scroll-reveal">
     <div class="tier-box tier-box--cheap">
       <div class="tier-box__name">Cheap</div>
       <div class="tier-box__model">claude-haiku-4-5</div>
@@ -900,10 +994,10 @@ flowchart TD
   </div>
 
   <!-- REQUEST LIFECYCLE -->
-  <div class="section-label animate" style="--i:9">03 &mdash; Lifecycle</div>
-  <h2 class="animate" style="--i:9">Request Lifecycle</h2>
+  <div class="section-label scroll-reveal">03 &mdash; Lifecycle</div>
+  <h2 class="scroll-reveal">Request Lifecycle</h2>
 
-  <div class="lifecycle-steps animate" style="--i:10">
+  <div class="lifecycle-steps scroll-reveal">
     <div class="lifecycle-step">
       <div class="lifecycle-step__num">1</div>
       <div class="lifecycle-step__label">Task Arrives</div>
@@ -937,13 +1031,13 @@ flowchart TD
   </div>
 
   <!-- FEATURE BREAKDOWN -->
-  <div class="section-label animate" style="--i:11">04 &mdash; Features</div>
-  <h2 class="animate" style="--i:11">Feature Breakdown</h2>
-  <p class="section-desc animate" style="--i:11">
+  <div class="section-label scroll-reveal">04 &mdash; Features</div>
+  <h2 class="scroll-reveal">Feature Breakdown</h2>
+  <p class="section-desc scroll-reveal">
     Five features cover the full gateway stack. Each has its own spec, branch, and implementation.
   </p>
 
-  <div class="feature-grid animate" style="--i:12">
+  <div class="feature-grid scroll-reveal">
 
     <div class="ve-card">
       <span class="ve-card__tag ve-card__tag--teal">T1</span>
@@ -1059,10 +1153,10 @@ flowchart TD
   </div>
 
   <!-- CORE INTERFACES -->
-  <div class="section-label animate" style="--i:13">05 &mdash; Interfaces</div>
-  <h2 class="animate" style="--i:13">Core Interface Contracts</h2>
+  <div class="section-label scroll-reveal">05 &mdash; Interfaces</div>
+  <h2 class="scroll-reveal">Core Interface Contracts</h2>
 
-  <div class="interface-table-wrap animate" style="--i:14">
+  <div class="interface-table-wrap scroll-reveal">
     <table>
       <thead>
         <tr>
@@ -1108,10 +1202,10 @@ flowchart TD
   </div>
 
   <!-- CONFIG SAMPLE -->
-  <div class="section-label animate" style="--i:15">06 &mdash; Configuration</div>
-  <h2 class="animate" style="--i:15">models.yaml Structure</h2>
+  <div class="section-label scroll-reveal">06 &mdash; Configuration</div>
+  <h2 class="scroll-reveal">models.yaml Structure</h2>
 
-  <div class="config-block animate" style="--i:16">
+  <div class="config-block scroll-reveal">
     <div class="config-block__header">config/models.yaml</div>
     <div class="config-block__body"><span class="ck">gateway</span>:
   <span class="ck">litellm_base_url</span>: <span class="cv">"http://localhost:4000"</span>
@@ -1140,10 +1234,10 @@ flowchart TD
   </div>
 
   <!-- TASK DEPENDENCY -->
-  <div class="section-label animate" style="--i:17">07 &mdash; Dependencies</div>
-  <h2 class="animate" style="--i:17">Task Dependency Graph</h2>
+  <div class="section-label scroll-reveal">07 &mdash; Dependencies</div>
+  <h2 class="scroll-reveal">Task Dependency Graph</h2>
 
-  <section class="diagram-shell animate" style="--i:18" id="dep-diagram">
+  <section class="diagram-shell scroll-reveal" id="dep-diagram">
     <p class="diagram-shell__hint">
       Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit
     </p>
@@ -1185,10 +1279,10 @@ flowchart LR
   </section>
 
   <!-- RISKS -->
-  <div class="section-label animate" style="--i:19">08 &mdash; Risks</div>
-  <h2 class="animate" style="--i:19">Key Risks &amp; Mitigations</h2>
+  <div class="section-label scroll-reveal">08 &mdash; Risks</div>
+  <h2 class="scroll-reveal">Key Risks &amp; Mitigations</h2>
 
-  <div class="interface-table-wrap animate" style="--i:20">
+  <div class="interface-table-wrap scroll-reveal">
     <table>
       <thead>
         <tr>
@@ -1223,10 +1317,10 @@ flowchart LR
   </div>
 
   <!-- EXIT CRITERIA -->
-  <div class="section-label animate" style="--i:21">09 &mdash; Exit Criteria</div>
-  <h2 class="animate" style="--i:21">Definition of Done</h2>
+  <div class="section-label scroll-reveal">09 &mdash; Exit Criteria</div>
+  <h2 class="scroll-reveal">Definition of Done</h2>
 
-  <ul class="exit-list animate" style="--i:22">
+  <ul class="exit-list scroll-reveal">
     <li><span class="exit-check">&square;</span> All Must-Have acceptance scenarios pass in CI</li>
     <li><span class="exit-check">&square;</span> No regressions on Epic 1 (orchestrator core) features</li>
     <li><span class="exit-check">&square;</span> Judge-Router correctly classifies at least 3 task complexity levels</li>
@@ -1237,7 +1331,7 @@ flowchart LR
   </ul>
 
   <!-- FOOTER -->
-  <div class="footer animate" style="--i:23">
+  <div class="footer scroll-reveal">
     <span>agenKic-orKistrator &middot; Epic 3 &middot; Model Gateway / Judge-Router</span>
     <span>Generated 2026-03-22 &middot; Clault KiperS 4.6</span>
   </div>
@@ -1275,9 +1369,9 @@ flowchart LR
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontFamily: "'DM Sans', system-ui, sans-serif",
       fontSize: '14px',
-      primaryColor: isDark ? '#163832' : '#e6f5f0',
+      primaryColor: isDark ? '#1e2a40' : '#e6f5f0',
       primaryBorderColor: isDark ? '#34d399' : '#0e7c6b',
       primaryTextColor: isDark ? '#d4ece6' : '#0f2e2a',
       secondaryColor: isDark ? '#1c2e4a' : '#e8f0fa',
@@ -1287,7 +1381,7 @@ flowchart LR
       tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
       tertiaryTextColor: isDark ? '#d4ece6' : '#0f2e2a',
       lineColor: isDark ? '#7fada2' : '#4a6e68',
-      noteBkgColor: isDark ? '#163832' : '#fefce8',
+      noteBkgColor: isDark ? '#1e2a40' : '#fefce8',
       noteTextColor: isDark ? '#d4ece6' : '#0f2e2a',
       noteBorderColor: isDark ? '#fbbf24' : '#b45309',
     }
@@ -1389,7 +1483,7 @@ flowchart LR
       if (!svg) return;
       const clone = svg.cloneNode(true);
       clone.style.width = ''; clone.style.height = '';
-      const bg = isDark ? '#0a1f1c' : '#f0f5f4';
+      const bg = isDark ? '#0f1724' : '#f8f6f1';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Diagram</title><style>
@@ -1484,6 +1578,55 @@ flowchart LR
   }
 
   document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+
+  // =========== SCROLL-TRIGGERED REVEALS ===========
+  const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (!prefersReducedMotion) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+  } else {
+    // Immediately show all scroll-reveal elements when motion is reduced
+    document.querySelectorAll('.scroll-reveal').forEach(el => el.classList.add('is-visible'));
+  }
+
+  // =========== STAT CARD COUNTER ANIMATION ===========
+  function animateCounter(el, target, duration) {
+    if (prefersReducedMotion) return;
+    const start = performance.now();
+    const easeOutQuart = t => 1 - Math.pow(1 - t, 4);
+    function tick(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      el.textContent = Math.round(easeOutQuart(progress) * target);
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Observe the stats row and fire counters when it enters view
+  const statsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.querySelectorAll('[data-count]').forEach(el => {
+          const target = parseInt(el.dataset.count, 10);
+          if (!isNaN(target)) animateCounter(el, target, 800);
+        });
+        statsObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  const statsRow = document.querySelector('.stats-row');
+  if (statsRow) statsObserver.observe(statsRow);
 </script>
 
 </body>

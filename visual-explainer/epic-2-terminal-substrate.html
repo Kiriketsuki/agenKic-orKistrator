@@ -31,6 +31,8 @@
     --rose-dim: rgba(180, 54, 74, 0.08);
     --amber: #c07d20;
     --slate: #64748b;
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -64,11 +66,60 @@
     min-height: 100vh;
   }
 
+  /* ── ANIMATIONS ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .anim { animation: fadeUp 0.5s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+  @keyframes dotPulse {
+    0%   { transform: scale(1);   opacity: 1; }
+    50%  { transform: scale(1.6); opacity: 0.5; }
+    100% { transform: scale(1);   opacity: 1; }
+  }
+  @keyframes badgeShimmer {
+    from { background-position: -100% 0; }
+    to   { background-position: 200% 0; }
+  }
+
+  /* Hero on-load animations */
+  .anim { animation: fadeUp 0.5s var(--ease-out-quart) both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  /* Scroll-reveal base state */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart);
+    transition-delay: calc(var(--i, 0) * 0.07s);
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Callout override: slide in from left */
+  .callout.scroll-reveal {
+    transform: translateX(-12px);
+    opacity: 0;
+    transition: transform 0.5s var(--ease-out-quart), opacity 0.5s var(--ease-out-quart);
+  }
+  .callout.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* Section dot pulse */
+  .section-dot.is-visible { animation: dotPulse 0.5s var(--ease-out-quart) both; }
+
+  /* Badge shimmer */
+  .badge-open {
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+    background-size: 200% 100%;
+    background-position: -100% 0;
+  }
+  .badge-open.shimmer-active {
+    animation: badgeShimmer 0.7s var(--ease-out-quart) both;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
@@ -172,7 +223,10 @@
     align-items: center;
     min-height: 400px;
     cursor: grab;
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   }
+  .mermaid-wrap.is-rendered { opacity: 1; }
   .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
 
   .zoom-controls {
@@ -228,9 +282,14 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 20px;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
-  .mod-card:hover { border-color: var(--border-strong); }
+  .mod-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  .mod-card:hover .mod-icon { transform: scale(1.05); }
   .mod-card-head {
     display: flex;
     align-items: center;
@@ -243,6 +302,7 @@
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono); font-size: 13px; font-weight: 600;
     flex-shrink: 0;
+    transition: transform 0.2s var(--ease-out-quart);
   }
   .mod-card-head h3 {
     font-family: var(--font-mono);
@@ -299,6 +359,9 @@
     font-weight: 600;
     white-space: nowrap;
     text-align: center;
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: opacity 0.4s var(--ease-out-quart), transform 0.4s var(--ease-out-quart);
   }
   .lf-arrow {
     font-family: var(--font-mono);
@@ -309,6 +372,13 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    opacity: 0;
+    transition: opacity 0.3s var(--ease-out-quart);
+  }
+  .lifecycle-flow.lf-revealed .lf-node,
+  .lifecycle-flow.lf-revealed .lf-arrow {
+    opacity: 1;
+    transform: translateX(0);
   }
   .lf-arrow-line { color: var(--slate); font-size: 16px; }
   .lf-arrow-label { font-size: 9px; color: var(--text-dim); }
@@ -352,9 +422,11 @@
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
+    transition: background 0.15s var(--ease-out-quart);
   }
   .api-table tr:last-child td { border-bottom: none; }
   .api-table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+  .api-table tbody tr:hover td { background: var(--navy-light); }
   @media (prefers-color-scheme: dark) {
     .api-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
   }
@@ -389,8 +461,10 @@
     padding: 8px 16px;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
+    transition: background 0.15s var(--ease-out-quart);
   }
   .err-row:last-child { border-bottom: none; }
+  .err-row:hover { background: var(--navy-light); }
   .err-pattern {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -470,21 +544,21 @@
       Each agent executes inside its own isolated, observable terminal environment.
     </p>
     <div class="status-strip">
-      <div class="status-item"><span class="status-num">4</span><span class="status-label">features</span></div>
-      <div class="status-item"><span class="status-num">6</span><span class="status-label">interface methods</span></div>
-      <div class="status-item"><span class="status-num">7</span><span class="status-label">Go source files</span></div>
-      <div class="status-item"><span class="status-num">7</span><span class="status-label">integration tests</span></div>
+      <div class="status-item"><span class="status-num" data-target="4">4</span><span class="status-label">features</span></div>
+      <div class="status-item"><span class="status-num" data-target="6">6</span><span class="status-label">interface methods</span></div>
+      <div class="status-item"><span class="status-num" data-target="7">7</span><span class="status-label">Go source files</span></div>
+      <div class="status-item"><span class="status-num" data-target="7">7</span><span class="status-label">integration tests</span></div>
     </div>
   </header>
 
   <!-- SUBSTRATE ARCHITECTURE -->
-  <div class="section-head anim" style="--i:1">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--navy)"></div>
     <h2>Substrate Architecture</h2>
   </div>
-  <p class="section-hint anim" style="--i:1">Ctrl/Cmd + wheel to zoom. Scroll to pan. Double-click to fit.</p>
+  <p class="section-hint scroll-reveal" style="--i:1">Ctrl/Cmd + wheel to zoom. Scroll to pan. Double-click to fit.</p>
 
-  <section class="diagram-shell anim" style="--i:2">
+  <section class="diagram-shell scroll-reveal" style="--i:2">
     <div class="mermaid-wrap">
       <div class="zoom-controls">
         <button type="button" data-action="zoom-in" title="Zoom in">+</button>
@@ -549,7 +623,7 @@
     </script>
   </section>
 
-  <div class="legend anim" style="--i:3">
+  <div class="legend scroll-reveal" style="--i:3">
     <div class="legend-item"><div class="legend-swatch" style="background:var(--teal)"></div> Interface + types</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--navy)"></div> Implementation</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--amber)"></div> Utilities</div>
@@ -558,13 +632,13 @@
   </div>
 
   <!-- SESSION LIFECYCLE -->
-  <div class="section-head anim" style="--i:4">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--teal)"></div>
     <h2>Session Lifecycle</h2>
   </div>
 
-  <div class="anim" style="--i:5">
-    <div class="lifecycle-flow">
+  <div class="scroll-reveal" style="--i:1">
+    <div class="lifecycle-flow" id="lifecycle-flow">
       <div class="lf-node lf-spawn">SpawnSession</div>
       <div class="lf-arrow">
         <span class="lf-arrow-label">new-session -d -s</span>
@@ -589,7 +663,7 @@
     </div>
   </div>
 
-  <div class="callout anim" style="--i:6">
+  <div class="callout scroll-reveal" style="--i:0">
     <strong>Enter as separate argument.</strong> <code>SendCommand</code> passes <code>Enter</code> as a distinct
     <code>send-keys</code> argument &mdash; never appended as <code>\n</code> or <code>C-m</code>.
     This prevents tmux from interpreting special characters (semicolons, hashes) in the command text.
@@ -597,12 +671,12 @@
   </div>
 
   <!-- SUBSTRATE INTERFACE -->
-  <div class="section-head anim" style="--i:7">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--gold)"></div>
     <h2>Substrate Interface</h2>
   </div>
 
-  <div class="api-table-wrap anim" style="--i:8">
+  <div class="api-table-wrap scroll-reveal" style="--i:1">
     <table class="api-table">
       <thead>
         <tr>
@@ -654,12 +728,12 @@
   </div>
 
   <!-- MODULE BREAKDOWN -->
-  <div class="section-head anim" style="--i:9">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--rose)"></div>
     <h2>Module Breakdown</h2>
   </div>
 
-  <div class="module-grid anim" style="--i:10">
+  <div class="module-grid scroll-reveal" style="--i:1">
     <div class="mod-card">
       <div class="mod-card-head">
         <div class="mod-icon" style="background:var(--teal-dim);color:var(--teal)">IF</div>
@@ -774,12 +848,12 @@
   </div>
 
   <!-- ERROR CLASSIFICATION -->
-  <div class="section-head anim" style="--i:11">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--amber)"></div>
     <h2>Error Classification</h2>
   </div>
 
-  <div class="anim" style="--i:12" style="margin-bottom:16px">
+  <div class="scroll-reveal" style="--i:1; margin-bottom:16px">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
       <div style="padding:10px 16px;background:var(--surface-alt);border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto 1fr;gap:12px;">
         <span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">tmux stderr pattern</span>
@@ -819,20 +893,20 @@
     </div>
   </div>
 
-  <div class="callout anim" style="--i:13">
+  <div class="callout scroll-reveal" style="--i:0">
     <strong>Case-insensitive matching.</strong> All pattern matching uses <code>strings.ToLower</code> + <code>strings.Contains</code>
     to handle tmux version differences. When no tmux server is running, <code>ListSessions</code> returns an empty
     <code>[]Session{}</code> (not nil, not error) &mdash; the "no server running" message is caught before error classification.
   </div>
 
   <!-- DEPENDENCY CHAIN -->
-  <div class="section-head anim" style="--i:14">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--navy)"></div>
     <h2>Feature Dependency Chain</h2>
   </div>
-  <p class="section-hint anim" style="--i:14">F1 is the foundation. F2 and F3 branch from F1. F4 integrates all three.</p>
+  <p class="section-hint scroll-reveal" style="--i:1">F1 is the foundation. F2 and F3 branch from F1. F4 integrates all three.</p>
 
-  <section class="diagram-shell anim" style="--i:15">
+  <section class="diagram-shell scroll-reveal" style="--i:2">
     <div class="mermaid-wrap" style="min-height:300px">
       <div class="zoom-controls">
         <button type="button" data-action="zoom-in" title="Zoom in">+</button>
@@ -871,12 +945,12 @@
   </section>
 
   <!-- FEATURE STATUS -->
-  <div class="section-head anim" style="--i:16">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--teal)"></div>
     <h2>Feature Status</h2>
   </div>
 
-  <div class="api-table-wrap anim" style="--i:17">
+  <div class="api-table-wrap scroll-reveal" style="--i:1">
     <table class="api-table">
       <thead>
         <tr>
@@ -928,12 +1002,12 @@
   </div>
 
   <!-- TESTING STRATEGY -->
-  <div class="section-head anim" style="--i:18">
+  <div class="section-head scroll-reveal" style="--i:0">
     <div class="section-dot" style="background:var(--rose)"></div>
     <h2>Testing Strategy</h2>
   </div>
 
-  <div class="anim" style="--i:19">
+  <div class="scroll-reveal" style="--i:1">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;">
         <div style="font-family:var(--font-display);font-size:28px;color:var(--teal);line-height:1;margin-bottom:6px;">1</div>
@@ -965,6 +1039,93 @@
   </div>
 
 </div>
+
+<script>
+  // ── Scroll-reveal observer ──
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.scroll-reveal').forEach(el => revealObserver.observe(el));
+
+  // ── Section dot pulse observer ──
+  const dotObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        dotObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.section-dot').forEach(el => dotObserver.observe(el));
+
+  // ── Badge shimmer observer ──
+  const badgeObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        // Small delay so reveal animation completes first
+        setTimeout(() => entry.target.classList.add('shimmer-active'), 300);
+        badgeObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.badge-open').forEach(el => badgeObserver.observe(el));
+
+  // ── Status counter animation ──
+  function animateCounter(el, target, duration) {
+    const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) { el.textContent = target; return; }
+    const start = performance.now();
+    function tick(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // Quart ease-out: 1 - (1-t)^4
+      const eased = 1 - Math.pow(1 - progress, 4);
+      el.textContent = Math.round(eased * target);
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Fire counters after hero .anim delay resolves (~700ms for last element)
+  window.addEventListener('load', () => {
+    const delay = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700;
+    setTimeout(() => {
+      document.querySelectorAll('.status-num[data-target]').forEach(el => {
+        const target = parseInt(el.dataset.target, 10);
+        animateCounter(el, target, 800);
+      });
+    }, delay);
+  });
+
+  // ── Lifecycle sequential reveal ──
+  const lifecycleFlow = document.getElementById('lifecycle-flow');
+  if (lifecycleFlow) {
+    const lfObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const children = Array.from(lifecycleFlow.children);
+        if (prefersReduced) {
+          lifecycleFlow.classList.add('lf-revealed');
+        } else {
+          children.forEach((child, i) => {
+            setTimeout(() => {
+              child.style.opacity = '1';
+              child.style.transform = 'translateX(0)';
+            }, i * 100);
+          });
+        }
+        lfObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.2 });
+    lfObserver.observe(lifecycleFlow);
+  }
+</script>
 
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
@@ -1108,6 +1269,7 @@
         svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
         svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
         setAdaptiveHeight(); fitDiagram();
+        wrap.classList.add('is-rendered');
       } catch (err) { console.error('Mermaid render failed:', err); label.textContent = 'Error: ' + (err.message || 'Render failed'); }
     }
 
