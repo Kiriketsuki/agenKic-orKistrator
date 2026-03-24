@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dynamic Docs Index & Publish Workflow</title>
+<meta name="doc-title" content="Dynamic Docs Index & Publish Workflow">
+<meta name="doc-desc" content="Manifest-driven index, GitHub Actions publish workflow, scroll-triggered animations">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
+    --bg: #f8f6f1;
+    --bg-alt: #f0ede6;
+    --surface: #ffffff;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.18);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+
+    --navy: #1e3a5f;
+    --navy-dim: rgba(30, 58, 95, 0.06);
+    --teal: #0e7c6b;
+    --teal-dim: rgba(14, 124, 107, 0.08);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.08);
+    --slate: #3d5a80;
+    --slate-dim: rgba(61, 90, 128, 0.07);
+    --rose: #9f1239;
+    --rose-dim: rgba(159, 18, 57, 0.07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1724;
+      --bg-alt: #141d2e;
+      --surface: #182032;
+      --border: rgba(200, 220, 240, 0.08);
+      --border-strong: rgba(200, 220, 240, 0.15);
+      --text: #d4dce8;
+      --text-dim: #7a8da6;
+
+      --navy: #7db0de;
+      --navy-dim: rgba(125, 176, 222, 0.10);
+      --teal: #34d399;
+      --teal-dim: rgba(52, 211, 153, 0.10);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.10);
+      --slate: #93b5d6;
+      --slate-dim: rgba(147, 181, 214, 0.10);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+  }
+
+  .page { max-width: 860px; margin: 0 auto; }
+
+  /* ============ ANIMATIONS ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .a { opacity: 0; }
+  .a.visible {
+    animation: fadeUp 0.5s var(--ease-out-quart) both;
+    animation-delay: calc(var(--i, 0) * 0.08s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .a { opacity: 1; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ============ HEADER ============ */
+  .mono-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mono-tag::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--teal);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 400;
+    letter-spacing: -0.5px;
+    margin-bottom: 10px;
+    line-height: 1.15;
+  }
+
+  .subtitle {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin-bottom: 48px;
+  }
+
+  /* ============ SECTION LABELS ============ */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-label::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+
+  .section-label--navy::before { background: var(--navy); }
+  .section-label--teal::before { background: var(--teal); }
+  .section-label--amber::before { background: var(--amber); }
+  .section-label--slate::before { background: var(--slate); }
+  .section-label--rose::before { background: var(--rose); }
+
+  .section-gap { margin-top: 56px; }
+
+  /* ============ OVERVIEW GRID ============ */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 56px;
+  }
+
+  .overview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 20px;
+    border-top: 3px solid var(--border);
+  }
+
+  .overview-card--teal { border-top-color: var(--teal); }
+  .overview-card--amber { border-top-color: var(--amber); }
+  .overview-card--navy { border-top-color: var(--navy); }
+
+  .overview-card__title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .overview-card__desc {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-dim);
+  }
+
+  /* ============ SCHEMA VISUAL ============ */
+  .schema-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 24px;
+    margin-bottom: 20px;
+  }
+
+  .schema-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--teal);
+    margin-bottom: 16px;
+  }
+
+  .schema-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-left: 0;
+  }
+
+  .schema-node {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border-left: 3px solid var(--navy);
+  }
+
+  .schema-node--teal { border-left-color: var(--teal); }
+  .schema-node--amber { border-left-color: var(--amber); }
+  .schema-node--slate { border-left-color: var(--slate); }
+
+  .schema-node__key {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--navy);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .schema-node--teal .schema-node__key { color: var(--teal); }
+  .schema-node--amber .schema-node__key { color: var(--amber); }
+  .schema-node--slate .schema-node__key { color: var(--slate); }
+
+  .schema-node__val {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .schema-node__val code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--navy-dim);
+    color: var(--navy);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .schema-nested {
+    margin-top: 10px;
+    margin-left: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .schema-nested .schema-node {
+    padding: 10px 14px;
+  }
+
+  /* ============ INDEX MOCK ============ */
+  .index-mock {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .mock-epic {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+
+  .mock-epic__num {
+    font-family: var(--font-display);
+    font-size: 26px;
+    color: var(--navy);
+    text-align: center;
+    line-height: 1;
+    padding-top: 2px;
+  }
+
+  .mock-epic__body {}
+
+  .mock-epic__title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 3px;
+  }
+
+  .mock-epic__desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .mock-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-decoration: none;
+  }
+
+  .pill--spec {
+    background: var(--teal-dim);
+    color: var(--teal);
+  }
+
+  .pill--impl {
+    background: var(--amber-dim);
+    color: var(--amber);
+  }
+
+  .mock-feature {
+    margin-top: 10px;
+    margin-left: 0;
+    padding: 12px 14px;
+    border-left: 2px solid var(--navy);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .mock-feature__title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .mock-feature__desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  /* ============ MERMAID ============ */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .diagram-shell { position: relative; }
+
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    opacity: 0.7;
+  }
+
+  .mermaid-viewport {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    min-height: 300px;
+  }
+
+  .mermaid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .zoom-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 14px !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+  }
+
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon {
+    stroke-width: 1.5px !important;
+  }
+
+  .mermaid .edge-pattern-solid {
+    stroke-width: 1.5px !important;
+  }
+
+  /* ============ ANIMATION CATALOG ============ */
+  .anim-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .anim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+
+  .anim-card__title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .anim-card__title .anim-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .anim-card__desc {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-dim);
+  }
+
+  .anim-card__code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--slate);
+    background: var(--slate-dim);
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-top: 8px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* ============ WORKFLOW STEPS ============ */
+  .workflow-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .workflow-phase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    border-top: 3px solid var(--border);
+  }
+
+  .workflow-phase--teal { border-top-color: var(--teal); }
+  .workflow-phase--amber { border-top-color: var(--amber); }
+
+  .workflow-phase__title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  .workflow-phase__steps {
+    list-style: none;
+    counter-reset: step;
+  }
+
+  .workflow-phase__steps li {
+    counter-increment: step;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-dim);
+    padding: 6px 0;
+    padding-left: 28px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workflow-phase__steps li:last-child { border-bottom: none; }
+
+  .workflow-phase__steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: var(--bg-alt);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    top: 7px;
+  }
+
+  /* ============ MIGRATION TABLE ============ */
+  .migration-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  .migration-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .migration-table thead {
+    background: var(--bg-alt);
+    position: sticky;
+    top: 0;
+  }
+
+  .migration-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .migration-table td {
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .migration-table tr:last-child td { border-bottom: none; }
+
+  .migration-table td:first-child {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .type-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  .type-badge--spec { background: var(--teal-dim); color: var(--teal); }
+  .type-badge--decision { background: var(--slate-dim); color: var(--slate); }
+  .type-badge--roadmap { background: var(--amber-dim); color: var(--amber); }
+  .type-badge--placeholder { background: var(--rose-dim); color: var(--rose); }
+
+  /* ============ CALLOUT ============ */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--teal);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .callout strong { color: var(--text); }
+
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--teal-dim);
+    color: var(--teal);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ============ FOOTER ============ */
+  .footer {
+    margin-top: 56px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .footer a { color: var(--navy); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 640px) {
+    h1 { font-size: 26px; }
+    .overview-grid { grid-template-columns: 1fr; }
+    .anim-grid { grid-template-columns: 1fr; }
+    .workflow-cols { grid-template-columns: 1fr; }
+    .mock-epic { grid-template-columns: 32px 1fr; }
+    .mock-epic__num { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="mono-tag a" style="--i:0">docs infrastructure</div>
+  <h1 class="a" style="--i:1">Dynamic Docs Index<br>& Publish Workflow</h1>
+  <p class="subtitle a" style="--i:2">
+    Replace the static hardcoded index with a manifest-driven page. Visual-explainer docs
+    auto-publish from PR branches via GitHub Actions. Nested epic/feature hierarchy with
+    spec and impl tag pills. Scroll-triggered animations throughout.
+  </p>
+
+  <!-- OVERVIEW -->
+  <div class="section-label section-label--teal a" style="--i:3">Three Pillars</div>
+
+  <div class="overview-grid">
+    <div class="overview-card overview-card--teal a" style="--i:4">
+      <div class="overview-card__title">JSON Manifest</div>
+      <div class="overview-card__desc">
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 5px;border-radius:3px">docs-manifest.json</code>
+        on the docs branch. Nested structure: epics &rarr; features &rarr; docs. Decisions and roadmap as flat sections.
+      </div>
+    </div>
+    <div class="overview-card overview-card--amber a" style="--i:5">
+      <div class="overview-card__title">Dynamic Index</div>
+      <div class="overview-card__desc">
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 5px;border-radius:3px">index.html</code>
+        fetches the manifest on load. Renders epic cards with nested feature sub-cards and SPEC/IMPL tag pills.
+      </div>
+    </div>
+    <div class="overview-card overview-card--navy a" style="--i:6">
+      <div class="overview-card__title">Auto-Publish</div>
+      <div class="overview-card__desc">
+        Two GitHub Actions workflows. Reusable
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-dim);color:var(--navy);padding:1px 5px;border-radius:3px">publish-doc.yml</code>
+        engine + automated PR trigger. Manual dispatch as fallback.
+      </div>
+    </div>
+  </div>
+
+  <!-- MANIFEST SCHEMA -->
+  <div class="section-label section-label--navy section-gap a" style="--i:0">Manifest Schema</div>
+
+  <div class="schema-wrap a" style="--i:1">
+    <div class="schema-label">docs-manifest.json</div>
+    <div class="schema-tree">
+      <div class="schema-node">
+        <div class="schema-node__key">epics[]</div>
+        <div class="schema-node__val">
+          <code>number</code> <code>title</code> <code>desc</code> <code>color</code> &mdash; each epic maps to a CSS variable (<code>--navy</code>, <code>--slate</code>, <code>--teal</code>, <code>--amber</code>)
+        </div>
+        <div class="schema-nested">
+          <div class="schema-node schema-node--teal">
+            <div class="schema-node__key">docs[]</div>
+            <div class="schema-node__val">
+              <code>title</code> <code>type</code> <code>href</code> &mdash; type is <span class="pill pill--spec">spec</span> or <span class="pill pill--impl">impl</span>, href is relative path from docs root
+            </div>
+          </div>
+          <div class="schema-node schema-node--slate">
+            <div class="schema-node__key">features[]</div>
+            <div class="schema-node__val">
+              <code>number</code> <code>title</code> <code>desc</code> &mdash; nested under parent epic, each has its own <code>docs[]</code> array
+            </div>
+            <div class="schema-nested">
+              <div class="schema-node schema-node--teal">
+                <div class="schema-node__key">docs[]</div>
+                <div class="schema-node__val">Same structure as epic docs &mdash; <code>title</code> <code>type</code> <code>href</code></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="schema-node schema-node--slate">
+        <div class="schema-node__key">decisions[]</div>
+        <div class="schema-node__val"><code>tag</code> <code>title</code> <code>desc</code> <code>href</code> &mdash; flat list, no nesting</div>
+      </div>
+      <div class="schema-node schema-node--amber">
+        <div class="schema-node__key">roadmap[]</div>
+        <div class="schema-node__val"><code>title</code> <code>desc</code> <code>href</code> &mdash; accent-striped cards</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INDEX RENDERING MOCK -->
+  <div class="section-label section-label--amber section-gap a" style="--i:0">Index Card Hierarchy</div>
+
+  <div class="index-mock a" style="--i:1">
+    <div class="mock-epic">
+      <div class="mock-epic__num">1</div>
+      <div class="mock-epic__body">
+        <div class="mock-epic__title">Go Orchestrator Core</div>
+        <div class="mock-epic__desc">Supervisor, agent state machine, DAG engine, gRPC, Redis</div>
+        <div class="mock-pills">
+          <span class="pill pill--spec">spec</span>
+          <span class="pill pill--impl">impl</span>
+        </div>
+        <div class="mock-feature">
+          <div class="mock-feature__title">CompareAndSetAgentState</div>
+          <div class="mock-feature__desc">Atomic state transitions with optimistic concurrency</div>
+          <div class="mock-pills">
+            <span class="pill pill--spec">spec</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-epic" style="opacity: 0.5;">
+      <div class="mock-epic__num" style="color: var(--amber);">4</div>
+      <div class="mock-epic__body">
+        <div class="mock-epic__title">Pixel Office UI</div>
+        <div class="mock-epic__desc" style="font-style: italic;">coming soon</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout a" style="--i:2">
+    <strong>Tag pills are links.</strong> Each <span class="pill pill--spec">spec</span> and <span class="pill pill--impl">impl</span> pill is an <code>&lt;a&gt;</code> pointing to the visual-explainer HTML file. Features are nested inside their parent epic card with a left border in the epic's accent color.
+  </div>
+
+  <!-- PUBLISH WORKFLOW -->
+  <div class="section-label section-label--navy section-gap a" style="--i:0">Publish Workflow</div>
+
+  <section class="diagram-shell a" style="--i:1">
+    <p class="diagram-shell__hint">
+      Ctrl/Cmd + wheel to zoom. Scroll to pan. Drag when zoomed. Double-click to fit.
+    </p>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+      graph TD
+        A["Developer commits<br/>visual-explainer HTML"] --> B{"PR event?"}
+        B -->|"opened /<br/>ready_for_review"| C["docs-on-pr.yml<br/>discovers *-spec.html"]
+        B -->|"labeled<br/>ready-to-merge"| D["docs-on-pr.yml<br/>discovers *-impl.html"]
+        B -->|"manual dispatch"| E["gh workflow run<br/>publish-doc.yml"]
+        C --> F["Extract &lt;meta&gt; tags<br/>from HTML file"]
+        D --> F
+        E --> G
+        F --> G["publish-doc.yml<br/>(reusable engine)"]
+        G --> H["Checkout docs branch<br/>into ./docs-branch/"]
+        G --> I["Checkout source ref<br/>into ./source/"]
+        H --> J["Copy HTML to<br/>target-path"]
+        I --> J
+        J --> K["Upsert manifest entry<br/>by href match"]
+        K --> L["Commit + push<br/>to docs branch"]
+        L --> M["GitHub Pages<br/>auto-deploys"]
+    </script>
+  </section>
+
+  <div class="callout a" style="--i:2">
+    <strong>Dual checkout pattern.</strong> The workflow checks out the docs branch into <code>./docs-branch/</code> and the source ref into <code>./source/</code> using separate <code>path:</code> parameters. This avoids workspace conflicts. The manifest upsert uses <code>actions/github-script</code> to find-or-create the epic/feature entry and update the <code>docs</code> array by <code>href</code> match.
+  </div>
+
+  <!-- DEVELOPER EXPERIENCE -->
+  <div class="section-label section-label--teal section-gap a" style="--i:0">Developer Experience</div>
+
+  <div class="workflow-cols">
+    <div class="workflow-phase workflow-phase--teal a" style="--i:1">
+      <div class="workflow-phase__title">Spec Phase</div>
+      <ol class="workflow-phase__steps">
+        <li>Finish writing the epic/feature spec</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 4px;border-radius:3px">/visual-explainer</code> on the spec</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 4px;border-radius:3px">/animate</code> for polish</li>
+        <li>Save as <code style="font-family:var(--font-mono);font-size:10px">*-spec.html</code> with meta tags</li>
+        <li>Commit, push &mdash; PR opens &rarr; auto-published</li>
+      </ol>
+    </div>
+    <div class="workflow-phase workflow-phase--amber a" style="--i:2">
+      <div class="workflow-phase__title">Implementation Phase</div>
+      <ol class="workflow-phase__steps">
+        <li>Implementation complete, PR reviewed</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 4px;border-radius:3px">/visual-explainer</code> on the impl</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 4px;border-radius:3px">/animate</code> for polish</li>
+        <li>Save as <code style="font-family:var(--font-mono);font-size:10px">*-impl.html</code></li>
+        <li>Add <code style="font-family:var(--font-mono);font-size:10px">ready-to-merge</code> label &rarr; auto-published</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ANIMATION CATALOG -->
+  <div class="section-label section-label--slate section-gap a" style="--i:0">Animation Catalog</div>
+
+  <div class="anim-grid">
+    <div class="anim-card a" style="--i:1">
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--teal)"></span> Skeleton Shimmer</div>
+      <div class="anim-card__desc">3 card-shaped placeholders with CSS gradient animation while the manifest loads. Crossfades to real content in 200ms.</div>
+      <div class="anim-card__code">background-size: 200% 100%;
+animation: shimmer 1.5s infinite;</div>
+    </div>
+    <div class="anim-card a" style="--i:2">
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--navy)"></span> Scroll Entrance</div>
+      <div class="anim-card__desc">IntersectionObserver (threshold 0.1) fires fadeUp on each section and card group. Staggered by --i custom property.</div>
+      <div class="anim-card__code">opacity: 0 -> 1
+translateY(12px) -> 0
+delay: var(--i) * 0.1s</div>
+    </div>
+    <div class="anim-card a" style="--i:3">
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--amber)"></span> Card Hover</div>
+      <div class="anim-card__desc">translateY(-3px), border highlight, box-shadow expansion, arrow slides right. All 200ms ease-out-quart.</div>
+      <div class="anim-card__code">transform: translateY(-3px);
+box-shadow: 0 4px 20px rgba(0,0,0,.07);
+transition: 200ms var(--ease-out-quart);</div>
+    </div>
+    <div class="anim-card a" style="--i:4">
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--rose)"></span> Reduced Motion</div>
+      <div class="anim-card__desc">All animation-duration and transition-duration collapse to 0.01ms. Content is immediately visible with no motion.</div>
+      <div class="anim-card__code">@media (prefers-reduced-motion: reduce) {
+  animation-duration: 0.01ms !important;
+}</div>
+    </div>
+  </div>
+
+  <!-- MIGRATION -->
+  <div class="section-label section-label--rose section-gap a" style="--i:0">Migration: 12 Files + 1 Placeholder</div>
+
+  <div class="migration-table-wrap a" style="--i:1">
+    <table class="migration-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Section</th>
+          <th>Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>visual-explainer/epic-1-go-orchestrator-core.html</td>
+          <td>epics[0]</td>
+          <td><span class="type-badge type-badge--spec">spec</span></td>
+        </tr>
+        <tr>
+          <td>visual-explainer/epic-2-terminal-substrate.html</td>
+          <td>epics[1]</td>
+          <td><span class="type-badge type-badge--spec">spec</span></td>
+        </tr>
+        <tr>
+          <td>visual-explainer/epic-3-model-gateway.html</td>
+          <td>epics[2]</td>
+          <td><span class="type-badge type-badge--spec">spec</span></td>
+        </tr>
+        <tr>
+          <td>Epic 4 (no file)</td>
+          <td>epics[3]</td>
+          <td><span class="type-badge type-badge--placeholder">placeholder</span></td>
+        </tr>
+        <tr>
+          <td>decisions/orchestration-pattern.html</td>
+          <td>decisions[0]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/ipc-communication.html</td>
+          <td>decisions[1]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/state-management.html</td>
+          <td>decisions[2]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/process-supervision.html</td>
+          <td>decisions[3]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/terminal-substrate.html</td>
+          <td>decisions[4]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/desktop-rendering.html</td>
+          <td>decisions[5]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/model-gateway.html</td>
+          <td>decisions[6]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>decisions/tui-alternative.html</td>
+          <td>decisions[7]</td>
+          <td><span class="type-badge type-badge--decision">decision</span></td>
+        </tr>
+        <tr>
+          <td>visual-explainer/roadmap.html</td>
+          <td>roadmap[0]</td>
+          <td><span class="type-badge type-badge--roadmap">roadmap</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout a" style="--i:2">
+    <strong>Legacy filenames preserved.</strong> The 3 existing epic explainers use filenames without the <code>-spec</code> suffix. They are not renamed. The automated discovery pattern (<code>*-(spec|impl).html</code>) intentionally does not match them &mdash; they are already seeded in the manifest.
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer a" style="--i:0">
+    <span><a href="https://github.com/Kiriketsuki/agenKic-orKistrator">GitHub</a></span>
+    <span>Generated 2026-03-24</span>
+  </div>
+
+</div>
+
+<script type="module">
+  // ============ SCROLL ANIMATION ============
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.a').forEach(el => observer.observe(el));
+
+  // ============ MERMAID ============
+  const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs');
+  const elkLayouts = (await import('https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs')).default;
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontSize: '14px',
+      primaryColor: isDark ? '#1a2e44' : '#e8f0f8',
+      primaryBorderColor: isDark ? '#7db0de' : '#1e3a5f',
+      primaryTextColor: isDark ? '#d4dce8' : '#1a2332',
+      secondaryColor: isDark ? '#0a2e2a' : '#e6f7f4',
+      secondaryBorderColor: isDark ? '#34d399' : '#0e7c6b',
+      secondaryTextColor: isDark ? '#d4dce8' : '#1a2332',
+      tertiaryColor: isDark ? '#2e2618' : '#fef3e0',
+      tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
+      tertiaryTextColor: isDark ? '#d4dce8' : '#1a2332',
+      lineColor: isDark ? '#7a8da6' : '#5a6a7e',
+      noteBkgColor: isDark ? '#1a2e44' : '#fefce8',
+      noteTextColor: isDark ? '#d4dce8' : '#1a2332',
+      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+    }
+  });
+
+  const config = {
+    fitPadding: 28, minHeight: 360, maxHeightPx: 960, maxHeightVh: 0.84,
+    maxInitialZoom: 1.8, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.58
+  };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', e => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% \u2014 ' + fitMode;
+    }
+
+    function canPan() {
+      return svgW * zoom + config.fitPadding * 2 > viewport.clientWidth
+          || svgH * zoom + config.fitPadding * 2 > viewport.clientHeight;
+    }
+
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2);
+      const aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; }
+        else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom);
+      const ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY);
+      zoom = next; fitMode = 'custom'; applyTransform();
+    }
+
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true);
+      clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0f1724' : '#f8f6f1';
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        canvas.innerHTML = '';
+        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'Render failed');
+      }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([action, handler]) => {
+      wrap.querySelector(`[data-action="${action}"]`)?.addEventListener('click', handler);
+    });
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep), e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = {
+        onMove: ev => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); },
+        onEnd: () => wrap.classList.remove('is-panning')
+      };
+    });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+
+</body>
+</html>
