@@ -3,7 +3,9 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
@@ -144,6 +146,152 @@ func TestMachine_UnrecognisedState_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bogus_state") {
 		t.Fatalf("error should contain seeded state; got: %v", err)
+	}
+}
+
+// racyStore wraps a real StateStore and mutates state between Get and CAS to
+// simulate a concurrent writer. This lets us test that ApplyEvent propagates
+// *StateConflictError when the CAS detects a race.
+type racyStore struct {
+	state.StateStore
+	interceptOnce sync.Once
+	agentID       string
+	raceTo        string
+}
+
+func (r *racyStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	// On the first CAS call for the target agent, sneak in a state change
+	// so the CAS will see a mismatch.
+	if agentID == r.agentID {
+		r.interceptOnce.Do(func() {
+			if err := r.StateStore.SetAgentState(ctx, agentID, r.raceTo); err != nil {
+				panic(fmt.Sprintf("racyStore: SetAgentState failed: %v", err))
+			}
+		})
+	}
+	return r.StateStore.CompareAndSetAgentState(ctx, agentID, expected, next)
+}
+
+func TestMachine_ApplyEvent_CASConflict(t *testing.T) {
+	base := state.NewMockStore()
+	ctx := context.Background()
+	const id = "agent-cas-conflict"
+
+	if err := base.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Wrap the store so it mutates state to "assigned" just before CAS fires.
+	racy := &racyStore{StateStore: base, agentID: id, raceTo: string(agent.StateAssigned)}
+	m := agent.NewMachine(racy)
+
+	// ApplyEvent reads "idle", computes next="assigned", but CAS sees "assigned"
+	// (set by the concurrent writer, not by this ApplyEvent call).
+	_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+	if err == nil {
+		t.Fatal("expected error from CAS conflict, got nil")
+	}
+	var conflict *state.StateConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *StateConflictError, got %T: %v", err, err)
+	}
+	if conflict.Expected != string(agent.StateIdle) {
+		t.Fatalf("Expected: want %q, got %q", agent.StateIdle, conflict.Expected)
+	}
+	if conflict.Actual != string(agent.StateAssigned) {
+		t.Fatalf("Actual: want %q, got %q", agent.StateAssigned, conflict.Actual)
+	}
+	// State should remain "assigned" (the concurrent writer's value).
+	got, _ := base.GetAgentState(ctx, id)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("state: want %q, got %q", agent.StateAssigned, got)
+	}
+}
+
+func TestMachine_ApplyEvent_HappyPath_UsesCAS(t *testing.T) {
+	m, store := newMachine(t)
+	ctx := context.Background()
+	const id = "agent-cas-happy"
+
+	if err := store.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	snap, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+	if err != nil {
+		t.Fatalf("ApplyEvent: %v", err)
+	}
+	if snap.State != agent.StateAssigned {
+		t.Fatalf("want assigned, got %s", snap.State)
+	}
+	if snap.PreviousState != agent.StateIdle {
+		t.Fatalf("want prevState=idle, got %s", snap.PreviousState)
+	}
+	got, _ := store.GetAgentState(ctx, id)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("persisted state: want assigned, got %s", got)
+	}
+}
+
+// TestMachine_ApplyEvent_ConcurrentCAS verifies that n goroutines calling
+// ApplyEvent on the same idle agent produce exactly one success. With n=10,
+// logs CAS conflict vs InvalidTransition counts for observability. The CAS
+// conflict path is proven hermetically by TestMachine_ApplyEvent_CASConflict
+// (racyStore); this test validates the exactly-one-winner invariant under
+// real concurrency.
+func TestMachine_ApplyEvent_ConcurrentCAS(t *testing.T) {
+	store := state.NewMockStore()
+	m := agent.NewMachine(store)
+	ctx := context.Background()
+	const id = "agent-concurrent-cas"
+
+	if err := store.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	const n = 10
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+			errs <- err
+		}()
+	}
+
+	var wins, casConflicts, invalidTransitions int
+	for i := 0; i < n; i++ {
+		err := <-errs
+		if err == nil {
+			wins++
+			continue
+		}
+		// The losing goroutine may get either:
+		// - *StateConflictError: read "idle", CAS detected mismatch
+		// - *InvalidTransitionError: read "assigned" (post-CAS), transition invalid
+		// Both are valid concurrent outcomes.
+		var conflict *state.StateConflictError
+		var invalid *agent.InvalidTransitionError
+		switch {
+		case errors.As(err, &conflict):
+			casConflicts++
+		case errors.As(err, &invalid):
+			invalidTransitions++
+		default:
+			t.Errorf("unexpected error type %T: %v", err, err)
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("want exactly 1 winner, got %d", wins)
+	}
+	if casConflicts+invalidTransitions != n-1 {
+		t.Fatalf("want %d losers, got %d (cas=%d, invalid=%d)",
+			n-1, casConflicts+invalidTransitions, casConflicts, invalidTransitions)
+	}
+	t.Logf("loser distribution: cas_conflicts=%d, invalid_transitions=%d", casConflicts, invalidTransitions)
+
+	got, _ := store.GetAgentState(ctx, id)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("final state: want %q, got %q", agent.StateAssigned, got)
 	}
 }
 

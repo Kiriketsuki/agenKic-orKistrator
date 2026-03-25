@@ -81,6 +81,10 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 // Store I/O is performed outside sv.mu to avoid holding the lock during
 // network round-trips (consistent with findIdleAgent's snapshot pattern).
 func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+
 	sv.mu.RLock()
 	if sv.stopped {
 		sv.mu.RUnlock()
@@ -153,6 +157,7 @@ func (sv *Supervisor) heartbeatLoop(ctx context.Context) {
 func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 	agents, err := sv.store.ListAgents(ctx)
 	if err != nil {
+		log.Printf("supervisor: checkHeartbeats — ListAgents failed: %v", err)
 		return
 	}
 
@@ -162,6 +167,7 @@ func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 	for _, agentID := range agents {
 		fields, err := sv.store.GetAgentFields(ctx, agentID)
 		if err != nil {
+			log.Printf("supervisor: checkHeartbeats — GetAgentFields %s failed: %v", agentID, err)
 			continue
 		}
 
@@ -212,7 +218,7 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 
 	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventAgentFailed)
 	if err != nil {
-		// Store error — clean up sentinel and return without recording a crash.
+		log.Printf("supervisor: crashAgent %s — ApplyEvent failed, deferring crash: %v", agentID, err)
 		sv.mu.Lock()
 		delete(sv.agentCooldown, agentID)
 		sv.mu.Unlock()
@@ -313,7 +319,12 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue failed (assign error): %v", taskID, err)
 		}
-		sv.recordAssignError()
+		// CAS conflicts indicate healthy concurrency (another writer won the
+		// race), not store degradation. Only apply backoff for non-CAS errors.
+		var conflict *state.StateConflictError
+		if !errors.As(err, &conflict) {
+			sv.recordAssignError()
+		}
 		return
 	}
 
@@ -453,8 +464,9 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	sv.policy.RecordSuccess(agentID)
 
 	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
-	// Uses a blind write (ClearCurrentTask) instead of read-modify-write to
-	// eliminate the stale-CurrentTaskID risk from GetAgentFields failure.
+	// Uses ClearCurrentTask (conditional write that returns ErrAgentNotFound for
+	// unknown agents) instead of read-modify-write to avoid stale-CurrentTaskID
+	// risk from GetAgentFields failure.
 	if err := sv.store.ClearCurrentTask(ctx, agentID); err != nil {
 		log.Printf("supervisor: CurrentTaskID not cleared for agent %s — duplicate re-enqueue possible on next crash: %v", agentID, err)
 	}
@@ -465,19 +477,6 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	sv.mu.Unlock()
 
 	return nil
-}
-
-// applyEvent serializes Machine.ApplyEvent per agentID using per-agent mutex.
-func (sv *Supervisor) applyEvent(ctx context.Context, agentID string, event agent.AgentEvent) (agent.AgentSnapshot, error) {
-	mu := sv.getAgentMutex(agentID)
-	if mu == nil {
-		return agent.AgentSnapshot{}, fmt.Errorf("apply event for %s: %w", agentID, ErrSupervisorStopped)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	return sv.machine.ApplyEvent(ctx, agentID, event)
 }
 
 // getAgentMutex returns the per-agent mutex, or nil if not registered.

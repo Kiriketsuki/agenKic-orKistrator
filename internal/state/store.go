@@ -43,10 +43,28 @@ type Event struct {
 //   - SetAgentState creates or updates only the state field; numeric fields
 //     (LastHeartbeat, RegisteredAt) default to zero if not previously set via
 //     SetAgentFields. GetAgentFields is safe to call after SetAgentState alone.
+//
+// State-write safety:
+//   - SetAgentState: registration and seeding ONLY. Not safe for in-flight
+//     state transitions — bypasses optimistic locking. Use
+//     CompareAndSetAgentState for all transitions on agents already
+//     participating in the lifecycle.
+//   - CompareAndSetAgentState: the ONLY safe method for in-flight state
+//     transitions. Provides atomic compare-and-swap; returns
+//     *StateConflictError on concurrent modification.
+//   - SetAgentFields: field-only updates (LastHeartbeat, CurrentTaskID, etc.).
+//     Does not participate in CAS — callers must serialize field writes that
+//     must be consistent with a preceding CAS transition (e.g., writing
+//     CurrentTaskID immediately after transitioning state to assigned).
 type StateStore interface {
 	// ── Agent state ──────────────────────────────────────────────────────────
 	SetAgentState(ctx context.Context, agentID string, state string) error
 	GetAgentState(ctx context.Context, agentID string) (string, error)
+	// CompareAndSetAgentState atomically sets the agent's state to next only
+	// if the current state equals expected. Returns *StateConflictError if the
+	// current state does not match expected, or ErrAgentNotFound if the agent
+	// does not exist.
+	CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error
 
 	// ── Agent full record ────────────────────────────────────────────────────
 	SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error
@@ -61,8 +79,8 @@ type StateStore interface {
 	PublishEvent(ctx context.Context, event Event) error
 
 	// ── Agent task binding ──────────────────────────────────────────────────
-	// ClearCurrentTask zeroes CurrentTaskID and CurrentTaskPriority for the
-	// given agent without reading the full record first (blind write).
+	// ClearCurrentTask atomically zeroes CurrentTaskID and CurrentTaskPriority
+	// for the given agent. Returns ErrAgentNotFound if the agent does not exist.
 	ClearCurrentTask(ctx context.Context, agentID string) error
 
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────

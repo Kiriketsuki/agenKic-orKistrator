@@ -108,6 +108,77 @@ func (r *RedisStore) GetAgentState(ctx context.Context, agentID string) (string,
 	return val, nil
 }
 
+// casScript atomically compares the current state field of an agent hash and
+// sets it to the new value only if it matches the expected value.
+//
+// KEYS[1] = agent hash key
+// ARGV[1] = expected state
+// ARGV[2] = next state
+//
+// Returns:
+//
+//	1  → swap succeeded
+//	0  → current state did not match expected (conflict)
+//	-1 → key does not exist or has no state field (agent not found)
+var casScript = redis.NewScript(`
+local current = redis.call('HGET', KEYS[1], 'state')
+if current == false then
+    return -1
+end
+if current ~= ARGV[1] then
+    return {0, current}
+end
+redis.call('HSET', KEYS[1], 'state', ARGV[2])
+return 1
+`)
+
+// clearTaskScript atomically checks key existence before clearing task fields.
+// KEYS[1] = agent hash key
+//
+// Returns:
+//
+//	1  → cleared successfully
+//	-1 → key does not exist (agent not found)
+//
+// Field names must match fieldCurrentTask / fieldCurrentTaskPrio constants.
+var clearTaskScript = redis.NewScript(`
+local exists = redis.call('EXISTS', KEYS[1])
+if exists == 0 then
+    return -1
+end
+redis.call('HSET', KEYS[1], 'current_task_id', '', 'current_task_priority', '0')
+return 1
+`)
+
+func (r *RedisStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	raw, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Result()
+	if err != nil {
+		return fmt.Errorf("CompareAndSetAgentState %s: %w", agentID, err)
+	}
+	switch v := raw.(type) {
+	case int64:
+		switch v {
+		case 1:
+			return nil
+		case -1:
+			return ErrAgentNotFound
+		default:
+			return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result %d", agentID, v)
+		}
+	case []interface{}:
+		// Conflict: Lua returned {0, current_state}.
+		actual := "<unknown>"
+		if len(v) >= 2 {
+			if s, ok := v[1].(string); ok {
+				actual = s
+			}
+		}
+		return &StateConflictError{Expected: expected, Actual: actual}
+	default:
+		return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result type %T", agentID, raw)
+	}
+}
+
 // ── Agent full record ─────────────────────────────────────────────────────────
 
 func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
@@ -168,12 +239,12 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 }
 
 func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
-	err := r.client.HSet(ctx, r.agentKey(agentID),
-		fieldCurrentTask, "",
-		fieldCurrentTaskPrio, "0",
-	).Err()
+	result, err := clearTaskScript.Run(ctx, r.client, []string{r.agentKey(agentID)}).Int64()
 	if err != nil {
 		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
+	}
+	if result == -1 {
+		return ErrAgentNotFound
 	}
 	return nil
 }
