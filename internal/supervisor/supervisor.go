@@ -81,6 +81,10 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 // Store I/O is performed outside sv.mu to avoid holding the lock during
 // network round-trips (consistent with findIdleAgent's snapshot pattern).
 func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+
 	sv.mu.RLock()
 	if sv.stopped {
 		sv.mu.RUnlock()
@@ -472,19 +476,6 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	sv.mu.Unlock()
 
 	return nil
-}
-
-// applyEvent serializes Machine.ApplyEvent per agentID using per-agent mutex.
-func (sv *Supervisor) applyEvent(ctx context.Context, agentID string, event agent.AgentEvent) (agent.AgentSnapshot, error) {
-	mu := sv.getAgentMutex(agentID)
-	if mu == nil {
-		return agent.AgentSnapshot{}, fmt.Errorf("apply event for %s: %w", agentID, ErrSupervisorStopped)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	return sv.machine.ApplyEvent(ctx, agentID, event)
 }
 
 // getAgentMutex returns the per-agent mutex, or nil if not registered.

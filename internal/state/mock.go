@@ -24,6 +24,7 @@ type MockStore struct {
 	enqueueTaskErr        error
 	dequeueTaskErr        error
 	clearCurrentTaskErr   error
+	compareAndSetErr      error
 }
 
 type agentRecord struct {
@@ -73,10 +74,21 @@ func (m *MockStore) GetAgentState(ctx context.Context, agentID string) (string, 
 	return rec.fields.State, nil
 }
 
+// SetCompareAndSetAgentStateError configures CompareAndSetAgentState to return err.
+// Pass nil to reset to healthy.
+func (m *MockStore) SetCompareAndSetAgentStateError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.compareAndSetErr = err
+}
+
 func (m *MockStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.compareAndSetErr != nil {
+		return m.compareAndSetErr
+	}
 	rec, ok := m.agents[agentID]
 	if !ok {
 		return ErrAgentNotFound

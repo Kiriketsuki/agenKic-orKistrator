@@ -33,9 +33,12 @@ func NewMachine(store state.StateStore) *Machine {
 //   - Any storage error from the underlying StateStore.
 //
 // Concurrency: ApplyEvent is safe for concurrent calls on the same agentID at
-// the storage level — CompareAndSetAgentState provides atomicity. The
-// supervisor's per-agent mutex remains as a performance optimisation to reduce
-// contention at Redis, but is no longer the sole correctness guard.
+// the storage level — CompareAndSetAgentState provides atomicity for state
+// transitions. The supervisor's per-agent mutex remains necessary for
+// correctness of compound operations (e.g., state transition followed by field
+// writes in tryAssignTask). CAS replaced the mutex as the atomicity guard for
+// state transitions themselves; the mutex now coordinates compound operations
+// within a single supervisor process.
 //
 // Event publishing: the Machine handles only state transitions. Callers
 // are responsible for publishing domain events via StateStore.PublishEvent

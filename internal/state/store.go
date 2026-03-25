@@ -43,6 +43,19 @@ type Event struct {
 //   - SetAgentState creates or updates only the state field; numeric fields
 //     (LastHeartbeat, RegisteredAt) default to zero if not previously set via
 //     SetAgentFields. GetAgentFields is safe to call after SetAgentState alone.
+//
+// State-write safety:
+//   - SetAgentState: registration and seeding ONLY. Not safe for in-flight
+//     state transitions — bypasses optimistic locking. Use
+//     CompareAndSetAgentState for all transitions on agents already
+//     participating in the lifecycle.
+//   - CompareAndSetAgentState: the ONLY safe method for in-flight state
+//     transitions. Provides atomic compare-and-swap; returns
+//     *StateConflictError on concurrent modification.
+//   - SetAgentFields: field-only updates (LastHeartbeat, CurrentTaskID, etc.).
+//     Does not participate in CAS — callers must hold the per-agent mutex when
+//     writing fields that must be consistent with state (e.g., CurrentTaskID
+//     after a state transition to assigned).
 type StateStore interface {
 	// ── Agent state ──────────────────────────────────────────────────────────
 	SetAgentState(ctx context.Context, agentID string, state string) error
