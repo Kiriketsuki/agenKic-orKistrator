@@ -236,6 +236,13 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		}
 	})
 
+	t.Run("ClearCurrentTask on non-existent agent returns ErrAgentNotFound", func(t *testing.T) {
+		err := store.ClearCurrentTask(ctx, "nonexistent-cct-xyz")
+		if !errors.Is(err, state.ErrAgentNotFound) {
+			t.Fatalf("want ErrAgentNotFound, got %v", err)
+		}
+	})
+
 	t.Run("QueueLength reflects enqueued tasks", func(t *testing.T) {
 		// Drain first.
 		for {

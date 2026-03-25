@@ -53,9 +53,9 @@ type Event struct {
 //     transitions. Provides atomic compare-and-swap; returns
 //     *StateConflictError on concurrent modification.
 //   - SetAgentFields: field-only updates (LastHeartbeat, CurrentTaskID, etc.).
-//     Does not participate in CAS — callers must hold the per-agent mutex when
-//     writing fields that must be consistent with state (e.g., CurrentTaskID
-//     after a state transition to assigned).
+//     Does not participate in CAS — callers must serialize field writes that
+//     must be consistent with a preceding CAS transition (e.g., writing
+//     CurrentTaskID immediately after transitioning state to assigned).
 type StateStore interface {
 	// ── Agent state ──────────────────────────────────────────────────────────
 	SetAgentState(ctx context.Context, agentID string, state string) error
@@ -80,7 +80,7 @@ type StateStore interface {
 
 	// ── Agent task binding ──────────────────────────────────────────────────
 	// ClearCurrentTask zeroes CurrentTaskID and CurrentTaskPriority for the
-	// given agent without reading the full record first (blind write).
+	// given agent. Returns ErrAgentNotFound if the agent does not exist.
 	ClearCurrentTask(ctx context.Context, agentID string) error
 
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────

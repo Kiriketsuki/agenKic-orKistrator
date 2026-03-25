@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -163,7 +164,9 @@ func (r *racyStore) CompareAndSetAgentState(ctx context.Context, agentID string,
 	// so the CAS will see a mismatch.
 	if agentID == r.agentID {
 		r.interceptOnce.Do(func() {
-			r.StateStore.SetAgentState(ctx, agentID, r.raceTo) //nolint:errcheck
+			if err := r.StateStore.SetAgentState(ctx, agentID, r.raceTo); err != nil {
+				panic(fmt.Sprintf("racyStore: SetAgentState failed: %v", err))
+			}
 		})
 	}
 	return r.StateStore.CompareAndSetAgentState(ctx, agentID, expected, next)
@@ -227,6 +230,60 @@ func TestMachine_ApplyEvent_HappyPath_UsesCAS(t *testing.T) {
 	got, _ := store.GetAgentState(ctx, id)
 	if got != string(agent.StateAssigned) {
 		t.Fatalf("persisted state: want assigned, got %s", got)
+	}
+}
+
+// TestMachine_ApplyEvent_ConcurrentCAS verifies that two goroutines calling
+// ApplyEvent on the same idle agent produce exactly one success and one
+// *StateConflictError — proving Machine-level CAS atomicity under real
+// concurrency, not just injected preconditions (racyStore).
+func TestMachine_ApplyEvent_ConcurrentCAS(t *testing.T) {
+	store := state.NewMockStore()
+	m := agent.NewMachine(store)
+	ctx := context.Background()
+	const id = "agent-concurrent-cas"
+
+	if err := store.SetAgentState(ctx, id, string(agent.StateIdle)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	const n = 2
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
+			errs <- err
+		}()
+	}
+
+	var wins, losses int
+	for i := 0; i < n; i++ {
+		err := <-errs
+		if err == nil {
+			wins++
+		} else {
+			// The losing goroutine may get either:
+			// - *StateConflictError: read "idle", CAS detected mismatch
+			// - *InvalidTransitionError: read "assigned" (post-CAS), transition invalid
+			// Both are valid concurrent outcomes.
+			var conflict *state.StateConflictError
+			var invalid *agent.InvalidTransitionError
+			if !errors.As(err, &conflict) && !errors.As(err, &invalid) {
+				t.Errorf("unexpected error type %T: %v", err, err)
+			}
+			losses++
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("want exactly 1 winner, got %d", wins)
+	}
+	if losses != 1 {
+		t.Fatalf("want exactly 1 loser, got %d", losses)
+	}
+
+	got, _ := store.GetAgentState(ctx, id)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("final state: want %q, got %q", agent.StateAssigned, got)
 	}
 }
 

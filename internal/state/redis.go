@@ -221,11 +221,17 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 }
 
 func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
-	err := r.client.HSet(ctx, r.agentKey(agentID),
+	exists, err := r.client.Exists(ctx, r.agentKey(agentID)).Result()
+	if err != nil {
+		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
+	}
+	if exists == 0 {
+		return ErrAgentNotFound
+	}
+	if err := r.client.HSet(ctx, r.agentKey(agentID),
 		fieldCurrentTask, "",
 		fieldCurrentTaskPrio, "0",
-	).Err()
-	if err != nil {
+	).Err(); err != nil {
 		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
 	}
 	return nil
