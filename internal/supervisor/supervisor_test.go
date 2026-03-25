@@ -125,3 +125,67 @@ func TestSupervisor_ApplyEventSerializes(t *testing.T) {
 		t.Errorf("expected assigned state, got %q", stateStr)
 	}
 }
+
+// casConflictStore wraps a StateStore and makes CompareAndSetAgentState
+// always return *StateConflictError, simulating a concurrent writer that
+// changes agent state between read and CAS.
+type casConflictStore struct {
+	state.StateStore
+}
+
+func (s *casConflictStore) CompareAndSetAgentState(_ context.Context, _ string, expected, _ string) error {
+	return &state.StateConflictError{Expected: expected, Actual: "assigned-by-other"}
+}
+
+func TestSupervisor_TryAssignTask_CASConflict_ReenqueuesTask(t *testing.T) {
+	t.Parallel()
+
+	base := state.NewMockStore()
+	wrapper := &casConflictStore{StateStore: base}
+	machine := agent.NewMachine(wrapper)
+	policy := supervisor.NewRestartPolicy(
+		supervisor.WithCrashThreshold(10),
+		supervisor.WithCrashWindow(60*time.Second),
+	)
+	sv := supervisor.NewSupervisor(machine, wrapper, policy,
+		supervisor.WithTaskPollInterval(10*time.Millisecond),
+	)
+
+	ctx := context.Background()
+
+	// Register an idle agent (uses SetAgentFields, not CAS).
+	if err := sv.RegisterAgent(ctx, "agent-cas-sv"); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Enqueue a task at a specific priority.
+	if err := wrapper.EnqueueTask(ctx, "task-cas-sv", 42.0); err != nil {
+		t.Fatalf("EnqueueTask: %v", err)
+	}
+
+	// Run supervisor briefly — long enough for one task poll tick.
+	runCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	_ = sv.Run(runCtx)
+
+	// The task should be back in the queue (re-enqueued after CAS conflict).
+	n, err := base.QueueLength(ctx)
+	if err != nil {
+		t.Fatalf("QueueLength: %v", err)
+	}
+	if n < 1 {
+		t.Fatal("expected task to be re-enqueued after CAS conflict, but queue is empty")
+	}
+
+	// Verify the task ID and priority are preserved.
+	taskID, pri, err := base.DequeueTask(ctx)
+	if err != nil {
+		t.Fatalf("DequeueTask: %v", err)
+	}
+	if taskID != "task-cas-sv" {
+		t.Fatalf("want taskID=task-cas-sv, got %q", taskID)
+	}
+	if pri != 42.0 {
+		t.Fatalf("want priority=42.0, got %f", pri)
+	}
+}
