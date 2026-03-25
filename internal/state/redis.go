@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -321,6 +322,88 @@ func (r *RedisStore) PublishEvent(ctx context.Context, event Event) error {
 	}
 	if err := r.client.XAdd(ctx, args).Err(); err != nil {
 		return fmt.Errorf("PublishEvent: %w", err)
+	}
+	return nil
+}
+
+func parseXMessages(msgs []redis.XMessage) []StreamEvent {
+	events := make([]StreamEvent, 0, len(msgs))
+	for _, msg := range msgs {
+		var ts int64
+		if v, ok := msg.Values["timestamp"].(string); ok && v != "" {
+			ts, _ = strconv.ParseInt(v, 10, 64)
+		}
+		events = append(events, StreamEvent{
+			ID: msg.ID,
+			Event: Event{
+				Type:      fmt.Sprintf("%v", msg.Values["type"]),
+				AgentID:   fmt.Sprintf("%v", msg.Values["agent_id"]),
+				TaskID:    fmt.Sprintf("%v", msg.Values["task_id"]),
+				Timestamp: ts,
+				Payload:   fmt.Sprintf("%v", msg.Values["payload"]),
+			},
+		})
+	}
+	return events
+}
+
+func (r *RedisStore) ReadEvents(ctx context.Context, lastID string, count int64) ([]StreamEvent, error) {
+	results, err := r.client.XRead(ctx, &redis.XReadArgs{
+		Streams: []string{r.key(streamKey), lastID},
+		Count:   count,
+		Block:   -1, // negative = non-blocking (omits BLOCK arg); 0 would block forever
+	}).Result()
+	if err == redis.Nil {
+		return []StreamEvent{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ReadEvents: %w", err)
+	}
+	if len(results) == 0 {
+		return []StreamEvent{}, nil
+	}
+	return parseXMessages(results[0].Messages), nil
+}
+
+func (r *RedisStore) CreateConsumerGroup(ctx context.Context, group string, startID string) error {
+	err := r.client.XGroupCreateMkStream(ctx, r.key(streamKey), group, startID).Err()
+	if err != nil && strings.Contains(err.Error(), "BUSYGROUP") {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("CreateConsumerGroup: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisStore) SubscribeEvents(ctx context.Context, group, consumer string, count int64, block time.Duration) ([]StreamEvent, error) {
+	// go-redis: Block 0 = BLOCK 0 (block forever). Use -1 to omit the
+	// BLOCK arg entirely, making the call non-blocking when block <= 0.
+	if block <= 0 {
+		block = -1
+	}
+	results, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    group,
+		Consumer: consumer,
+		Streams:  []string{r.key(streamKey), ">"},
+		Count:    count,
+		Block:    block,
+	}).Result()
+	if err == redis.Nil {
+		return []StreamEvent{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("SubscribeEvents: %w", err)
+	}
+	if len(results) == 0 {
+		return []StreamEvent{}, nil
+	}
+	return parseXMessages(results[0].Messages), nil
+}
+
+func (r *RedisStore) AckEvent(ctx context.Context, group string, ids ...string) error {
+	if err := r.client.XAck(ctx, r.key(streamKey), group, ids...).Err(); err != nil {
+		return fmt.Errorf("AckEvent: %w", err)
 	}
 	return nil
 }

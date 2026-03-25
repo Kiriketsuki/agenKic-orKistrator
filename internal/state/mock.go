@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -13,6 +14,9 @@ type MockStore struct {
 	mu                    sync.RWMutex
 	agents                map[string]*agentRecord // agentID -> record
 	events                []Event
+	streamEvents          []mockStreamEvent
+	streamSeq             int64
+	groups                map[string]*mockGroup
 	queue                 []queueItem // sorted by priority ascending
 	pingErr               error
 	getAllAgentStatesErr  error
@@ -36,10 +40,26 @@ type queueItem struct {
 	priority float64
 }
 
+type mockStreamEvent struct {
+	ID    string
+	Event Event
+}
+
+type mockGroup struct {
+	startIdx      int // index into streamEvents where this group starts consuming
+	lastDelivered int // index of last delivered event (for round-robin)
+	consumers     map[string]*mockConsumer
+}
+
+type mockConsumer struct {
+	pending map[string]bool // set of unacked stream event IDs
+}
+
 // NewMockStore returns a ready-to-use in-memory store.
 func NewMockStore() *MockStore {
 	return &MockStore{
 		agents:                make(map[string]*agentRecord),
+		groups:                make(map[string]*mockGroup),
 		getAgentFieldsByAgent: make(map[string]error),
 		setAgentFieldsByAgent: make(map[string]error),
 	}
@@ -253,6 +273,102 @@ func (m *MockStore) PublishEvent(ctx context.Context, event Event) error {
 		event.Timestamp = time.Now().UnixMilli()
 	}
 	m.events = append(m.events, event)
+	m.streamSeq++
+	id := fmt.Sprintf("mock-%d", m.streamSeq)
+	m.streamEvents = append(m.streamEvents, mockStreamEvent{ID: id, Event: event})
+	return nil
+}
+
+func (m *MockStore) ReadEvents(ctx context.Context, lastID string, count int64) ([]StreamEvent, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]StreamEvent, 0)
+	if lastID == "0" || lastID == "0-0" {
+		for i, se := range m.streamEvents {
+			if int64(i) >= count {
+				break
+			}
+			result = append(result, StreamEvent{ID: se.ID, Event: se.Event})
+		}
+		return result, nil
+	}
+
+	// Find the entry matching lastID and return everything after it.
+	startIdx := -1
+	for i, se := range m.streamEvents {
+		if se.ID == lastID {
+			startIdx = i + 1
+			break
+		}
+	}
+	if startIdx < 0 {
+		return result, nil
+	}
+	for i := startIdx; i < len(m.streamEvents) && int64(i-startIdx) < count; i++ {
+		result = append(result, StreamEvent{ID: m.streamEvents[i].ID, Event: m.streamEvents[i].Event})
+	}
+	return result, nil
+}
+
+func (m *MockStore) CreateConsumerGroup(ctx context.Context, group string, startID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.groups[group]; ok {
+		return nil
+	}
+	startIdx := 0
+	if startID == "$" {
+		startIdx = len(m.streamEvents)
+	}
+	m.groups[group] = &mockGroup{
+		startIdx:      startIdx,
+		lastDelivered: startIdx,
+		consumers:     make(map[string]*mockConsumer),
+	}
+	return nil
+}
+
+func (m *MockStore) SubscribeEvents(ctx context.Context, group, consumer string, count int64, block time.Duration) ([]StreamEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	g, ok := m.groups[group]
+	if !ok {
+		return nil, fmt.Errorf("SubscribeEvents: group %q not found", group)
+	}
+	c, ok := g.consumers[consumer]
+	if !ok {
+		c = &mockConsumer{pending: make(map[string]bool)}
+		g.consumers[consumer] = c
+	}
+
+	result := make([]StreamEvent, 0)
+	delivered := 0
+	for g.lastDelivered < len(m.streamEvents) && int64(delivered) < count {
+		se := m.streamEvents[g.lastDelivered]
+		result = append(result, StreamEvent{ID: se.ID, Event: se.Event})
+		c.pending[se.ID] = true
+		g.lastDelivered++
+		delivered++
+	}
+	return result, nil
+}
+
+func (m *MockStore) AckEvent(ctx context.Context, group string, ids ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	g, ok := m.groups[group]
+	if !ok {
+		return fmt.Errorf("AckEvent: group %q not found", group)
+	}
+	for _, c := range g.consumers {
+		for _, id := range ids {
+			delete(c.pending, id)
+		}
+	}
 	return nil
 }
 
