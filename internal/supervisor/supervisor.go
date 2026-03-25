@@ -153,6 +153,7 @@ func (sv *Supervisor) heartbeatLoop(ctx context.Context) {
 func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 	agents, err := sv.store.ListAgents(ctx)
 	if err != nil {
+		log.Printf("supervisor: checkHeartbeats — ListAgents failed: %v", err)
 		return
 	}
 
@@ -162,6 +163,7 @@ func (sv *Supervisor) checkHeartbeats(ctx context.Context) {
 	for _, agentID := range agents {
 		fields, err := sv.store.GetAgentFields(ctx, agentID)
 		if err != nil {
+			log.Printf("supervisor: checkHeartbeats — GetAgentFields %s failed: %v", agentID, err)
 			continue
 		}
 
@@ -212,7 +214,7 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 
 	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventAgentFailed)
 	if err != nil {
-		// Store error — clean up sentinel and return without recording a crash.
+		log.Printf("supervisor: crashAgent %s — ApplyEvent failed, deferring crash: %v", agentID, err)
 		sv.mu.Lock()
 		delete(sv.agentCooldown, agentID)
 		sv.mu.Unlock()
@@ -313,7 +315,12 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 		if err := sv.store.EnqueueTask(ctx, taskID, priority); err != nil {
 			log.Printf("supervisor: task %s lost — re-enqueue failed (assign error): %v", taskID, err)
 		}
-		sv.recordAssignError()
+		// CAS conflicts indicate healthy concurrency (another writer won the
+		// race), not store degradation. Only apply backoff for non-CAS errors.
+		var conflict *state.StateConflictError
+		if !errors.As(err, &conflict) {
+			sv.recordAssignError()
+		}
 		return
 	}
 

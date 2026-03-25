@@ -5,6 +5,7 @@ package supervisor_test
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -173,8 +174,8 @@ func TestSupervisor_TryAssignTask_CASConflict_ReenqueuesTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueueLength: %v", err)
 	}
-	if n < 1 {
-		t.Fatal("expected task to be re-enqueued after CAS conflict, but queue is empty")
+	if n != 1 {
+		t.Fatalf("expected exactly 1 task in queue after CAS conflict, got %d", n)
 	}
 
 	// Verify the task ID and priority are preserved.
@@ -187,5 +188,54 @@ func TestSupervisor_TryAssignTask_CASConflict_ReenqueuesTask(t *testing.T) {
 	}
 	if pri != 42.0 {
 		t.Fatalf("want priority=42.0, got %f", pri)
+	}
+}
+
+// dequeueCountingStore wraps casConflictStore and counts DequeueTask calls
+// to verify that CAS conflicts do not trigger exponential backoff.
+type dequeueCountingStore struct {
+	casConflictStore
+	dequeueCount atomic.Int32
+}
+
+func (s *dequeueCountingStore) DequeueTask(ctx context.Context) (string, float64, error) {
+	s.dequeueCount.Add(1)
+	return s.casConflictStore.DequeueTask(ctx)
+}
+
+func TestSupervisor_TryAssignTask_CASConflict_NoBackoff(t *testing.T) {
+	t.Parallel()
+
+	base := state.NewMockStore()
+	wrapper := &dequeueCountingStore{casConflictStore: casConflictStore{StateStore: base}}
+	machine := agent.NewMachine(wrapper)
+	policy := supervisor.NewRestartPolicy(
+		supervisor.WithCrashThreshold(10),
+		supervisor.WithCrashWindow(60*time.Second),
+	)
+	sv := supervisor.NewSupervisor(machine, wrapper, policy,
+		supervisor.WithTaskPollInterval(10*time.Millisecond),
+	)
+
+	ctx := context.Background()
+
+	if err := sv.RegisterAgent(ctx, "agent-no-backoff"); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	if err := wrapper.EnqueueTask(ctx, "task-no-backoff", 1.0); err != nil {
+		t.Fatalf("EnqueueTask: %v", err)
+	}
+
+	// Run for 100ms with 10ms poll interval.
+	// Without backoff: ~10 dequeue attempts (one per tick).
+	// With exponential backoff: after 6 conflicts the supervisor would idle
+	// for 640ms, yielding at most 3-4 dequeues in 100ms.
+	runCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	_ = sv.Run(runCtx)
+
+	count := int(wrapper.dequeueCount.Load())
+	if count < 5 {
+		t.Fatalf("expected >= 5 dequeue attempts (no backoff), got %d — suggests exponential backoff is being applied to CAS conflicts", count)
 	}
 }
