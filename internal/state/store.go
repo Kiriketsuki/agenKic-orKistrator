@@ -79,8 +79,8 @@ type StateStore interface {
 	PublishEvent(ctx context.Context, event Event) error
 
 	// ── Agent task binding ──────────────────────────────────────────────────
-	// ClearCurrentTask zeroes CurrentTaskID and CurrentTaskPriority for the
-	// given agent. Returns ErrAgentNotFound if the agent does not exist.
+	// ClearCurrentTask atomically zeroes CurrentTaskID and CurrentTaskPriority
+	// for the given agent. Returns ErrAgentNotFound if the agent does not exist.
 	ClearCurrentTask(ctx context.Context, agentID string) error
 
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────

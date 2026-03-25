@@ -132,6 +132,24 @@ redis.call('HSET', KEYS[1], 'state', ARGV[2])
 return 1
 `)
 
+// clearTaskScript atomically checks key existence before clearing task fields.
+// KEYS[1] = agent hash key
+//
+// Returns:
+//
+//	1  → cleared successfully
+//	-1 → key does not exist (agent not found)
+//
+// Field names must match fieldCurrentTask / fieldCurrentTaskPrio constants.
+var clearTaskScript = redis.NewScript(`
+local exists = redis.call('EXISTS', KEYS[1])
+if exists == 0 then
+    return -1
+end
+redis.call('HSET', KEYS[1], 'current_task_id', '', 'current_task_priority', '0')
+return 1
+`)
+
 func (r *RedisStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
 	raw, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Result()
 	if err != nil {
@@ -221,18 +239,12 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 }
 
 func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
-	exists, err := r.client.Exists(ctx, r.agentKey(agentID)).Result()
+	result, err := clearTaskScript.Run(ctx, r.client, []string{r.agentKey(agentID)}).Int64()
 	if err != nil {
 		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
 	}
-	if exists == 0 {
+	if result == -1 {
 		return ErrAgentNotFound
-	}
-	if err := r.client.HSet(ctx, r.agentKey(agentID),
-		fieldCurrentTask, "",
-		fieldCurrentTaskPrio, "0",
-	).Err(); err != nil {
-		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
 	}
 	return nil
 }

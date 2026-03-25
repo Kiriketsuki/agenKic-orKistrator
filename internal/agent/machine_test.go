@@ -233,10 +233,12 @@ func TestMachine_ApplyEvent_HappyPath_UsesCAS(t *testing.T) {
 	}
 }
 
-// TestMachine_ApplyEvent_ConcurrentCAS verifies that two goroutines calling
-// ApplyEvent on the same idle agent produce exactly one success and one
-// *StateConflictError — proving Machine-level CAS atomicity under real
-// concurrency, not just injected preconditions (racyStore).
+// TestMachine_ApplyEvent_ConcurrentCAS verifies that n goroutines calling
+// ApplyEvent on the same idle agent produce exactly one success. With n=10,
+// logs CAS conflict vs InvalidTransition counts for observability. The CAS
+// conflict path is proven hermetically by TestMachine_ApplyEvent_CASConflict
+// (racyStore); this test validates the exactly-one-winner invariant under
+// real concurrency.
 func TestMachine_ApplyEvent_ConcurrentCAS(t *testing.T) {
 	store := state.NewMockStore()
 	m := agent.NewMachine(store)
@@ -247,7 +249,7 @@ func TestMachine_ApplyEvent_ConcurrentCAS(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	const n = 2
+	const n = 10
 	errs := make(chan error, n)
 	for i := 0; i < n; i++ {
 		go func() {
@@ -256,30 +258,36 @@ func TestMachine_ApplyEvent_ConcurrentCAS(t *testing.T) {
 		}()
 	}
 
-	var wins, losses int
+	var wins, casConflicts, invalidTransitions int
 	for i := 0; i < n; i++ {
 		err := <-errs
 		if err == nil {
 			wins++
-		} else {
-			// The losing goroutine may get either:
-			// - *StateConflictError: read "idle", CAS detected mismatch
-			// - *InvalidTransitionError: read "assigned" (post-CAS), transition invalid
-			// Both are valid concurrent outcomes.
-			var conflict *state.StateConflictError
-			var invalid *agent.InvalidTransitionError
-			if !errors.As(err, &conflict) && !errors.As(err, &invalid) {
-				t.Errorf("unexpected error type %T: %v", err, err)
-			}
-			losses++
+			continue
+		}
+		// The losing goroutine may get either:
+		// - *StateConflictError: read "idle", CAS detected mismatch
+		// - *InvalidTransitionError: read "assigned" (post-CAS), transition invalid
+		// Both are valid concurrent outcomes.
+		var conflict *state.StateConflictError
+		var invalid *agent.InvalidTransitionError
+		switch {
+		case errors.As(err, &conflict):
+			casConflicts++
+		case errors.As(err, &invalid):
+			invalidTransitions++
+		default:
+			t.Errorf("unexpected error type %T: %v", err, err)
 		}
 	}
 	if wins != 1 {
 		t.Fatalf("want exactly 1 winner, got %d", wins)
 	}
-	if losses != 1 {
-		t.Fatalf("want exactly 1 loser, got %d", losses)
+	if casConflicts+invalidTransitions != n-1 {
+		t.Fatalf("want %d losers, got %d (cas=%d, invalid=%d)",
+			n-1, casConflicts+invalidTransitions, casConflicts, invalidTransitions)
 	}
+	t.Logf("loser distribution: cas_conflicts=%d, invalid_transitions=%d", casConflicts, invalidTransitions)
 
 	got, _ := store.GetAgentState(ctx, id)
 	if got != string(agent.StateAssigned) {

@@ -464,8 +464,9 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	sv.policy.RecordSuccess(agentID)
 
 	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
-	// Uses a blind write (ClearCurrentTask) instead of read-modify-write to
-	// eliminate the stale-CurrentTaskID risk from GetAgentFields failure.
+	// Uses ClearCurrentTask (conditional write that returns ErrAgentNotFound for
+	// unknown agents) instead of read-modify-write to avoid stale-CurrentTaskID
+	// risk from GetAgentFields failure.
 	if err := sv.store.ClearCurrentTask(ctx, agentID); err != nil {
 		log.Printf("supervisor: CurrentTaskID not cleared for agent %s — duplicate re-enqueue possible on next crash: %v", agentID, err)
 	}
