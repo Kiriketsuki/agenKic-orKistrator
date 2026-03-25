@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="doc-type" content="implementation">
+<meta name="feature" content="15">
+<meta name="pr" content="22">
+<meta name="title" content="CompareAndSetAgentState — CAS Optimistic Locking">
+<title>CompareAndSetAgentState — CAS Optimistic Locking Implementation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --bg: #f8f6f1;
+    --surface: #ffffff;
+    --surface-recessed: #f0ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --border-strong: rgba(30, 58, 95, 0.20);
+    --text: #1a2332;
+    --text-dim: #5a6a7e;
+    --primary: #1e3a5f;
+    --primary-dim: rgba(30, 58, 95, 0.07);
+    --accent: #d4a73a;
+    --accent-dim: rgba(212, 167, 58, 0.12);
+    --success: #2d6a4f;
+    --success-dim: rgba(45, 106, 79, 0.08);
+    --danger: #9b2226;
+    --danger-dim: rgba(155, 34, 38, 0.08);
+    --info: #0369a1;
+    --info-dim: rgba(3, 105, 161, 0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1923;
+      --surface: #172535;
+      --surface-recessed: #0d1520;
+      --border: rgba(212, 167, 58, 0.10);
+      --border-strong: rgba(212, 167, 58, 0.18);
+      --text: #e2ddd4;
+      --text-dim: #8a9ab0;
+      --primary: #6b9fd4;
+      --primary-dim: rgba(107, 159, 212, 0.12);
+      --accent: #d4a73a;
+      --accent-dim: rgba(212, 167, 58, 0.14);
+      --success: #52b788;
+      --success-dim: rgba(82, 183, 136, 0.12);
+      --danger: #e5383b;
+      --danger-dim: rgba(229, 56, 59, 0.12);
+      --info: #38bdf8;
+      --info-dim: rgba(56, 189, 248, 0.12);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 48px 40px;
+    min-height: 100vh;
+    line-height: 1.55;
+  }
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes flowIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .anim { animation: fadeUp 0.45s var(--ease-out-quart) both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+  /* Scroll-triggered reveals */
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.5s var(--ease-out-quart), transform 0.5s var(--ease-out-quart); }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-child { opacity: 0; transform: translateY(10px); transition: opacity 0.4s var(--ease-out-quart), transform 0.4s var(--ease-out-quart); }
+  .reveal.visible .reveal-child { opacity: 1; transform: translateY(0); }
+  .reveal.visible .reveal-child:nth-child(1) { transition-delay: 0.06s; }
+  .reveal.visible .reveal-child:nth-child(2) { transition-delay: 0.12s; }
+  .reveal.visible .reveal-child:nth-child(3) { transition-delay: 0.18s; }
+  .reveal.visible .reveal-child:nth-child(4) { transition-delay: 0.24s; }
+  .reveal.visible .reveal-child:nth-child(5) { transition-delay: 0.30s; }
+
+  /* Layer strip sequential flow animation */
+  .layer-flow { opacity: 0; transform: translateX(-12px); transition: opacity 0.4s var(--ease-out-quart), transform 0.4s var(--ease-out-quart); }
+  .layer-flow.visible { opacity: 1; transform: translateX(0); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    .reveal, .reveal-child, .layer-flow { opacity: 1; transform: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* ---- HERO ---- */
+  .hero { margin-bottom: 48px; }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero-label::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    color: var(--primary);
+    margin-bottom: 12px;
+    text-wrap: balance;
+  }
+  .hero-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .hero-meta span { display: flex; align-items: center; gap: 5px; }
+  .hero-meta .dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  .lead {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin-top: 20px;
+  }
+  .lead code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--primary-dim);
+    color: var(--primary);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ---- SECTIONS ---- */
+  .section { margin-bottom: 48px; }
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label .num {
+    background: var(--primary);
+    color: var(--bg);
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  /* ---- CARDS GRID ---- */
+  .card-grid {
+    display: grid;
+    gap: 16px;
+  }
+  .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+  }
+  .ve-card {
+    transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart), border-color 0.25s ease;
+  }
+  .ve-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    border-color: var(--border-strong);
+  }
+  .ve-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: 10px 10px 0 0;
+    background: var(--card-accent, var(--primary));
+    transition: height 0.2s var(--ease-out-quart);
+  }
+  .ve-card:hover::before { height: 4px; }
+  .ve-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .ve-card p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .ve-card code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface-recessed);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .ve-card .file-ref {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    opacity: 0.7;
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+
+  /* ---- CODE BLOCKS ---- */
+  .code-block {
+    background: var(--surface-recessed);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 12px 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .code-block:hover {
+    border-color: var(--border-strong);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .code-block pre {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--text);
+    white-space: pre;
+  }
+  .code-block .comment { color: var(--text-dim); }
+  .code-block .keyword { color: var(--primary); font-weight: 500; }
+  .code-block .string { color: var(--success); }
+  .code-block .number { color: var(--accent); }
+
+  /* ---- MERMAID ---- */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    overflow: auto;
+    margin: 12px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 360px;
+  }
+  .zoom-controls {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex; gap: 2px; z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px;
+  }
+  .zoom-controls button {
+    width: 28px; height: 28px; border: none;
+    background: transparent; color: var(--text-dim);
+    font-family: var(--font-mono); font-size: 14px;
+    cursor: pointer; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .zoom-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
+  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .diagram-shell { position: relative; }
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    opacity: 0.6;
+  }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 300px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 16px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-mono) !important; font-size: 12px !important; }
+  .mermaid .node rect, .mermaid .node circle, .mermaid .node polygon { stroke-width: 1.5px !important; }
+  .mermaid .edge-pattern-solid { stroke-width: 1.5px !important; }
+
+  /* ---- FLOW ARROW ---- */
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 20px;
+    padding: 8px 0;
+    opacity: 0.5;
+  }
+
+  /* ---- LAYER STRIP ---- */
+  .layer-strip {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 0;
+    margin-bottom: 2px;
+  }
+  .layer-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    transition: color 0.2s ease;
+  }
+  .layer-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .layer-content code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--primary-dim);
+    color: var(--primary);
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .layer-strip { transition: transform 0.2s var(--ease-out-quart); }
+  .layer-strip:hover { transform: translateX(4px); }
+  .layer-strip:hover .layer-label { color: var(--primary); }
+
+  /* ---- BADGE ---- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .badge-success { background: var(--success-dim); color: var(--success); }
+  .badge-danger { background: var(--danger-dim); color: var(--danger); }
+  .badge-info { background: var(--info-dim); color: var(--info); }
+  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+
+  /* ---- TABLE ---- */
+  .data-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); margin: 12px 0; }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th {
+    background: var(--surface-recessed);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-strong);
+    position: sticky;
+    top: 0;
+  }
+  .data-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:nth-child(even) td { background: var(--primary-dim); }
+  .data-table tbody tr { transition: background 0.15s ease; }
+  .data-table tbody tr:hover td { background: var(--accent-dim); }
+  .data-table td code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--surface-recessed);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ---- CALLOUT ---- */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin: 16px 0;
+  }
+  .callout strong { color: var(--text); }
+  .callout code { font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 768px) {
+    body { padding: 20px 16px; }
+    h1 { font-size: 24px; }
+    .card-grid.cols-3, .card-grid.cols-2 { grid-template-columns: 1fr; }
+    .layer-strip { grid-template-columns: 1fr; }
+    .layer-label { border-radius: 8px 8px 0 0; border-right: 1px solid var(--border); border-bottom: none; }
+    .layer-content { border-radius: 0 0 8px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero anim" style="--i:0">
+    <div class="hero-label">Feature #15 &mdash; Implementation</div>
+    <h1>CompareAndSetAgentState</h1>
+    <div class="hero-meta">
+      <span><span class="dot" style="background:var(--success)"></span> PR #22 merged</span>
+      <span><span class="dot" style="background:var(--accent)"></span> 8 council reviews</span>
+      <span><span class="dot" style="background:var(--info)"></span> epic/1-implement-go-orchestrator-core</span>
+    </div>
+    <p class="lead">
+      Atomic optimistic locking for agent state transitions. Replaces blind <code>SetAgentState</code>
+      writes with <code>CompareAndSetAgentState</code> &mdash; a CAS primitive backed by atomic Lua scripts
+      in Redis. Closes the TOCTOU race window between state reads and writes in <code>Machine.ApplyEvent</code>,
+      making concurrent supervisor operations safe without global locks.
+    </p>
+  </div>
+
+  <!-- SECTION 1: Architecture Layers -->
+  <section class="section anim" style="--i:1">
+    <div class="section-label"><span class="num">1</span> Architecture</div>
+    <h2>How CAS flows through the system</h2>
+
+    <div class="layer-strip layer-flow" data-flow-delay="0">
+      <div class="layer-label">Supervisor</div>
+      <div class="layer-content">
+        <code>tryAssignTask()</code> acquires per-agent mutex, calls <code>Machine.ApplyEvent</code>,
+        distinguishes <code>*StateConflictError</code> from hard failures via <code>errors.As</code>
+      </div>
+    </div>
+    <div class="flow-arrow">&darr;</div>
+    <div class="layer-strip layer-flow" data-flow-delay="120">
+      <div class="layer-label">Machine</div>
+      <div class="layer-content">
+        <code>ApplyEvent()</code>: read state &rarr; validate transition &rarr; <code>CompareAndSetAgentState(expected, next)</code>
+        <span class="badge badge-success">atomic</span>
+      </div>
+    </div>
+    <div class="flow-arrow">&darr;</div>
+    <div class="layer-strip layer-flow" data-flow-delay="240">
+      <div class="layer-label">StateStore</div>
+      <div class="layer-content">
+        Interface method: <code>CompareAndSetAgentState(ctx, agentID, expected, next) error</code>
+        <span class="badge badge-info">interface</span>
+      </div>
+    </div>
+    <div class="flow-arrow">&darr;</div>
+    <div class="layer-strip layer-flow" data-flow-delay="360">
+      <div class="layer-label">Redis</div>
+      <div class="layer-content">
+        <code>casScript</code> &mdash; Lua script: <code>HGET</code> compare + conditional <code>HSET</code> in one atomic round-trip
+        <span class="badge badge-accent">Lua atomic</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2: State Machine -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">2</span> State Machine</div>
+    <h2>Agent lifecycle transitions</h2>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit</p>
+      <div class="mermaid-wrap" id="wrap-state">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        stateDiagram-v2
+          direction LR
+          [*] --> idle
+          idle --> assigned : TaskAssigned
+          assigned --> working : WorkStarted
+          working --> reporting : OutputReady
+          reporting --> idle : OutputDelivered
+          assigned --> idle : AgentFailed
+          working --> idle : AgentFailed
+          reporting --> idle : AgentFailed
+      </script>
+    </section>
+
+    <div class="callout reveal">
+      <strong>Every arrow is a CAS operation.</strong> <code>Machine.ApplyEvent</code> reads the current state,
+      validates the transition via the pure <code>ValidTransition(from, event)</code> function,
+      then atomically persists the new state with <code>CompareAndSetAgentState(expected=current, next=target)</code>.
+      If another goroutine changed the state between read and write, CAS returns <code>*StateConflictError</code>.
+    </div>
+  </section>
+
+  <!-- SECTION 3: CAS Flow Sequence -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">3</span> CAS Protocol</div>
+    <h2>Atomic compare-and-swap sequence</h2>
+
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit</p>
+      <div class="mermaid-wrap" id="wrap-seq">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading...</span>
+        </div>
+        <div class="mermaid-viewport">
+          <div class="mermaid mermaid-canvas"></div>
+        </div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+        sequenceDiagram
+          participant S as Supervisor
+          participant M as Machine
+          participant R as Redis
+
+          S->>M: ApplyEvent(agentID, TaskAssigned)
+          M->>R: GetAgentState(agentID)
+          R-->>M: "idle"
+          Note over M: ValidTransition(idle, TaskAssigned) = assigned
+          M->>R: CAS(agentID, expected="idle", next="assigned")
+          Note over R: Lua: HGET state == "idle"? HSET "assigned"
+          R-->>M: 1 (success)
+          M-->>S: AgentSnapshot{prev=idle, state=assigned}
+
+          Note over S,R: Concurrent conflict scenario
+          S->>M: ApplyEvent(agentID, TaskAssigned)
+          M->>R: GetAgentState(agentID)
+          R-->>M: "idle"
+          Note over R: Another goroutine writes "assigned" here
+          M->>R: CAS(agentID, expected="idle", next="assigned")
+          R-->>M: {0, "assigned"} (conflict)
+          M-->>S: *StateConflictError{Expected:"idle", Actual:"assigned"}
+      </script>
+    </section>
+  </section>
+
+  <!-- SECTION 4: Lua Scripts -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">4</span> Lua Scripts</div>
+    <h2>Atomic Redis operations</h2>
+
+    <div class="card-grid cols-2">
+      <div class="ve-card reveal-child" style="--card-accent: var(--primary);">
+        <h3>casScript <span class="badge badge-info">redis.go:123-133</span></h3>
+        <p>Atomic compare-and-swap for agent state. Single Redis round-trip via EVAL.</p>
+        <div class="code-block">
+<pre><span class="keyword">local</span> current = redis.call(<span class="string">'HGET'</span>, KEYS[<span class="number">1</span>], <span class="string">'state'</span>)
+<span class="keyword">if</span> current == <span class="keyword">false</span> <span class="keyword">then</span>
+    <span class="keyword">return</span> <span class="number">-1</span>  <span class="comment">-- agent not found</span>
+<span class="keyword">end</span>
+<span class="keyword">if</span> current ~= ARGV[<span class="number">1</span>] <span class="keyword">then</span>
+    <span class="keyword">return</span> {<span class="number">0</span>, current}  <span class="comment">-- conflict</span>
+<span class="keyword">end</span>
+redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span>], <span class="string">'state'</span>, ARGV[<span class="number">2</span>])
+<span class="keyword">return</span> <span class="number">1</span>  <span class="comment">-- success</span></pre>
+        </div>
+        <div class="file-ref">internal/state/redis.go:123&ndash;133</div>
+      </div>
+
+      <div class="ve-card reveal-child" style="--card-accent: var(--accent);">
+        <h3>clearTaskScript <span class="badge badge-accent">redis.go:144-151</span></h3>
+        <p>Atomic task field clearing. Guards against ghost hashes from concurrent deletes.</p>
+        <div class="code-block">
+<pre><span class="keyword">local</span> exists = redis.call(<span class="string">'EXISTS'</span>, KEYS[<span class="number">1</span>])
+<span class="keyword">if</span> exists == <span class="number">0</span> <span class="keyword">then</span>
+    <span class="keyword">return</span> <span class="number">-1</span>  <span class="comment">-- agent not found</span>
+<span class="keyword">end</span>
+redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span>],
+  <span class="string">'current_task_id'</span>, <span class="string">''</span>,
+  <span class="string">'current_task_priority'</span>, <span class="string">'0'</span>)
+<span class="keyword">return</span> <span class="number">1</span>  <span class="comment">-- cleared</span></pre>
+        </div>
+        <div class="file-ref">internal/state/redis.go:144&ndash;151</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 5: Error Handling -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">5</span> Error Handling</div>
+    <h2>Supervisor conflict resolution</h2>
+
+    <div class="card-grid cols-3">
+      <div class="ve-card reveal-child" style="--card-accent: var(--success);">
+        <h3>CAS Success</h3>
+        <p>State transitioned atomically. Supervisor proceeds with field writes (CurrentTaskID, priority)
+        under per-agent mutex.</p>
+        <div class="file-ref">supervisor.go &rarr; tryAssignTask</div>
+      </div>
+
+      <div class="ve-card reveal-child" style="--card-accent: var(--accent);">
+        <h3>*StateConflictError</h3>
+        <p>Healthy concurrency &mdash; another goroutine won the race.
+        Task re-enqueued at original priority. <strong>No backoff triggered.</strong>
+        <code>errors.As</code> distinguishes from store errors.</p>
+        <div class="file-ref">supervisor.go:193&ndash;198</div>
+      </div>
+
+      <div class="ve-card reveal-child" style="--card-accent: var(--danger);">
+        <h3>Store Error</h3>
+        <p>Redis connectivity or unexpected failure. Triggers <code>recordAssignError()</code>
+        with exponential backoff to protect degraded stores.</p>
+        <div class="file-ref">supervisor.go:322</div>
+      </div>
+    </div>
+
+    <div class="callout reveal">
+      <strong>Key design decision.</strong> CAS conflicts are not errors &mdash; they signal healthy concurrency.
+      The supervisor skips <code>recordAssignError()</code> for <code>*StateConflictError</code>, preventing
+      false positive backoff that would throttle the assign loop during normal concurrent operation.
+    </div>
+  </section>
+
+  <!-- SECTION 6: Test Coverage -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">6</span> Test Strategy</div>
+    <h2>Conformance + hermetic + concurrent</h2>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Test</th>
+            <th>Layer</th>
+            <th>Strategy</th>
+            <th>What it proves</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>CAS_Success</code></td>
+            <td><span class="badge badge-info">conformance</span></td>
+            <td>Both MockStore + Redis</td>
+            <td>CAS swaps when expected matches</td>
+          </tr>
+          <tr>
+            <td><code>CAS_Conflict</code></td>
+            <td><span class="badge badge-info">conformance</span></td>
+            <td>Both MockStore + Redis</td>
+            <td><code>*StateConflictError</code> with correct Expected/Actual</td>
+          </tr>
+          <tr>
+            <td><code>CAS_AgentNotFound</code></td>
+            <td><span class="badge badge-info">conformance</span></td>
+            <td>Both MockStore + Redis</td>
+            <td><code>ErrAgentNotFound</code> for unknown agent</td>
+          </tr>
+          <tr>
+            <td><code>CAS_ConcurrentRace</code></td>
+            <td><span class="badge badge-info">conformance</span></td>
+            <td>10 goroutines, exactly 1 wins</td>
+            <td>Atomicity under real concurrency</td>
+          </tr>
+          <tr>
+            <td><code>ApplyEvent_CASConflict</code></td>
+            <td><span class="badge badge-accent">hermetic</span></td>
+            <td><code>racyStore</code> injection</td>
+            <td>CAS conflict error-handling path fires correctly</td>
+          </tr>
+          <tr>
+            <td><code>ApplyEvent_ConcurrentCAS</code></td>
+            <td><span class="badge badge-success">concurrent</span></td>
+            <td>10 goroutines, per-error counters</td>
+            <td>Exactly-one-winner under real scheduling</td>
+          </tr>
+          <tr>
+            <td><code>CASConflict_NoBackoff</code></td>
+            <td><span class="badge badge-danger">supervisor</span></td>
+            <td><code>casConflictStore</code> wrapper</td>
+            <td>CAS conflicts skip exponential backoff</td>
+          </tr>
+          <tr>
+            <td><code>CASGenericError_Backoff</code></td>
+            <td><span class="badge badge-danger">supervisor</span></td>
+            <td>MockStore error hook</td>
+            <td>Non-CAS errors trigger backoff</td>
+          </tr>
+          <tr>
+            <td><code>ClearCurrentTask</code></td>
+            <td><span class="badge badge-info">conformance</span></td>
+            <td>Both MockStore + Redis</td>
+            <td>Atomic clear, <code>ErrAgentNotFound</code> for missing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SECTION 7: Council Review History -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">7</span> Council Review</div>
+    <h2>8 rounds of adversarial review</h2>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Round</th>
+            <th>Verdict</th>
+            <th>Key Resolution</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>R1</td><td><span class="badge badge-accent">CONDITIONAL</span></td><td>Lua TOCTOU fix, test assertions, supervisor error handling</td></tr>
+          <tr><td>R2</td><td><span class="badge badge-accent">CONDITIONAL</span></td><td>Supervisor CAS integration test</td></tr>
+          <tr><td>R3</td><td><span class="badge badge-accent">CONDITIONAL</span></td><td>Backoff misclassification, silent error logging</td></tr>
+          <tr><td>R4</td><td><span class="badge badge-success">FOR</span></td><td>All R1-R3 conditions verified resolved</td></tr>
+          <tr><td>R5</td><td><span class="badge badge-accent">CONDITIONAL</span></td><td>Doc comment fix, dead code removal, input validation</td></tr>
+          <tr><td>R6</td><td><span class="badge badge-success">FOR</span></td><td>All R5 remediations verified</td></tr>
+          <tr><td>R7</td><td><span class="badge badge-success">FOR</span></td><td>All R6 follow-ons verified, 3 new follow-ons</td></tr>
+          <tr><td>R8</td><td><span class="badge badge-success">FOR</span></td><td>All R7 follow-ons verified. Chain closed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SECTION 8: Files Changed -->
+  <section class="section reveal">
+    <div class="section-label"><span class="num">8</span> Files Changed</div>
+    <h2>Implementation surface</h2>
+
+    <div class="card-grid cols-3">
+      <div class="ve-card" style="--card-accent: var(--primary);">
+        <h3>State Layer</h3>
+        <p><code>store.go</code> &mdash; interface + CAS contract<br>
+        <code>redis.go</code> &mdash; Lua scripts + CAS impl<br>
+        <code>mock.go</code> &mdash; mutex-guarded CAS<br>
+        <code>errors.go</code> &mdash; StateConflictError type<br>
+        <code>store_test.go</code> &mdash; conformance suite</p>
+      </div>
+      <div class="ve-card" style="--card-accent: var(--accent);">
+        <h3>Agent Layer</h3>
+        <p><code>machine.go</code> &mdash; ApplyEvent with CAS<br>
+        <code>machine_test.go</code> &mdash; hermetic + concurrent tests<br>
+        <code>state.go</code> &mdash; state constants<br>
+        <code>transition.go</code> &mdash; pure transition table</p>
+      </div>
+      <div class="ve-card" style="--card-accent: var(--success);">
+        <h3>Supervisor Layer</h3>
+        <p><code>supervisor.go</code> &mdash; CAS conflict handling<br>
+        <code>supervisor_test.go</code> &mdash; backoff + integration<br>
+        <code>errors.go</code> &mdash; ErrInvalidAgentID<br>
+        <code>export_e2e.go</code> &mdash; test exports</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = {
+    fitPadding: 28, minHeight: 360, maxHeightPx: 960, maxHeightVh: 0.84,
+    maxInitialZoom: 1.8, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.58
+  };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontSize: '16px',
+      primaryColor: isDark ? '#1e3050' : '#e8f0f8',
+      primaryBorderColor: isDark ? '#6b9fd4' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
+      secondaryColor: isDark ? '#2a1f10' : '#fdf6e3',
+      secondaryBorderColor: isDark ? '#d4a73a' : '#b8860b',
+      secondaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
+      tertiaryColor: isDark ? '#1a2e1a' : '#e8f5e9',
+      tertiaryBorderColor: isDark ? '#52b788' : '#2d6a4f',
+      tertiaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
+      lineColor: isDark ? '#8a9ab0' : '#5a6a7e',
+      noteBkgColor: isDark ? '#2a2010' : '#fffde7',
+      noteTextColor: isDark ? '#e2ddd4' : '#1a2332',
+      noteBorderColor: isDark ? '#d4a73a' : '#b8860b',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad*2 <= vpW) ? (vpW - rW)/2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad*2 <= vpH) ? (vpH - rH)/2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% \u2014 ' + fitMode;
+    }
+    function canPan() {
+      return svgW * zoom + config.fitPadding*2 > viewport.clientWidth
+          || svgH * zoom + config.fitPadding*2 > viewport.clientHeight;
+    }
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding*2), aH = Math.max(80, vpH - config.fitPadding*2);
+      const contain = Math.min(aW/svgW, aH/svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH/svgW, vpR = vpH/Math.max(vpW,1);
+        if (chartR >= vpR) { z = aW/svgW; mode = 'width-priority'; }
+        else { z = aH/svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW*zoom)/2;
+      panY = (viewport.clientHeight - svgH*zoom)/2;
+      applyTransform();
+    }
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW*zoom)/2;
+      panY = (viewport.clientHeight - svgH*zoom)/2;
+      applyTransform();
+    }
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom*factor, config.minZoom, config.maxZoom);
+      const ratio = next/zoom;
+      panX = cx - ratio*(cx-panX); panY = cy - ratio*(cy-panY);
+      zoom = next; fitMode = 'custom';
+      applyTransform();
+    }
+    function readSvgNaturalSize(svg) {
+      let w=0, h=0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width'))||0; h = parseFloat(svg.getAttribute('height'))||0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width||1000; h = r.height||700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH/svgW)*usableW + config.fitPadding*2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight+40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true); clone.style.width=''; clone.style.height='';
+      const bg = isDark ? '#0f1923' : '#f8f6f1';
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+        const { svg } = await mermaid.render(id, code);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        canvas.innerHTML = '';
+        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) { console.error('Mermaid render failed:', err); label.textContent = 'Error: ' + (err.message||'Render failed'); }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1+config.zoomStep, viewport.clientWidth/2, viewport.clientHeight/2),
+      'zoom-out': () => zoomAround(1/(1+config.zoomStep), viewport.clientWidth/2, viewport.clientHeight/2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([a,h]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', h));
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey||e.metaKey) { e.preventDefault(); const rect = viewport.getBoundingClientRect(); zoomAround(e.deltaY<0?1+config.zoomStep:1/(1+config.zoomStep), e.clientX-rect.left, e.clientY-rect.top); return; }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls')||!canPan()) return;
+      wrap.classList.add('is-panning'); sx=e.clientX; sy=e.clientY; spx=panX; spy=panY; e.preventDefault();
+      activeDrag = { onMove: (ev) => { panX=spx+(ev.clientX-sx); panY=spy+(ev.clientY-sy); applyTransform(); }, onEnd: () => wrap.classList.remove('is-panning') };
+    });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+
+<script>
+  // Scroll-triggered reveals
+  const revealObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+  // Layer strip sequential flow-in
+  const flowObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const delay = parseInt(e.target.dataset.flowDelay || '0', 10);
+        setTimeout(() => e.target.classList.add('visible'), delay);
+        flowObs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.layer-flow').forEach(el => flowObs.observe(el));
+</script>
+
+</body>
+</html>
