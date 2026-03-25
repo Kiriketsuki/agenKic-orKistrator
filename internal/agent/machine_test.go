@@ -178,11 +178,12 @@ func TestMachine_ApplyEvent_CASConflict(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	// Wrap the store so it mutates state to "working" just before CAS fires.
-	racy := &racyStore{StateStore: base, agentID: id, raceTo: string(agent.StateWorking)}
+	// Wrap the store so it mutates state to "assigned" just before CAS fires.
+	racy := &racyStore{StateStore: base, agentID: id, raceTo: string(agent.StateAssigned)}
 	m := agent.NewMachine(racy)
 
-	// ApplyEvent reads "idle", computes next="assigned", but CAS sees "working".
+	// ApplyEvent reads "idle", computes next="assigned", but CAS sees "assigned"
+	// (set by the concurrent writer, not by this ApplyEvent call).
 	_, err := m.ApplyEvent(ctx, id, agent.EventTaskAssigned)
 	if err == nil {
 		t.Fatal("expected error from CAS conflict, got nil")
@@ -194,10 +195,13 @@ func TestMachine_ApplyEvent_CASConflict(t *testing.T) {
 	if conflict.Expected != string(agent.StateIdle) {
 		t.Fatalf("Expected: want %q, got %q", agent.StateIdle, conflict.Expected)
 	}
-	// State should remain "working" (the concurrent writer's value).
+	if conflict.Actual != string(agent.StateAssigned) {
+		t.Fatalf("Actual: want %q, got %q", agent.StateAssigned, conflict.Actual)
+	}
+	// State should remain "assigned" (the concurrent writer's value).
 	got, _ := base.GetAgentState(ctx, id)
-	if got != string(agent.StateWorking) {
-		t.Fatalf("state: want %q, got %q", agent.StateWorking, got)
+	if got != string(agent.StateAssigned) {
+		t.Fatalf("state: want %q, got %q", agent.StateAssigned, got)
 	}
 }
 

@@ -126,31 +126,38 @@ if current == false then
     return -1
 end
 if current ~= ARGV[1] then
-    return 0
+    return {0, current}
 end
 redis.call('HSET', KEYS[1], 'state', ARGV[2])
 return 1
 `)
 
 func (r *RedisStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
-	result, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Int64()
+	raw, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Result()
 	if err != nil {
 		return fmt.Errorf("CompareAndSetAgentState %s: %w", agentID, err)
 	}
-	switch result {
-	case 1:
-		return nil
-	case 0:
-		// Fetch current state for the error.
-		actual, getErr := r.client.HGet(ctx, r.agentKey(agentID), fieldState).Result()
-		if getErr != nil {
-			actual = "<unknown>"
+	switch v := raw.(type) {
+	case int64:
+		switch v {
+		case 1:
+			return nil
+		case -1:
+			return ErrAgentNotFound
+		default:
+			return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result %d", agentID, v)
+		}
+	case []interface{}:
+		// Conflict: Lua returned {0, current_state}.
+		actual := "<unknown>"
+		if len(v) >= 2 {
+			if s, ok := v[1].(string); ok {
+				actual = s
+			}
 		}
 		return &StateConflictError{Expected: expected, Actual: actual}
-	case -1:
-		return ErrAgentNotFound
 	default:
-		return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result %d", agentID, result)
+		return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result type %T", agentID, raw)
 	}
 }
 
