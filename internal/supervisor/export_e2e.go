@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
 
 // CrashAgentForTest exposes crashAgent for test packages.
@@ -25,4 +26,9 @@ func (sv *Supervisor) CompleteAgentForTest(ctx context.Context, agentID string) 
 // which is useful for setting up E2E test preconditions.
 func (sv *Supervisor) ApplyEventForTest(ctx context.Context, agentID string, event agent.AgentEvent) (agent.AgentSnapshot, error) {
 	return sv.machine.ApplyEvent(ctx, agentID, event)
+}
+
+// SubstrateForTest returns the substrate wired into the supervisor.
+func (sv *Supervisor) SubstrateForTest() terminal.Substrate {
+	return sv.substrate
 }

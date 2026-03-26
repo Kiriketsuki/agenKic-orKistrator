@@ -10,6 +10,7 @@ import (
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
 
 const (
@@ -20,9 +21,10 @@ const (
 
 // Supervisor manages the agent pool: heartbeat monitoring and task assignment.
 type Supervisor struct {
-	machine *agent.Machine
-	store   state.StateStore
-	policy  *RestartPolicy
+	machine   *agent.Machine
+	store     state.StateStore
+	policy    *RestartPolicy
+	substrate terminal.Substrate // optional; nil disables terminal management
 
 	heartbeatInterval time.Duration
 	staleThreshold    time.Duration
@@ -56,6 +58,13 @@ func WithStaleThreshold(d time.Duration) SupervisorOption {
 // WithTaskPollInterval sets how often the task assignment loop polls the queue.
 func WithTaskPollInterval(d time.Duration) SupervisorOption {
 	return func(sv *Supervisor) { sv.taskPollInterval = d }
+}
+
+// WithSubstrate wires a terminal.Substrate into the supervisor.
+// When set, the supervisor spawns a tmux session per agent on RegisterAgent
+// and destroys it on agent crash. A nil substrate disables terminal management.
+func WithSubstrate(s terminal.Substrate) SupervisorOption {
+	return func(sv *Supervisor) { sv.substrate = s }
 }
 
 // NewSupervisor returns a Supervisor wired to the given machine, store, and policy.
@@ -102,20 +111,44 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 	}
 
 	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
 	if sv.stopped {
+		sv.mu.Unlock()
 		return ErrSupervisorStopped
 	}
 	sv.agentMu[agentID] = &sync.Mutex{}
+	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		sessionName := "agent-" + agentID
+		if _, err := sv.substrate.SpawnSession(ctx, sessionName, ""); err != nil {
+			log.Printf("supervisor: substrate: SpawnSession %q failed (agent %s continues): %v", sessionName, agentID, err)
+		}
+	}
+
 	return nil
 }
 
-// Stop marks the supervisor as stopped. Subsequent RegisterAgent calls return ErrSupervisorStopped.
+// Stop marks the supervisor as stopped and destroys all spawned tmux sessions.
+// Callers must ensure no concurrent RegisterAgent calls are in-flight before
+// calling Stop (e.g. by draining the gRPC server with GracefulStop first).
+// Subsequent RegisterAgent calls return ErrSupervisorStopped.
 func (sv *Supervisor) Stop() {
 	sv.mu.Lock()
 	sv.stopped = true
+	agentIDs := make([]string, 0, len(sv.agentMu))
+	for id := range sv.agentMu {
+		agentIDs = append(agentIDs, id)
+	}
 	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		for _, id := range agentIDs {
+			sessionName := "agent-" + id
+			if err := sv.substrate.DestroySession(context.Background(), sessionName); err != nil {
+				log.Printf("supervisor: Stop: DestroySession %q failed (agent %s): %v", sessionName, id, err)
+			}
+		}
+	}
 }
 
 // Run starts the heartbeat and task-assignment loops. Blocks until ctx is done.
@@ -247,17 +280,21 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 	decision := sv.policy.RecordCrash(agentID)
 
 	sv.mu.Lock()
-	defer sv.mu.Unlock()
-
 	if !decision.ShouldRestart {
 		sv.circuitOpen[agentID] = true
 		delete(sv.agentCooldown, agentID)
-		return
-	}
-	if decision.Backoff > 0 {
+	} else if decision.Backoff > 0 {
 		sv.agentCooldown[agentID] = time.Now().Add(decision.Backoff)
 	} else {
 		delete(sv.agentCooldown, agentID)
+	}
+	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		sessionName := "agent-" + agentID
+		if err := sv.substrate.DestroySession(ctx, sessionName); err != nil {
+			log.Printf("supervisor: substrate: DestroySession %q failed (agent %s): %v", sessionName, agentID, err)
+		}
 	}
 }
 
