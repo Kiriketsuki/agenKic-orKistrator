@@ -6,67 +6,82 @@
 <title>Decision #8 — TUI Alternative</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-display: 'Press Start 2P', cursive;
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-    --bg: #f8f6f1;
+    --bg: #faf5ef;
     --surface: #ffffff;
-    --surface-alt: #f1ede6;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.18);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
+    --surface-alt: #f3ede4;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
 
-    --navy: #1e3a5f;
-    --navy-light: rgba(30, 58, 95, 0.08);
-    --gold: #d4a73a;
-    --gold-dim: rgba(212, 167, 58, 0.12);
-    --teal: #0e7c6b;
-    --teal-dim: rgba(14, 124, 107, 0.08);
-    --rose: #b4364a;
-    --rose-dim: rgba(180, 54, 74, 0.08);
-    --amber: #c07d20;
-    --amber-dim: rgba(192, 125, 32, 0.08);
-    --slate: #64748b;
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167,139,219,0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107,201,166,0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240,168,104,0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232,135,155,0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122,184,224,0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232,212,77,0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1724;
-      --surface: #182032;
-      --surface-alt: #1c2640;
-      --border: rgba(212, 167, 58, 0.10);
-      --border-strong: rgba(212, 167, 58, 0.16);
-      --text: #e8e4dc;
-      --text-dim: #8a95a8;
+      --bg: #151020;
+      --surface: #1e1830;
+      --surface-alt: #261e3a;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
 
-      --navy: #7eb0e0;
-      --navy-light: rgba(126, 176, 224, 0.10);
-      --gold: #e8c15a;
-      --gold-dim: rgba(232, 193, 90, 0.10);
-      --teal: #34d4b0;
-      --teal-dim: rgba(52, 212, 176, 0.08);
-      --rose: #f07088;
-      --rose-dim: rgba(240, 112, 136, 0.08);
-      --amber: #e8a040;
-      --amber-dim: rgba(232, 160, 64, 0.08);
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190,160,240,0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128,224,184,0.12);
+      --peach: #f0b878;
+      --peach-dim: rgba(240,184,120,0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240,160,180,0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144,200,240,0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240,224,104,0.12);
     }
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
     background-color: var(--bg);
+    background-image:
+      linear-gradient(rgba(100,80,60,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(100,80,60,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     line-height: 1.6;
     min-height: 100vh;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-image:
+        linear-gradient(rgba(180,160,220,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,160,220,0.06) 1px, transparent 1px);
+    }
   }
 
   /* ── ANIMATIONS ── */
@@ -139,19 +154,18 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--gold);
+    color: var(--peach);
     margin-bottom: 12px;
   }
   .hero h1 {
     font-family: var(--font-display);
-    font-size: clamp(36px, 5vw, 56px);
-    font-weight: 400;
-    line-height: 1.1;
+    font-size: clamp(16px, 2.5vw, 20px);
+    line-height: 1.6;
     color: var(--text);
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
   .hero-desc {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text-dim);
     max-width: 680px;
     line-height: 1.7;
@@ -168,14 +182,13 @@
   .section-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
     flex-shrink: 0;
   }
   .section-head h2 {
     font-family: var(--font-display);
-    font-size: 28px;
-    font-weight: 400;
+    font-size: 14px;
     color: var(--text);
+    line-height: 1.5;
   }
 
   /* ── PROSE ── */
@@ -197,29 +210,27 @@
 
   .option-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    transition: border-color 0.2s var(--ease-out-quart),
-                transform 0.2s var(--ease-out-quart),
-                box-shadow 0.2s var(--ease-out-quart);
     position: relative;
+    transition: box-shadow 0.15s,
+                transform 0.15s;
   }
   .option-card:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+    box-shadow: 6px 6px 0 var(--border-strong);
+    transform: translate(-1px, -1px);
   }
   .option-card.chosen {
-    border-color: var(--teal);
-    background: var(--teal-dim);
+    border-color: var(--mint);
+    background: var(--mint-dim);
+    box-shadow: 4px 4px 0 var(--mint);
   }
   .option-card.chosen:hover {
-    border-color: var(--teal);
-    box-shadow: 0 6px 20px rgba(14,124,107,0.12);
+    box-shadow: 6px 6px 0 var(--mint);
   }
 
   .option-header {
@@ -245,29 +256,30 @@
   .verdict {
     display: inline-block;
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 5px;
+    padding: 3px 8px;
+    border: 2px solid;
+    box-shadow: 2px 2px 0 var(--border);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .verdict-chosen   { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
-  .verdict-rejected { background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
+  .verdict-chosen   { background: var(--mint-dim); color: var(--mint); border-color: var(--mint); }
+  .verdict-rejected { background: var(--pink-dim); color: var(--pink); border-color: var(--pink); }
 
   .option-lists { display: flex; flex-direction: column; gap: 10px; }
   .option-list-label {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 5px;
   }
-  .option-list-label.pros { color: var(--teal); }
-  .option-list-label.cons { color: var(--rose); }
+  .option-list-label.pros { color: var(--mint); }
+  .option-list-label.cons { color: var(--pink); }
 
   .option-list {
     list-style: none;
@@ -288,8 +300,8 @@
     top: 0;
     font-size: 10px;
   }
-  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
-  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+  .pros-list li::before { content: '+'; color: var(--mint); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--pink); font-weight: 600; }
 
   /* ── INTERFACE COMPARISON ── */
   .comparison-wrap {
@@ -304,8 +316,8 @@
 
   .comparison-panel {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -315,7 +327,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
     background: var(--surface-alt);
   }
   .comparison-header-title {
@@ -327,15 +339,16 @@
   }
   .comparison-badge {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: 4px;
+    border: 2px solid;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    box-shadow: 2px 2px 0 var(--border);
   }
-  .badge-navy  { background: var(--navy-light); color: var(--navy); }
-  .badge-teal  { background: var(--teal-dim);  color: var(--teal); }
+  .badge-navy { background: var(--lavender-dim); color: var(--lavender); border-color: var(--lavender); }
+  .badge-teal { background: var(--mint-dim);     color: var(--mint);     border-color: var(--mint); }
   .comparison-body { padding: 20px 18px; flex: 1; }
 
   /* pixel office mockup */
@@ -347,8 +360,7 @@
   }
   .desk-cell {
     background: var(--surface-alt);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 2px solid var(--border);
     padding: 10px 8px;
     display: flex;
     flex-direction: column;
@@ -358,15 +370,15 @@
     position: relative;
     transition: border-color 0.3s;
   }
-  .desk-cell.active { border-color: var(--teal); }
+  .desk-cell.active { border-color: var(--mint); }
   .desk-cell.idle   { border-color: var(--border); opacity: 0.6; }
-  .desk-cell.busy   { border-color: var(--amber); }
-  .desk-cell.error  { border-color: var(--rose); }
+  .desk-cell.busy   { border-color: var(--peach); }
+  .desk-cell.error  { border-color: var(--pink); }
 
   .sprite {
     width: 28px;
     height: 28px;
-    border-radius: 50%;
+    border: 2px solid;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -375,10 +387,10 @@
     font-family: var(--font-mono);
     flex-shrink: 0;
   }
-  .sprite-active { background: var(--teal-dim);  color: var(--teal); }
-  .sprite-idle   { background: var(--navy-light); color: var(--navy); }
-  .sprite-busy   { background: var(--amber-dim);  color: var(--amber); }
-  .sprite-error  { background: var(--rose-dim);   color: var(--rose); }
+  .sprite-active { background: var(--mint-dim);     color: var(--mint);     border-color: var(--mint); }
+  .sprite-idle   { background: var(--lavender-dim); color: var(--lavender); border-color: var(--lavender); }
+  .sprite-busy   { background: var(--peach-dim);    color: var(--peach);    border-color: var(--peach); }
+  .sprite-error  { background: var(--pink-dim);     color: var(--pink);     border-color: var(--pink); }
 
   .desk-label {
     font-family: var(--font-mono);
@@ -391,15 +403,14 @@
   .state-dot {
     width: 6px;
     height: 6px;
-    border-radius: 50%;
     position: absolute;
     top: 7px;
     right: 7px;
   }
-  .dot-active { background: var(--teal); }
-  .dot-idle   { background: var(--slate); }
-  .dot-busy   { background: var(--amber); }
-  .dot-error  { background: var(--rose); }
+  .dot-active { background: var(--mint); }
+  .dot-idle   { background: var(--sky); }
+  .dot-busy   { background: var(--peach); }
+  .dot-error  { background: var(--pink); }
 
   @media (prefers-reduced-motion: no-preference) {
     .desk-cell.active .state-dot {
@@ -423,17 +434,17 @@
     font-size: 9px;
     color: var(--text-dim);
   }
-  .legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .legend-dot { width: 6px; height: 6px; flex-shrink: 0; }
 
   /* terminal mockup */
   .terminal-screen {
     background: #0d1117;
-    border-radius: 8px;
     overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.55;
     position: relative;
+    border: 2px solid #3a3050;
   }
   .terminal-bar {
     background: #1c2128;
@@ -444,7 +455,7 @@
     border-bottom: 1px solid rgba(255,255,255,0.04);
   }
   .terminal-dot-row { display: flex; gap: 5px; }
-  .t-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .t-dot { width: 8px; height: 8px; }
   .t-dot-red    { background: #ff5f56; }
   .t-dot-yellow { background: #ffbd2e; }
   .t-dot-green  { background: #27c93f; }
@@ -482,10 +493,10 @@
   }
   .t-data-row:last-child { border-bottom: none; }
   .t-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tc-active  { color: #34d4b0; }
+  .tc-active  { color: #80e0b8; }
   .tc-idle    { color: #6e7681; }
-  .tc-busy    { color: #e8a040; }
-  .tc-error   { color: #f07088; }
+  .tc-busy    { color: #f0b878; }
+  .tc-error   { color: #f0a0b4; }
   .tc-dim     { color: #6e7681; }
   .tc-text    { color: #c9d1d9; }
   .tc-task    { color: #8b949e; font-size: 10px; }
@@ -511,9 +522,9 @@
     gap: 8px;
   }
   .t-log-time { color: #3d444d; flex-shrink: 0; }
-  .t-log-lvl-info  { color: #34d4b0; flex-shrink: 0; width: 36px; }
-  .t-log-lvl-warn  { color: #e8a040; flex-shrink: 0; width: 36px; }
-  .t-log-lvl-err   { color: #f07088; flex-shrink: 0; width: 36px; }
+  .t-log-lvl-info  { color: #80e0b8; flex-shrink: 0; width: 36px; }
+  .t-log-lvl-warn  { color: #f0b878; flex-shrink: 0; width: 36px; }
+  .t-log-lvl-err   { color: #f0a0b4; flex-shrink: 0; width: 36px; }
 
   .t-prompt {
     display: flex;
@@ -522,12 +533,12 @@
     padding-top: 8px;
     font-size: 11px;
   }
-  .t-prompt-char { color: #34d4b0; }
+  .t-prompt-char { color: #80e0b8; }
   .t-caret {
     display: inline-block;
     width: 7px;
     height: 13px;
-    background: #34d4b0;
+    background: #80e0b8;
     opacity: 0.9;
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -537,13 +548,13 @@
   .comparison-shared-label {
     margin-top: 16px;
     padding: 10px 14px;
-    background: var(--gold-dim);
-    border: 1px solid rgba(212,167,58,0.18);
-    border-radius: 7px;
+    background: var(--peach-dim);
+    border: 2px solid var(--peach);
+    box-shadow: 2px 2px 0 var(--border);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
-    color: var(--gold);
+    color: var(--peach);
     letter-spacing: 0.3px;
     text-align: center;
   }
@@ -561,12 +572,17 @@
 
   .rationale-item {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 18px 20px;
     display: flex;
     flex-direction: column;
     gap: 7px;
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  .rationale-item:hover {
+    box-shadow: 6px 6px 0 var(--border-strong);
+    transform: translate(-1px, -1px);
   }
   .rationale-icon {
     font-size: 18px;
@@ -575,10 +591,11 @@
   }
   .rationale-title {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--text);
     letter-spacing: 0.2px;
+    line-height: 1.5;
   }
   .rationale-body {
     font-size: 12px;
@@ -589,24 +606,24 @@
   /* ── CALLOUT ── */
   .callout {
     background: var(--surface);
-    border-left: 3px solid var(--teal);
-    border-radius: 0 10px 10px 0;
+    border: 2px solid var(--border);
+    border-left: 4px solid var(--mint);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 20px 24px;
     margin-top: 4px;
   }
   .callout-text {
     font-family: var(--font-display);
-    font-style: italic;
-    font-size: clamp(15px, 2vw, 18px);
+    font-size: clamp(10px, 1.5vw, 12px);
     color: var(--text);
-    line-height: 1.65;
+    line-height: 1.9;
   }
 
   /* ── TRADE-OFFS TABLE ── */
   .tradeoff-table-wrap {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     overflow: hidden;
   }
   .tradeoff-table {
@@ -615,7 +632,7 @@
   }
   .tradeoff-table thead th {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -623,7 +640,7 @@
     padding: 14px 20px;
     text-align: left;
     background: var(--surface-alt);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
   }
   .tradeoff-table thead th:not(:first-child) {
     border-left: 1px solid var(--border);
@@ -641,12 +658,13 @@
   }
   .tradeoff-table tbody td:first-child {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--text);
     white-space: nowrap;
     background: var(--surface-alt);
     width: 160px;
+    line-height: 1.5;
   }
   .tradeoff-body { color: var(--text-dim); line-height: 1.6; }
 
@@ -656,14 +674,15 @@
     font-size: 8px;
     font-weight: 600;
     padding: 2px 7px;
-    border-radius: 4px;
+    border: 2px solid;
+    box-shadow: 2px 2px 0 var(--border);
     text-transform: uppercase;
     letter-spacing: 0.4px;
     margin-left: 6px;
     vertical-align: middle;
   }
-  .impact-medium { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(192,125,32,0.25); }
-  .impact-low    { background: var(--teal-dim);  color: var(--teal);  border: 1px solid rgba(14,124,107,0.25); }
+  .impact-medium { background: var(--peach-dim); color: var(--peach); border-color: var(--peach); }
+  .impact-low    { background: var(--mint-dim);  color: var(--mint);  border-color: var(--mint); }
 
   /* ── FOOTER ── */
   .footer {
@@ -674,16 +693,16 @@
     gap: 12px;
     margin-top: 72px;
     padding-top: 24px;
-    border-top: 1px solid var(--border);
+    border-top: 2px solid var(--border);
   }
   .footer-left {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 9px;
     color: var(--text-dim);
   }
   .footer-right {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 9px;
     color: var(--text-dim);
   }
 </style>
@@ -702,7 +721,7 @@
 
   <!-- ── THE QUESTION ── -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot" style="background:var(--navy)"></div>
+    <div class="section-dot" style="background:var(--lavender)"></div>
     <h2>The Question</h2>
   </div>
   <p class="prose scroll-reveal">
@@ -714,7 +733,7 @@
 
   <!-- ── OPTIONS ── -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot" style="background:var(--gold)"></div>
+    <div class="section-dot" style="background:var(--peach)"></div>
     <h2>Options Considered</h2>
   </div>
 
@@ -837,7 +856,7 @@
 
   <!-- ── INTERFACE COMPARISON ── -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot" style="background:var(--teal)"></div>
+    <div class="section-dot" style="background:var(--mint)"></div>
     <h2>Interface Comparison</h2>
   </div>
 
@@ -874,16 +893,16 @@
         </div>
         <div class="pixel-legend">
           <div class="legend-item">
-            <div class="legend-dot" style="background:var(--teal)"></div> Running
+            <div class="legend-dot" style="background:var(--mint)"></div> Running
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background:var(--amber)"></div> Working
+            <div class="legend-dot" style="background:var(--peach)"></div> Working
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background:var(--slate)"></div> Idle
+            <div class="legend-dot" style="background:var(--sky)"></div> Idle
           </div>
           <div class="legend-item">
-            <div class="legend-dot" style="background:var(--rose)"></div> Error
+            <div class="legend-dot" style="background:var(--pink)"></div> Error
           </div>
         </div>
         <p style="font-size:11px;color:var(--text-dim);margin-top:14px;line-height:1.55;">
@@ -978,7 +997,7 @@
 
   <!-- ── THE DECISION ── -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot" style="background:var(--amber)"></div>
+    <div class="section-dot" style="background:var(--peach)"></div>
     <h2>The Decision</h2>
   </div>
   <p class="prose scroll-reveal">
@@ -995,7 +1014,7 @@
   </p>
 
   <div class="section-head scroll-reveal" style="margin-top:32px;">
-    <div class="section-dot" style="background:var(--teal)"></div>
+    <div class="section-dot" style="background:var(--mint)"></div>
     <h2>Why It Works</h2>
   </div>
 
@@ -1036,7 +1055,7 @@
 
   <!-- ── CALLOUT ── -->
   <div class="section-head scroll-reveal" style="margin-top: 48px; margin-bottom: 8px;">
-    <div class="section-dot" style="background:var(--teal)"></div>
+    <div class="section-dot" style="background:var(--mint)"></div>
     <h2>Perspective</h2>
   </div>
   <div class="callout scroll-reveal">
@@ -1048,7 +1067,7 @@
 
   <!-- ── TRADE-OFFS ── -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot" style="background:var(--rose)"></div>
+    <div class="section-dot" style="background:var(--pink)"></div>
     <h2>Trade-offs Accepted</h2>
   </div>
 

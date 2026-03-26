@@ -6,67 +6,82 @@
 <title>Decision #2 — IPC Communication</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-display: 'Press Start 2P', cursive;
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-    --bg: #f8f6f1;
+    --bg: #faf5ef;
     --surface: #ffffff;
-    --surface-alt: #f1ede6;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.18);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
+    --surface-alt: #f3ede4;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
 
-    --navy: #1e3a5f;
-    --navy-light: rgba(30, 58, 95, 0.08);
-    --gold: #d4a73a;
-    --gold-dim: rgba(212, 167, 58, 0.12);
-    --teal: #0e7c6b;
-    --teal-dim: rgba(14, 124, 107, 0.08);
-    --rose: #b4364a;
-    --rose-dim: rgba(180, 54, 74, 0.08);
-    --amber: #c07d20;
-    --amber-dim: rgba(192, 125, 32, 0.08);
-    --slate: #64748b;
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167,139,219,0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107,201,166,0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240,168,104,0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122,184,224,0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232,135,155,0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232,212,77,0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1724;
-      --surface: #182032;
-      --surface-alt: #1c2640;
-      --border: rgba(212, 167, 58, 0.10);
-      --border-strong: rgba(212, 167, 58, 0.16);
-      --text: #e8e4dc;
-      --text-dim: #8a95a8;
+      --bg: #151020;
+      --surface: #1e1830;
+      --surface-alt: #261e3a;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
 
-      --navy: #7eb0e0;
-      --navy-light: rgba(126, 176, 224, 0.10);
-      --gold: #e8c15a;
-      --gold-dim: rgba(232, 193, 90, 0.10);
-      --teal: #34d4b0;
-      --teal-dim: rgba(52, 212, 176, 0.08);
-      --rose: #f07088;
-      --rose-dim: rgba(240, 112, 136, 0.08);
-      --amber: #e8a040;
-      --amber-dim: rgba(232, 160, 64, 0.08);
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190,160,240,0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128,224,184,0.10);
+      --peach: #f0b878;
+      --peach-dim: rgba(240,184,120,0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144,200,240,0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240,160,180,0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240,224,104,0.12);
     }
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
     background-color: var(--bg);
+    background-image:
+      linear-gradient(rgba(100,80,60,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(100,80,60,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     line-height: 1.6;
     min-height: 100vh;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-image:
+        linear-gradient(rgba(180,160,240,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,160,240,0.06) 1px, transparent 1px);
+    }
   }
 
   /* ── ANIMATIONS ── */
@@ -138,23 +153,22 @@
   .hero { margin-bottom: 56px; }
   .hero-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--gold);
-    margin-bottom: 12px;
+    color: var(--peach);
+    margin-bottom: 16px;
   }
   .hero h1 {
     font-family: var(--font-display);
-    font-size: clamp(36px, 5vw, 56px);
-    font-weight: 400;
-    line-height: 1.1;
+    font-size: clamp(16px, 2.5vw, 20px);
+    line-height: 1.6;
     color: var(--text);
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
   .hero-desc {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text-dim);
     max-width: 680px;
     line-height: 1.7;
@@ -171,14 +185,13 @@
   .section-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
     flex-shrink: 0;
   }
   .section-head h2 {
     font-family: var(--font-display);
-    font-size: 28px;
-    font-weight: 400;
+    font-size: 14px;
     color: var(--text);
+    line-height: 1.5;
   }
 
   /* ── PROSE ── */
@@ -200,8 +213,8 @@
 
   .option-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 24px;
     display: flex;
     flex-direction: column;
@@ -212,23 +225,25 @@
   .option-card:hover {
     border-color: var(--border-strong);
     transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
+    box-shadow: 6px 6px 0 var(--border-strong);
   }
   .option-card.chosen {
-    border-color: var(--teal);
-    background: var(--teal-dim);
+    border-color: var(--mint);
+    background: var(--mint-dim);
+    box-shadow: 4px 4px 0 var(--mint);
   }
   .option-card.chosen:hover {
-    border-color: var(--teal);
-    box-shadow: 0 6px 20px rgba(14, 124, 107, 0.12);
+    border-color: var(--mint);
+    box-shadow: 6px 6px 0 var(--mint);
   }
   .option-card.partial {
-    border-color: var(--amber);
-    background: var(--amber-dim);
+    border-color: var(--peach);
+    background: var(--peach-dim);
+    box-shadow: 4px 4px 0 var(--peach);
   }
   .option-card.partial:hover {
-    border-color: var(--amber);
-    box-shadow: 0 6px 20px rgba(192, 125, 32, 0.10);
+    border-color: var(--peach);
+    box-shadow: 6px 6px 0 var(--peach);
   }
 
   .option-header {
@@ -239,7 +254,7 @@
   }
   .option-name {
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text);
     line-height: 1.4;
@@ -254,30 +269,31 @@
   .verdict {
     display: inline-block;
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 5px;
+    padding: 3px 8px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
     flex-shrink: 0;
+    border: 2px solid;
+    box-shadow: 2px 2px 0 var(--border);
   }
-  .verdict-chosen  { background: var(--teal-dim);  color: var(--teal);  border: 1px solid var(--teal); }
-  .verdict-rejected{ background: var(--rose-dim);  color: var(--rose);  border: 1px solid var(--rose); }
-  .verdict-partial { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+  .verdict-chosen  { background: var(--mint-dim);  color: var(--mint);  border-color: var(--mint);  box-shadow: 2px 2px 0 var(--mint); }
+  .verdict-rejected{ background: var(--pink-dim);  color: var(--pink);  border-color: var(--pink);  box-shadow: 2px 2px 0 var(--pink); }
+  .verdict-partial { background: var(--peach-dim); color: var(--peach); border-color: var(--peach); box-shadow: 2px 2px 0 var(--peach); }
 
   .option-lists { display: flex; flex-direction: column; gap: 10px; }
   .option-list-label {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 5px;
   }
-  .option-list-label.pros { color: var(--teal); }
-  .option-list-label.cons { color: var(--rose); }
+  .option-list-label.pros { color: var(--mint); }
+  .option-list-label.cons { color: var(--pink); }
 
   .option-list {
     list-style: none;
@@ -298,14 +314,14 @@
     top: 0;
     font-size: 10px;
   }
-  .pros-list li::before { content: '+'; color: var(--teal); font-weight: 600; }
-  .cons-list li::before { content: '−'; color: var(--rose); font-weight: 600; }
+  .pros-list li::before { content: '+'; color: var(--mint); font-weight: 600; }
+  .cons-list li::before { content: '−'; color: var(--pink); font-weight: 600; }
 
   /* ── LATENCY CHART ── */
   .latency-chart {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 28px 28px 24px;
     display: flex;
     flex-direction: column;
@@ -314,7 +330,7 @@
   }
   .latency-chart-title {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -337,21 +353,20 @@
     color: var(--text-dim);
     white-space: nowrap;
   }
-  .latency-label.highlight { color: var(--teal); }
+  .latency-label.highlight { color: var(--mint); }
   .latency-bar-track {
     height: 8px;
     background: var(--surface-alt);
-    border-radius: 4px;
     overflow: hidden;
+    border: 1px solid var(--border);
   }
   .bar-fill {
     height: 100%;
-    border-radius: 4px;
   }
-  .bar-fill.bar-teal   { background: var(--teal); }
-  .bar-fill.bar-navy   { background: var(--navy); }
-  .bar-fill.bar-gold   { background: var(--gold); }
-  .bar-fill.bar-amber  { background: var(--amber); }
+  .bar-fill.bar-teal   { background: var(--mint); }
+  .bar-fill.bar-navy   { background: var(--lavender); }
+  .bar-fill.bar-gold   { background: var(--peach); }
+  .bar-fill.bar-amber  { background: var(--peach); }
   .latency-value {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -378,8 +393,8 @@
   }
   .plane-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 22px 24px;
     display: grid;
     grid-template-columns: auto 1fr;
@@ -390,29 +405,31 @@
   .plane-card:hover {
     border-color: var(--border-strong);
     transform: translateX(4px);
+    box-shadow: 4px 4px 0 var(--border-strong);
   }
   .plane-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     flex-shrink: 0;
     letter-spacing: 0.3px;
+    border: 2px solid var(--border);
   }
-  .plane-icon.grpc  { background: var(--teal-dim);  color: var(--teal); }
-  .plane-icon.redis { background: var(--gold-dim);   color: var(--gold); }
-  .plane-icon.uds   { background: var(--navy-light); color: var(--navy); }
+  .plane-icon.grpc  { background: var(--mint-dim);    color: var(--mint);    border-color: var(--mint); }
+  .plane-icon.redis { background: var(--peach-dim);   color: var(--peach);   border-color: var(--peach); }
+  .plane-icon.uds   { background: var(--lavender-dim);color: var(--lavender);border-color: var(--lavender); }
   .plane-body h4 {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    line-height: 1.5;
   }
   .plane-body p {
     font-size: 13px;
@@ -423,10 +440,10 @@
   .plane-body code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--navy-light);
-    color: var(--navy);
+    background: var(--lavender-dim);
+    color: var(--lavender);
     padding: 1px 5px;
-    border-radius: 3px;
+    border: 1px solid var(--border);
   }
 
   /* ── TRADEOFFS ── */
@@ -440,9 +457,9 @@
     gap: 12px;
     align-items: flex-start;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--rose);
-    border-radius: 0 8px 8px 0;
+    border: 2px solid var(--border);
+    border-left: 4px solid var(--pink);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 12px 16px;
     font-size: 13px;
     color: var(--text-dim);
@@ -450,7 +467,7 @@
     transition: border-left-color 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
   }
   .tradeoff-item:hover {
-    border-left-color: var(--amber);
+    border-left-color: var(--peach);
     transform: translateX(3px);
   }
   .tradeoff-item strong { color: var(--text); }
@@ -458,9 +475,9 @@
   /* ── CALLOUT ── */
   .callout {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--gold);
-    border-radius: 0 10px 10px 0;
+    border: 2px solid var(--border);
+    border-left: 4px solid var(--peach);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 14px 18px;
     font-size: 13px;
     line-height: 1.6;
@@ -471,19 +488,19 @@
   .callout code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--navy-light);
-    color: var(--navy);
+    background: var(--lavender-dim);
+    color: var(--lavender);
     padding: 1px 5px;
-    border-radius: 3px;
+    border: 1px solid var(--border);
   }
 
   /* ── FOOTER ── */
   .page-footer {
     margin-top: 56px;
     padding-top: 20px;
-    border-top: 1px solid var(--border);
+    border-top: 2px solid var(--border);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-dim);
     display: flex;
     justify-content: space-between;
@@ -517,7 +534,7 @@
 
   <!-- THE QUESTION -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot scroll-reveal" style="background:var(--navy)"></div>
+    <div class="section-dot scroll-reveal" style="background:var(--lavender)"></div>
     <h2>The Question</h2>
   </div>
 
@@ -532,7 +549,7 @@
 
   <!-- OPTIONS CONSIDERED -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot scroll-reveal" style="background:var(--gold)"></div>
+    <div class="section-dot scroll-reveal" style="background:var(--peach)"></div>
     <h2>Options Considered</h2>
   </div>
 
@@ -706,7 +723,7 @@
 
   <!-- LATENCY COMPARISON -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot scroll-reveal" style="background:var(--slate)"></div>
+    <div class="section-dot scroll-reveal" style="background:var(--sky)"></div>
     <h2>Latency Comparison</h2>
   </div>
 
@@ -756,7 +773,7 @@
 
   <!-- THE DECISION -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot scroll-reveal" style="background:var(--teal)"></div>
+    <div class="section-dot scroll-reveal" style="background:var(--mint)"></div>
     <h2>The Decision</h2>
   </div>
 
@@ -837,7 +854,7 @@
 
   <!-- TRADE-OFFS -->
   <div class="section-head scroll-reveal">
-    <div class="section-dot scroll-reveal" style="background:var(--rose)"></div>
+    <div class="section-dot scroll-reveal" style="background:var(--pink)"></div>
     <h2>Trade-offs Accepted</h2>
   </div>
 
