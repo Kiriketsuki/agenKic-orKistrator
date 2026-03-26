@@ -21,10 +21,11 @@ const (
 
 // Supervisor manages the agent pool: heartbeat monitoring and task assignment.
 type Supervisor struct {
-	machine   *agent.Machine
-	store     state.StateStore
-	policy    *RestartPolicy
-	substrate terminal.Substrate // optional; nil disables terminal management
+	machine            *agent.Machine
+	store              state.StateStore
+	policy             *RestartPolicy
+	substrate          terminal.Substrate  // optional; nil disables terminal management
+	completionRegistry *CompletionRegistry // optional; nil disables completion signalling
 
 	heartbeatInterval time.Duration
 	staleThreshold    time.Duration
@@ -65,6 +66,13 @@ func WithTaskPollInterval(d time.Duration) SupervisorOption {
 // and destroys it on agent crash. A nil substrate disables terminal management.
 func WithSubstrate(s terminal.Substrate) SupervisorOption {
 	return func(sv *Supervisor) { sv.substrate = s }
+}
+
+// WithCompletionRegistry wires a CompletionRegistry into the supervisor.
+// When set, completeAgent signals the registry before clearing the task,
+// allowing BlockingSubmitter callers to unblock when a task finishes.
+func WithCompletionRegistry(r *CompletionRegistry) SupervisorOption {
+	return func(sv *Supervisor) { sv.completionRegistry = r }
 }
 
 // NewSupervisor returns a Supervisor wired to the given machine, store, and policy.
@@ -237,7 +245,8 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 	// Pre-read task binding before transitioning — if store is degraded,
 	// skip the crash so the heartbeat loop can retry next tick.
 	// Per-agent mutex is held: no concurrent modification of CurrentTaskID
-	// is possible (tryAssignTask and completeAgent acquire the same mutex).
+	// is possible (tryAssignTask, completeAgent, Heartbeat, StartWork, and
+	// ReportOutput all acquire the same per-agent mutex).
 	preFields, preErr := sv.store.GetAgentFields(ctx, agentID)
 	if preErr != nil {
 		log.Printf("supervisor: crashAgent %s — GetAgentFields failed, deferring crash: %v", agentID, preErr)
@@ -473,6 +482,76 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 	return "", false
 }
 
+// Heartbeat refreshes the agent's LastHeartbeat timestamp.
+// The per-agent mutex is held for the entire read-modify-write to prevent
+// interleaving with tryAssignTask (which writes CurrentTaskID under the same mutex).
+func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+	sv.mu.RLock()
+	if sv.stopped {
+		sv.mu.RUnlock()
+		return ErrSupervisorStopped
+	}
+	sv.mu.RUnlock()
+
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		return ErrSupervisorStopped
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	fields, err := sv.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		return fmt.Errorf("heartbeat agent %s: %w", agentID, err)
+	}
+	fields.LastHeartbeat = time.Now().UnixMilli()
+	if err := sv.store.SetAgentFields(ctx, agentID, fields); err != nil {
+		return fmt.Errorf("heartbeat agent %s: %w", agentID, err)
+	}
+	return nil
+}
+
+// StartWork signals that an agent has started executing its assigned task
+// (ASSIGNED → WORKING). The per-agent mutex is held to prevent interleaving
+// with crashAgent's pre-read/ApplyEvent compound operation (council 7 invariant).
+func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		// Agent not registered (no mutex entry) — let ApplyEvent return the
+		// proper ErrAgentNotFound rather than masking it as ErrSupervisorStopped.
+		_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
+	return err
+}
+
+// ReportOutput signals that an agent has output ready (WORKING → REPORTING).
+// The per-agent mutex is held to prevent interleaving with crashAgent (council 7 invariant).
+func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		// Agent not registered — let ApplyEvent return ErrAgentNotFound.
+		_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
+	return err
+}
+
 // CompleteAgent is the public entry point for signaling agent task completion.
 // It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
 func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) error {
@@ -499,6 +578,18 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	}
 
 	sv.policy.RecordSuccess(agentID)
+
+	// Signal task completion BEFORE clearing CurrentTaskID so the task ID is
+	// still readable. BlockingSubmitter callers unblock here.
+	if sv.completionRegistry != nil {
+		if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil && fields.CurrentTaskID != "" {
+			sv.completionRegistry.Complete(fields.CurrentTaskID)
+		} else if fErr != nil {
+			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, CompletionRegistry.Complete skipped: %v", agentID, fErr)
+		} else {
+			log.Printf("supervisor: completeAgent %s — CurrentTaskID empty, completion signal not sent", agentID)
+		}
+	}
 
 	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
 	// Uses ClearCurrentTask (conditional write that returns ErrAgentNotFound for

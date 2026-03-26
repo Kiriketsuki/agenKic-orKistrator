@@ -10,6 +10,9 @@ type TaskEnqueuer interface {
 
 // StoreSubmitter adapts a TaskEnqueuer to the TaskSubmitter interface.
 //
+// Deprecated: StoreSubmitter is an MVP adapter that returns immediately after enqueue.
+// Use BlockingSubmitter for production DAG execution with real completion semantics.
+//
 // MVP LIMITATION: This is an enqueue-only adapter. It does NOT provide
 // completion-tracking semantics. When the DAG executor calls SubmitTask
 // and receives nil, it calls MarkNodeCompleted — but this reflects

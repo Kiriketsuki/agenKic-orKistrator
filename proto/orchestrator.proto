@@ -27,6 +27,15 @@ service OrchestratorService {
 
   // Signal that an agent has completed its task (REPORTING → IDLE).
   rpc CompleteAgent(CompleteAgentRequest) returns (CompleteAgentResponse);
+
+  // Heartbeat refreshes the agent's liveness timestamp.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Signal that an agent has started work (ASSIGNED → WORKING).
+  rpc StartWork(StartWorkRequest) returns (StartWorkResponse);
+
+  // Signal that an agent has output ready (WORKING → REPORTING).
+  rpc ReportOutput(ReportOutputRequest) returns (ReportOutputResponse);
 }
 
 // ─── Agent Registration ──────────────────────────────────────────────────────
@@ -98,6 +107,7 @@ message OutputChunk {
   OutputType type      = 3;
   bytes      payload   = 4;
   int64      timestamp = 5;  // unix millis
+  int64      sequence  = 6;  // monotonic sequence within a task
 }
 
 message OutputAck {
@@ -164,3 +174,27 @@ message CompleteAgentRequest {
 }
 
 message CompleteAgentResponse {}
+
+// ─── Heartbeat ───────────────────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatResponse {}
+
+// ─── StartWork ───────────────────────────────────────────────────────────────
+
+message StartWorkRequest {
+  string agent_id = 1;
+}
+
+message StartWorkResponse {}
+
+// ─── ReportOutput ────────────────────────────────────────────────────────────
+
+message ReportOutputRequest {
+  string agent_id = 1;
+}
+
+message ReportOutputResponse {}
