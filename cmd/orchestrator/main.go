@@ -18,6 +18,7 @@ import (
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 	grpchealth "google.golang.org/grpc/health"
 )
 
@@ -42,7 +43,16 @@ func main() {
 	store := state.NewMockStore()
 	machine := agent.NewMachine(store)
 	policy := supervisor.NewRestartPolicy()
-	sv := supervisor.NewSupervisor(machine, store, policy)
+
+	var svOpts []supervisor.SupervisorOption
+	if sub, err := terminal.NewTmuxSubstrate(); err != nil {
+		log.Printf("terminal substrate unavailable, running headless: %v", err)
+	} else {
+		log.Println("terminal substrate: tmux ready")
+		svOpts = append(svOpts, supervisor.WithSubstrate(sub))
+	}
+
+	sv := supervisor.NewSupervisor(machine, store, policy, svOpts...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
