@@ -1,0 +1,29 @@
+tiers:
+  haiku:
+    models:
+      - claude-haiku-4-5-20251001
+    description: Lightweight agents, frequent invocation, worker agents
+    cost_class: low
+
+  sonnet:
+    models:
+      - claude-sonnet-4-6
+    description: Main development work, orchestration, complex coding
+    cost_class: medium
+
+  opus:
+    models:
+      - claude-opus-4-6
+    description: Complex architectural decisions, maximum reasoning
+    cost_class: high
+
+fallback_chains:
+  opus:
+    - opus
+    - sonnet
+    - haiku
+  sonnet:
+    - sonnet
+    - haiku
+  haiku:
+    - haiku
