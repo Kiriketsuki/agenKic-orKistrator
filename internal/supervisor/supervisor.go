@@ -518,6 +518,9 @@ func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
 // (ASSIGNED → WORKING). The per-agent mutex is held to prevent interleaving
 // with crashAgent's pre-read/ApplyEvent compound operation (council 7 invariant).
 func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
 	mu := sv.getAgentMutex(agentID)
 	if mu == nil {
 		// Agent not registered (no mutex entry) — let ApplyEvent return the
@@ -534,6 +537,9 @@ func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
 // ReportOutput signals that an agent has output ready (WORKING → REPORTING).
 // The per-agent mutex is held to prevent interleaving with crashAgent (council 7 invariant).
 func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
 	mu := sv.getAgentMutex(agentID)
 	if mu == nil {
 		// Agent not registered — let ApplyEvent return ErrAgentNotFound.
