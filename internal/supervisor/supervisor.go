@@ -129,6 +129,8 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 }
 
 // Stop marks the supervisor as stopped and destroys all spawned tmux sessions.
+// Callers must ensure no concurrent RegisterAgent calls are in-flight before
+// calling Stop (e.g. by draining the gRPC server with GracefulStop first).
 // Subsequent RegisterAgent calls return ErrSupervisorStopped.
 func (sv *Supervisor) Stop() {
 	sv.mu.Lock()

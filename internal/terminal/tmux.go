@@ -34,6 +34,9 @@ func (t *TmuxSubstrate) run(ctx context.Context, args ...string) (string, error)
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
+		}
 		return "", parseTmuxError(strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
@@ -66,6 +69,9 @@ func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd strin
 
 // DestroySession kills the named tmux session.
 func (t *TmuxSubstrate) DestroySession(ctx context.Context, name string) error {
+	if err := ValidateSessionName(name); err != nil {
+		return err
+	}
 	if _, err := t.run(ctx, "kill-session", "-t", name); err != nil {
 		return fmt.Errorf("destroy session %q: %w", name, err)
 	}

@@ -87,3 +87,20 @@ func TestSendCommand_SessionNotFound(t *testing.T) {
 		t.Errorf("SendCommand to missing session: got %v, want ErrSessionNotFound", err)
 	}
 }
+
+func TestSendCommand_CancelledContext(t *testing.T) {
+	skipIfNoTmux(t)
+
+	sub, err := NewTmuxSubstrate()
+	if err != nil {
+		t.Fatalf("NewTmuxSubstrate: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	err = sub.SendCommand(ctx, "any-session", "echo hi")
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("SendCommand with cancelled context: got %v, want context.Canceled", err)
+	}
+}

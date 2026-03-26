@@ -202,6 +202,19 @@ func TestSplitPane_Vertical(t *testing.T) {
 	}
 }
 
+func TestSplitPane_InvalidSessionName(t *testing.T) {
+	// Validation fires before any subprocess call, so no tmux required.
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	for _, name := range []string{"", "bad session", "bad:colon", "bad/slash"} {
+		_, err := sub.SplitPane(ctx, name, Horizontal)
+		if err == nil {
+			t.Errorf("SplitPane(session=%q): expected validation error, got nil", name)
+		}
+	}
+}
+
 func TestSplitPane_SessionNotFound(t *testing.T) {
 	skipIfNoTmux(t)
 

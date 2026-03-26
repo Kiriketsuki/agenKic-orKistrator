@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -87,6 +88,19 @@ func TestParseTmuxError_Generic(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), msg) {
 		t.Errorf("parseTmuxError(unknown) = %q, want it to contain the original message", err.Error())
+	}
+}
+
+// TestDestroySession_InvalidSessionName verifies validation fires before subprocess call.
+func TestDestroySession_InvalidSessionName(t *testing.T) {
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	for _, name := range []string{"", "bad session", "bad:colon", "bad/slash"} {
+		err := sub.DestroySession(ctx, name)
+		if err == nil {
+			t.Errorf("DestroySession(session=%q): expected validation error, got nil", name)
+		}
 	}
 }
 

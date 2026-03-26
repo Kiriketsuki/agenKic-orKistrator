@@ -62,6 +62,9 @@ func parseSessionLine(line string) (Session, error) {
 // SplitPane splits the active pane in the named session and returns the new pane.
 // Direction Horizontal splits left-right (-h); Vertical splits top-bottom (-v).
 func (t *TmuxSubstrate) SplitPane(ctx context.Context, session string, direction Direction) (Pane, error) {
+	if err := ValidateSessionName(session); err != nil {
+		return Pane{}, err
+	}
 	flag := "-v"
 	if direction == Horizontal {
 		flag = "-h"

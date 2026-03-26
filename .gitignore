@@ -26,3 +26,6 @@ Thumbs.db
 /vendor/
 .gitnexus
 gen/
+
+# Council reports
+*-council-*.md
