@@ -321,6 +321,62 @@ func TestSupervisor_TryAssignTask_CASConflict_NoBackoff(t *testing.T) {
 	}
 }
 
+func TestHeartbeat_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	if err := sv.RegisterAgent(ctx, "agent-hb"); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	before, err := store.GetAgentFields(ctx, "agent-hb")
+	if err != nil {
+		t.Fatalf("GetAgentFields (before): %v", err)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	if err := sv.Heartbeat(ctx, "agent-hb"); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+
+	after, err := store.GetAgentFields(ctx, "agent-hb")
+	if err != nil {
+		t.Fatalf("GetAgentFields (after): %v", err)
+	}
+	if after.LastHeartbeat <= before.LastHeartbeat {
+		t.Errorf("LastHeartbeat not updated: before=%d after=%d", before.LastHeartbeat, after.LastHeartbeat)
+	}
+}
+
+func TestHeartbeat_NotFound(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	err := sv.Heartbeat(ctx, "nonexistent-agent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent agent, got nil")
+	}
+}
+
+func TestHeartbeat_Stopped(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	sv.Stop()
+
+	err := sv.Heartbeat(ctx, "any-agent")
+	if !errors.Is(err, supervisor.ErrSupervisorStopped) {
+		t.Fatalf("want ErrSupervisorStopped, got %v", err)
+	}
+}
+
 func TestSupervisor_RegisterAgent_EmptyID(t *testing.T) {
 	t.Parallel()
 	sv, _ := newTestSupervisor(t)
@@ -417,5 +473,171 @@ func TestConcurrency_CrashCompleteRace(t *testing.T) {
 				t.Fatalf("iteration %d: DequeueTask: %v", i, err)
 			}
 		}
+	}
+}
+
+// ── StartWork tests ──────────────────────────────────────────────────────────
+
+func TestStartWork_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-sw-ok"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into ASSIGNED state directly via store (bypasses state machine,
+	// same pattern as TestConcurrency_CrashCompleteRace).
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateAssigned,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	if err := sv.StartWork(ctx, agentID); err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+
+	stateStr, err := store.GetAgentState(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateStr != state.AgentStateWorking {
+		t.Errorf("want state %q, got %q", state.AgentStateWorking, stateStr)
+	}
+}
+
+func TestStartWork_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-sw-invalid"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	// Agent is IDLE — StartWork requires ASSIGNED.
+
+	err := sv.StartWork(ctx, agentID)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+}
+
+// ── ReportOutput tests ───────────────────────────────────────────────────────
+
+func TestReportOutput_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-ro-ok"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into WORKING state.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateWorking,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	if err := sv.ReportOutput(ctx, agentID); err != nil {
+		t.Fatalf("ReportOutput: %v", err)
+	}
+
+	stateStr, err := store.GetAgentState(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateStr != state.AgentStateReporting {
+		t.Errorf("want state %q, got %q", state.AgentStateReporting, stateStr)
+	}
+}
+
+func TestReportOutput_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-ro-invalid"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into ASSIGNED — ReportOutput requires WORKING.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateAssigned,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	err := sv.ReportOutput(ctx, agentID)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+}
+
+// ── Heartbeat concurrent with assign ─────────────────────────────────────────
+
+func TestHeartbeat_ConcurrentWithAssign(t *testing.T) {
+	t.Parallel()
+
+	store := state.NewMockStore()
+	machine := agent.NewMachine(store)
+	policy := supervisor.NewRestartPolicy()
+	sv := supervisor.NewSupervisor(machine, store, policy,
+		supervisor.WithTaskPollInterval(5*time.Millisecond),
+	)
+
+	ctx := context.Background()
+
+	const agentID = "agent-hb-race"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Enqueue a task so the supervisor tries to assign it.
+	if err := store.EnqueueTask(ctx, "task-hb-race", 1.0); err != nil {
+		t.Fatalf("EnqueueTask: %v", err)
+	}
+
+	// Fire concurrent heartbeats while the supervisor runs (which triggers tryAssignTask).
+	var heartbeatCount atomic.Int64
+	hbCtx, hbCancel := context.WithCancel(ctx)
+	defer hbCancel()
+
+	go func() {
+		for hbCtx.Err() == nil {
+			_ = sv.Heartbeat(ctx, agentID)
+			heartbeatCount.Add(1)
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	// Run supervisor briefly to trigger assignment + heartbeat racing.
+	runCtx, runCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer runCancel()
+	_ = sv.Run(runCtx)
+	hbCancel()
+
+	// Verify: if agent was assigned, CurrentTaskID must not be empty.
+	fields, err := store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.State == state.AgentStateAssigned && fields.CurrentTaskID == "" {
+		t.Fatalf("agent ASSIGNED but CurrentTaskID is empty after %d heartbeats — race detected",
+			heartbeatCount.Load())
 	}
 }
