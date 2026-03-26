@@ -586,6 +586,8 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 			sv.completionRegistry.Complete(fields.CurrentTaskID)
 		} else if fErr != nil {
 			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, CompletionRegistry.Complete skipped: %v", agentID, fErr)
+		} else {
+			log.Printf("supervisor: completeAgent %s — CurrentTaskID empty, completion signal not sent", agentID)
 		}
 	}
 
