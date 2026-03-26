@@ -10,60 +10,93 @@
 <title>CompareAndSetAgentState — CAS Optimistic Locking Implementation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
-    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
-    --bg: #f8f6f1;
+    --font-display: 'Press Start 2P', cursive;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #faf5ef;
     --surface: #ffffff;
-    --surface-recessed: #f0ede6;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.20);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
-    --primary: #1e3a5f;
-    --primary-dim: rgba(30, 58, 95, 0.07);
-    --accent: #d4a73a;
-    --accent-dim: rgba(212, 167, 58, 0.12);
-    --success: #2d6a4f;
-    --success-dim: rgba(45, 106, 79, 0.08);
-    --danger: #9b2226;
-    --danger-dim: rgba(155, 34, 38, 0.08);
-    --info: #0369a1;
-    --info-dim: rgba(3, 105, 161, 0.08);
+    --surface-recessed: #f3ede4;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
+
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167,139,219,0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107,201,166,0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240,168,104,0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122,184,224,0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232,135,155,0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232,212,77,0.12);
+
+    /* semantic aliases matching the old variable names */
+    --primary: var(--lavender);
+    --primary-dim: var(--lavender-dim);
+    --accent: var(--peach);
+    --accent-dim: var(--peach-dim);
+    --success: var(--mint);
+    --success-dim: var(--mint-dim);
+    --danger: var(--pink);
+    --danger-dim: var(--pink-dim);
+    --info: var(--sky);
+    --info-dim: var(--sky-dim);
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1923;
-      --surface: #172535;
-      --surface-recessed: #0d1520;
-      --border: rgba(212, 167, 58, 0.10);
-      --border-strong: rgba(212, 167, 58, 0.18);
-      --text: #e2ddd4;
-      --text-dim: #8a9ab0;
-      --primary: #6b9fd4;
-      --primary-dim: rgba(107, 159, 212, 0.12);
-      --accent: #d4a73a;
-      --accent-dim: rgba(212, 167, 58, 0.14);
-      --success: #52b788;
-      --success-dim: rgba(82, 183, 136, 0.12);
-      --danger: #e5383b;
-      --danger-dim: rgba(229, 56, 59, 0.12);
-      --info: #38bdf8;
-      --info-dim: rgba(56, 189, 248, 0.12);
+      --bg: #151020;
+      --surface: #1e1830;
+      --surface-recessed: #1a1428;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
+
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190,160,240,0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128,224,184,0.12);
+      --peach: #f0b878;
+      --peach-dim: rgba(240,184,120,0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144,200,240,0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240,160,180,0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240,224,104,0.12);
+
+      --primary: var(--lavender);
+      --primary-dim: var(--lavender-dim);
+      --accent: var(--peach);
+      --accent-dim: var(--peach-dim);
+      --success: var(--mint);
+      --success-dim: var(--mint-dim);
+      --danger: var(--pink);
+      --danger-dim: var(--pink-dim);
+      --info: var(--sky);
+      --info-dim: var(--sky-dim);
     }
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
     background: var(--bg);
     background-image:
-      linear-gradient(var(--border) 1px, transparent 1px),
-      linear-gradient(90deg, var(--border) 1px, transparent 1px);
-    background-size: 40px 40px;
+      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     padding: 48px 40px;
@@ -71,7 +104,13 @@
     line-height: 1.55;
   }
 
-  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-image:
+        linear-gradient(rgba(58,48,80,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(58,48,80,0.04) 1px, transparent 1px);
+    }
+  }
 
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(14px); }
@@ -108,13 +147,13 @@
   /* ---- HERO ---- */
   .hero { margin-bottom: 48px; }
   .hero-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 400;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 10px;
+    color: var(--peach);
+    margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -122,31 +161,31 @@
   .hero-label::before {
     content: '';
     display: inline-block;
-    width: 8px; height: 8px;
-    background: var(--accent);
-    border-radius: 2px;
+    width: 10px; height: 10px;
+    background: var(--peach);
   }
   h1 {
-    font-size: 36px;
-    font-weight: 700;
-    letter-spacing: -0.8px;
-    color: var(--primary);
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--lavender);
     margin-bottom: 12px;
     text-wrap: balance;
   }
   .hero-meta {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-dim);
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
   }
   .hero-meta span { display: flex; align-items: center; gap: 5px; }
-  .hero-meta .dot { width: 5px; height: 5px; border-radius: 50%; }
+  .hero-meta .dot { width: 6px; height: 6px; }
 
   .lead {
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.7;
     color: var(--text-dim);
     max-width: 760px;
@@ -154,39 +193,42 @@
   }
   .lead code {
     font-family: var(--font-mono);
-    font-size: 13px;
-    background: var(--primary-dim);
-    color: var(--primary);
+    font-size: 12px;
+    background: var(--lavender-dim);
+    color: var(--lavender);
     padding: 1px 6px;
-    border-radius: 3px;
+    border: 1px solid var(--lavender);
   }
 
   /* ---- SECTIONS ---- */
   .section { margin-bottom: 48px; }
   .section-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 400;
     letter-spacing: 1.2px;
     text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
   }
   .section-label .num {
-    background: var(--primary);
+    background: var(--lavender);
     color: var(--bg);
-    width: 20px; height: 20px;
-    border-radius: 4px;
+    width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 9px;
+    font-weight: 400;
+    border: 2px solid var(--lavender);
+    box-shadow: 2px 2px 0 var(--border);
   }
   h2 {
-    font-size: 22px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.7;
     color: var(--text);
     margin-bottom: 16px;
   }
@@ -201,34 +243,33 @@
 
   .ve-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
     padding: 20px;
     position: relative;
+    box-shadow: 4px 4px 0 var(--border);
   }
   .ve-card {
-    transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart), border-color 0.25s ease;
+    transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
   }
   .ve-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-    border-color: var(--border-strong);
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 var(--border);
   }
   .ve-card::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3px;
-    border-radius: 10px 10px 0 0;
-    background: var(--card-accent, var(--primary));
-    transition: height 0.2s var(--ease-out-quart);
+    height: 4px;
+    background: var(--card-accent, var(--lavender));
   }
-  .ve-card:hover::before { height: 4px; }
   .ve-card h3 {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 8px;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 400;
+    margin-bottom: 10px;
+    margin-top: 6px;
     color: var(--text);
+    line-height: 1.7;
   }
   .ve-card p {
     font-size: 13px;
@@ -240,7 +281,7 @@
     font-size: 11px;
     background: var(--surface-recessed);
     padding: 1px 5px;
-    border-radius: 3px;
+    border: 1px solid var(--border);
   }
   .ve-card .file-ref {
     font-family: var(--font-mono);
@@ -255,16 +296,11 @@
   /* ---- CODE BLOCKS ---- */
   .code-block {
     background: var(--surface-recessed);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 2px solid var(--border);
+    box-shadow: inset 2px 2px 0 var(--border-strong);
     padding: 16px 20px;
     overflow-x: auto;
     margin: 12px 0;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  }
-  .code-block:hover {
-    border-color: var(--border-strong);
-    box-shadow: inset 0 0 0 1px var(--border);
   }
   .code-block pre {
     font-family: var(--font-mono);
@@ -274,16 +310,16 @@
     white-space: pre;
   }
   .code-block .comment { color: var(--text-dim); }
-  .code-block .keyword { color: var(--primary); font-weight: 500; }
-  .code-block .string { color: var(--success); }
-  .code-block .number { color: var(--accent); }
+  .code-block .keyword { color: var(--lavender); font-weight: 500; }
+  .code-block .string { color: var(--mint); }
+  .code-block .number { color: var(--peach); }
 
   /* ---- MERMAID ---- */
   .mermaid-wrap {
     position: relative;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 24px;
     overflow: auto;
     margin: 12px 0;
@@ -297,14 +333,15 @@
     top: 8px; right: 8px;
     display: flex; gap: 2px; z-index: 10;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px; padding: 2px;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0 var(--border);
+    padding: 2px;
   }
   .zoom-controls button {
     width: 28px; height: 28px; border: none;
     background: transparent; color: var(--text-dim);
     font-family: var(--font-mono); font-size: 14px;
-    cursor: pointer; border-radius: 4px;
+    cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s;
   }
@@ -316,7 +353,7 @@
   .diagram-shell { position: relative; }
   .diagram-shell__hint {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
     margin-bottom: 6px;
     opacity: 0.6;
@@ -348,23 +385,21 @@
     margin-bottom: 2px;
   }
   .layer-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 400;
     color: var(--text-dim);
     display: flex;
     align-items: center;
     padding: 14px 16px;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-right: none;
-    border-radius: 8px 0 0 8px;
     transition: color 0.2s ease;
   }
   .layer-content {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 0 8px 8px 0;
+    border: 2px solid var(--border);
     padding: 14px 20px;
     font-size: 13px;
     color: var(--text);
@@ -376,14 +411,14 @@
   .layer-content code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--primary-dim);
-    color: var(--primary);
+    background: var(--lavender-dim);
+    color: var(--lavender);
     padding: 2px 7px;
-    border-radius: 3px;
+    border: 1px solid var(--lavender);
   }
   .layer-strip { transition: transform 0.2s var(--ease-out-quart); }
   .layer-strip:hover { transform: translateX(4px); }
-  .layer-strip:hover .layer-label { color: var(--primary); }
+  .layer-strip:hover .layer-label { color: var(--lavender); }
 
   /* ---- BADGE ---- */
   .badge {
@@ -391,18 +426,19 @@
     align-items: center;
     gap: 4px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 3px 8px;
+    border: 2px solid currentColor;
+    box-shadow: 2px 2px 0 var(--border);
   }
-  .badge-success { background: var(--success-dim); color: var(--success); }
-  .badge-danger { background: var(--danger-dim); color: var(--danger); }
-  .badge-info { background: var(--info-dim); color: var(--info); }
-  .badge-accent { background: var(--accent-dim); color: var(--accent); }
+  .badge-success { background: var(--mint-dim); color: var(--mint); }
+  .badge-danger { background: var(--pink-dim); color: var(--pink); }
+  .badge-info { background: var(--sky-dim); color: var(--sky); }
+  .badge-accent { background: var(--peach-dim); color: var(--peach); }
 
   /* ---- TABLE ---- */
-  .data-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); margin: 12px 0; }
+  .data-table-wrap { overflow-x: auto; border: 2px solid var(--border); box-shadow: 4px 4px 0 var(--border); margin: 12px 0; }
   .data-table {
     width: 100%;
     border-collapse: collapse;
@@ -410,14 +446,15 @@
   }
   .data-table th {
     background: var(--surface-recessed);
-    font-weight: 600;
-    font-size: 11px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 9px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-dim);
     padding: 10px 14px;
     text-align: left;
-    border-bottom: 1px solid var(--border-strong);
+    border-bottom: 2px solid var(--border-strong);
     position: sticky;
     top: 0;
   }
@@ -428,23 +465,23 @@
     vertical-align: top;
   }
   .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:nth-child(even) td { background: var(--primary-dim); }
+  .data-table tr:nth-child(even) td { background: var(--lavender-dim); }
   .data-table tbody tr { transition: background 0.15s ease; }
-  .data-table tbody tr:hover td { background: var(--accent-dim); }
+  .data-table tbody tr:hover td { background: var(--peach-dim); }
   .data-table td code {
     font-family: var(--font-mono);
     font-size: 11px;
     background: var(--surface-recessed);
     padding: 1px 5px;
-    border-radius: 3px;
+    border: 1px solid var(--border);
   }
 
   /* ---- CALLOUT ---- */
   .callout {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: 0 10px 10px 0;
+    border: 2px solid var(--border);
+    border-left: 4px solid var(--peach);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 16px 20px;
     font-size: 13px;
     line-height: 1.6;
@@ -452,16 +489,23 @@
     margin: 16px 0;
   }
   .callout strong { color: var(--text); }
-  .callout code { font-family: var(--font-mono); font-size: 11px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--peach-dim);
+    color: var(--peach);
+    padding: 1px 5px;
+    border: 1px solid var(--peach);
+  }
 
   /* ---- RESPONSIVE ---- */
   @media (max-width: 768px) {
     body { padding: 20px 16px; }
-    h1 { font-size: 24px; }
+    h1 { font-size: 16px; }
     .card-grid.cols-3, .card-grid.cols-2 { grid-template-columns: 1fr; }
     .layer-strip { grid-template-columns: 1fr; }
-    .layer-label { border-radius: 8px 8px 0 0; border-right: 1px solid var(--border); border-bottom: none; }
-    .layer-content { border-radius: 0 0 8px 8px; }
+    .layer-label { border-right: 2px solid var(--border); border-bottom: none; }
+    .layer-content { }
   }
 </style>
 </head>
@@ -474,9 +518,9 @@
     <div class="hero-label">Feature #15 &mdash; Implementation</div>
     <h1>CompareAndSetAgentState</h1>
     <div class="hero-meta">
-      <span><span class="dot" style="background:var(--success)"></span> PR #22 merged</span>
-      <span><span class="dot" style="background:var(--accent)"></span> 8 council reviews</span>
-      <span><span class="dot" style="background:var(--info)"></span> epic/1-implement-go-orchestrator-core</span>
+      <span><span class="dot" style="background:var(--mint)"></span> PR #22 merged</span>
+      <span><span class="dot" style="background:var(--peach)"></span> 8 council reviews</span>
+      <span><span class="dot" style="background:var(--sky)"></span> epic/1-implement-go-orchestrator-core</span>
     </div>
     <p class="lead">
       Atomic optimistic locking for agent state transitions. Replaces blind <code>SetAgentState</code>
@@ -619,7 +663,7 @@
     <h2>Atomic Redis operations</h2>
 
     <div class="card-grid cols-2">
-      <div class="ve-card reveal-child" style="--card-accent: var(--primary);">
+      <div class="ve-card reveal-child" style="--card-accent: var(--lavender);">
         <h3>casScript <span class="badge badge-info">redis.go:123-133</span></h3>
         <p>Atomic compare-and-swap for agent state. Single Redis round-trip via EVAL.</p>
         <div class="code-block">
@@ -636,7 +680,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
         <div class="file-ref">internal/state/redis.go:123&ndash;133</div>
       </div>
 
-      <div class="ve-card reveal-child" style="--card-accent: var(--accent);">
+      <div class="ve-card reveal-child" style="--card-accent: var(--peach);">
         <h3>clearTaskScript <span class="badge badge-accent">redis.go:144-151</span></h3>
         <p>Atomic task field clearing. Guards against ghost hashes from concurrent deletes.</p>
         <div class="code-block">
@@ -660,14 +704,14 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
     <h2>Supervisor conflict resolution</h2>
 
     <div class="card-grid cols-3">
-      <div class="ve-card reveal-child" style="--card-accent: var(--success);">
+      <div class="ve-card reveal-child" style="--card-accent: var(--mint);">
         <h3>CAS Success</h3>
         <p>State transitioned atomically. Supervisor proceeds with field writes (CurrentTaskID, priority)
         under per-agent mutex.</p>
         <div class="file-ref">supervisor.go &rarr; tryAssignTask</div>
       </div>
 
-      <div class="ve-card reveal-child" style="--card-accent: var(--accent);">
+      <div class="ve-card reveal-child" style="--card-accent: var(--peach);">
         <h3>*StateConflictError</h3>
         <p>Healthy concurrency &mdash; another goroutine won the race.
         Task re-enqueued at original priority. <strong>No backoff triggered.</strong>
@@ -675,7 +719,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
         <div class="file-ref">supervisor.go:193&ndash;198</div>
       </div>
 
-      <div class="ve-card reveal-child" style="--card-accent: var(--danger);">
+      <div class="ve-card reveal-child" style="--card-accent: var(--pink);">
         <h3>Store Error</h3>
         <p>Redis connectivity or unexpected failure. Triggers <code>recordAssignError()</code>
         with exponential backoff to protect degraded stores.</p>
@@ -799,7 +843,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
     <h2>Implementation surface</h2>
 
     <div class="card-grid cols-3">
-      <div class="ve-card" style="--card-accent: var(--primary);">
+      <div class="ve-card" style="--card-accent: var(--lavender);">
         <h3>State Layer</h3>
         <p><code>store.go</code> &mdash; interface + CAS contract<br>
         <code>redis.go</code> &mdash; Lua scripts + CAS impl<br>
@@ -807,14 +851,14 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
         <code>errors.go</code> &mdash; StateConflictError type<br>
         <code>store_test.go</code> &mdash; conformance suite</p>
       </div>
-      <div class="ve-card" style="--card-accent: var(--accent);">
+      <div class="ve-card" style="--card-accent: var(--peach);">
         <h3>Agent Layer</h3>
         <p><code>machine.go</code> &mdash; ApplyEvent with CAS<br>
         <code>machine_test.go</code> &mdash; hermetic + concurrent tests<br>
         <code>state.go</code> &mdash; state constants<br>
         <code>transition.go</code> &mdash; pure transition table</p>
       </div>
-      <div class="ve-card" style="--card-accent: var(--success);">
+      <div class="ve-card" style="--card-accent: var(--mint);">
         <h3>Supervisor Layer</h3>
         <p><code>supervisor.go</code> &mdash; CAS conflict handling<br>
         <code>supervisor_test.go</code> &mdash; backoff + integration<br>
@@ -848,21 +892,21 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+      fontFamily: "'DM Sans', system-ui, sans-serif",
       fontSize: '16px',
-      primaryColor: isDark ? '#1e3050' : '#e8f0f8',
-      primaryBorderColor: isDark ? '#6b9fd4' : '#1e3a5f',
-      primaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
-      secondaryColor: isDark ? '#2a1f10' : '#fdf6e3',
-      secondaryBorderColor: isDark ? '#d4a73a' : '#b8860b',
-      secondaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
-      tertiaryColor: isDark ? '#1a2e1a' : '#e8f5e9',
-      tertiaryBorderColor: isDark ? '#52b788' : '#2d6a4f',
-      tertiaryTextColor: isDark ? '#e2ddd4' : '#1a2332',
-      lineColor: isDark ? '#8a9ab0' : '#5a6a7e',
-      noteBkgColor: isDark ? '#2a2010' : '#fffde7',
-      noteTextColor: isDark ? '#e2ddd4' : '#1a2332',
-      noteBorderColor: isDark ? '#d4a73a' : '#b8860b',
+      primaryColor: isDark ? '#1e1830' : '#f0ecfa',
+      primaryBorderColor: isDark ? '#bea0f0' : '#a78bdb',
+      primaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
+      secondaryColor: isDark ? '#1a2010' : '#e8f5ef',
+      secondaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
+      secondaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
+      tertiaryColor: isDark ? '#2a1e10' : '#fef0e0',
+      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
+      tertiaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
+      lineColor: isDark ? '#9a8eb0' : '#7a6e62',
+      noteBkgColor: isDark ? '#1e1a10' : '#fefbe8',
+      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
+      noteBorderColor: isDark ? '#f0b878' : '#f0a868',
     }
   });
 
@@ -950,7 +994,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
       const svg = canvas.querySelector('svg');
       if (!svg) return;
       const clone = svg.cloneNode(true); clone.style.width=''; clone.style.height='';
-      const bg = isDark ? '#0f1923' : '#f8f6f1';
+      const bg = isDark ? '#151020' : '#faf5ef';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
       open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
     }
@@ -961,10 +1005,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
         if (!code) { label.textContent = 'Error: Empty source'; return; }
         const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
         const { svg } = await mermaid.render(id, code);
-        const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-        canvas.innerHTML = '';
-        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        canvas.innerHTML = svg;
         const svgNode = canvas.querySelector('svg');
         if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
         const size = readSvgNaturalSize(svgNode);

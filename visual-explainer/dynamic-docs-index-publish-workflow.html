@@ -8,65 +8,81 @@
 <meta name="doc-desc" content="Manifest-driven index, GitHub Actions publish workflow, scroll-triggered animations">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-display: 'Press Start 2P', cursive;
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 
-    --bg: #f8f6f1;
-    --bg-alt: #f0ede6;
+    --bg: #faf5ef;
+    --bg-alt: #f3ede4;
     --surface: #ffffff;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.18);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
 
-    --navy: #1e3a5f;
-    --navy-dim: rgba(30, 58, 95, 0.06);
-    --teal: #0e7c6b;
-    --teal-dim: rgba(14, 124, 107, 0.08);
-    --amber: #b45309;
-    --amber-dim: rgba(180, 83, 9, 0.08);
-    --slate: #3d5a80;
-    --slate-dim: rgba(61, 90, 128, 0.07);
-    --rose: #9f1239;
-    --rose-dim: rgba(159, 18, 57, 0.07);
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167,139,219,0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107,201,166,0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240,168,104,0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122,184,224,0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232,135,155,0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232,212,77,0.12);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1724;
-      --bg-alt: #141d2e;
-      --surface: #182032;
-      --border: rgba(200, 220, 240, 0.08);
-      --border-strong: rgba(200, 220, 240, 0.15);
-      --text: #d4dce8;
-      --text-dim: #7a8da6;
+      --bg: #151020;
+      --bg-alt: #1e1830;
+      --surface: #1e1830;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
 
-      --navy: #7db0de;
-      --navy-dim: rgba(125, 176, 222, 0.10);
-      --teal: #34d399;
-      --teal-dim: rgba(52, 211, 153, 0.10);
-      --amber: #fbbf24;
-      --amber-dim: rgba(251, 191, 36, 0.10);
-      --slate: #93b5d6;
-      --slate-dim: rgba(147, 181, 214, 0.10);
-      --rose: #fb7185;
-      --rose-dim: rgba(251, 113, 133, 0.10);
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190,160,240,0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128,224,184,0.12);
+      --peach: #f0b878;
+      --peach-dim: rgba(240,184,120,0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144,200,240,0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240,160,180,0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240,224,104,0.12);
     }
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
     background: var(--bg);
+    background-image:
+      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     min-height: 100vh;
     padding: 48px 24px 80px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-image:
+        linear-gradient(rgba(90,74,112,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(90,74,112,0.06) 1px, transparent 1px);
+    }
   }
 
   .page { max-width: 860px; margin: 0 auto; }
@@ -99,8 +115,8 @@
     font-weight: 500;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--teal);
-    margin-bottom: 10px;
+    color: var(--mint);
+    margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -110,17 +126,14 @@
     content: '';
     width: 6px;
     height: 6px;
-    border-radius: 50%;
-    background: var(--teal);
+    background: var(--mint);
   }
 
   h1 {
     font-family: var(--font-display);
-    font-size: 36px;
-    font-weight: 400;
-    letter-spacing: -0.5px;
-    margin-bottom: 10px;
-    line-height: 1.15;
+    font-size: clamp(14px, 2vw, 20px);
+    line-height: 1.7;
+    margin-bottom: 16px;
   }
 
   .subtitle {
@@ -133,13 +146,10 @@
 
   /* ============ SECTION LABELS ============ */
   .section-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
+    font-family: var(--font-display);
+    font-size: 10px;
     color: var(--text-dim);
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -149,14 +159,21 @@
     content: '';
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    flex-shrink: 0;
   }
 
-  .section-label--navy::before { background: var(--navy); }
-  .section-label--teal::before { background: var(--teal); }
-  .section-label--amber::before { background: var(--amber); }
-  .section-label--slate::before { background: var(--slate); }
-  .section-label--rose::before { background: var(--rose); }
+  .section-label--lavender::before { background: var(--lavender); }
+  .section-label--mint::before     { background: var(--mint); }
+  .section-label--peach::before    { background: var(--peach); }
+  .section-label--sky::before      { background: var(--sky); }
+  .section-label--pink::before     { background: var(--pink); }
+
+  /* keep old class names working too */
+  .section-label--navy::before   { background: var(--lavender); }
+  .section-label--teal::before   { background: var(--mint); }
+  .section-label--amber::before  { background: var(--peach); }
+  .section-label--slate::before  { background: var(--sky); }
+  .section-label--rose::before   { background: var(--pink); }
 
   .section-gap { margin-top: 56px; }
 
@@ -170,20 +187,20 @@
 
   .overview-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 22px 20px;
-    border-top: 3px solid var(--border);
+    border-top: 4px solid var(--border);
   }
 
-  .overview-card--teal { border-top-color: var(--teal); }
-  .overview-card--amber { border-top-color: var(--amber); }
-  .overview-card--navy { border-top-color: var(--navy); }
+  .overview-card--teal  { border-top-color: var(--mint); }
+  .overview-card--amber { border-top-color: var(--peach); }
+  .overview-card--navy  { border-top-color: var(--lavender); }
 
   .overview-card__title {
     font-weight: 600;
     font-size: 14px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
 
   .overview-card__desc {
@@ -195,17 +212,17 @@
   /* ============ SCHEMA VISUAL ============ */
   .schema-wrap {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 28px 24px;
     margin-bottom: 20px;
   }
 
   .schema-label {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    color: var(--teal);
+    color: var(--mint);
     margin-bottom: 16px;
   }
 
@@ -219,28 +236,27 @@
   .schema-node {
     background: var(--bg-alt);
     border: 1px solid var(--border);
-    border-radius: 8px;
     padding: 14px 16px;
-    border-left: 3px solid var(--navy);
+    border-left: 3px solid var(--lavender);
   }
 
-  .schema-node--teal { border-left-color: var(--teal); }
-  .schema-node--amber { border-left-color: var(--amber); }
-  .schema-node--slate { border-left-color: var(--slate); }
+  .schema-node--teal  { border-left-color: var(--mint); }
+  .schema-node--amber { border-left-color: var(--peach); }
+  .schema-node--slate { border-left-color: var(--sky); }
 
   .schema-node__key {
     font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 600;
-    color: var(--navy);
+    color: var(--lavender);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 4px;
   }
 
-  .schema-node--teal .schema-node__key { color: var(--teal); }
-  .schema-node--amber .schema-node__key { color: var(--amber); }
-  .schema-node--slate .schema-node__key { color: var(--slate); }
+  .schema-node--teal  .schema-node__key { color: var(--mint); }
+  .schema-node--amber .schema-node__key { color: var(--peach); }
+  .schema-node--slate .schema-node__key { color: var(--sky); }
 
   .schema-node__val {
     font-size: 13px;
@@ -251,10 +267,9 @@
   .schema-node__val code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--navy-dim);
-    color: var(--navy);
+    background: var(--lavender-dim);
+    color: var(--lavender);
     padding: 1px 5px;
-    border-radius: 3px;
   }
 
   .schema-nested {
@@ -272,8 +287,8 @@
   /* ============ INDEX MOCK ============ */
   .index-mock {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 24px;
     margin-bottom: 20px;
   }
@@ -281,7 +296,6 @@
   .mock-epic {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
     padding: 18px 20px;
     margin-bottom: 12px;
     display: grid;
@@ -292,8 +306,8 @@
 
   .mock-epic__num {
     font-family: var(--font-display);
-    font-size: 26px;
-    color: var(--navy);
+    font-size: 16px;
+    color: var(--lavender);
     text-align: center;
     line-height: 1;
     padding-top: 2px;
@@ -326,27 +340,29 @@
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 3px 8px;
-    border-radius: 4px;
+    border: 1px solid;
     text-decoration: none;
+    box-shadow: 2px 2px 0 var(--border);
   }
 
   .pill--spec {
-    background: var(--teal-dim);
-    color: var(--teal);
+    background: var(--mint-dim);
+    color: var(--mint);
+    border-color: var(--mint);
   }
 
   .pill--impl {
-    background: var(--amber-dim);
-    color: var(--amber);
+    background: var(--peach-dim);
+    color: var(--peach);
+    border-color: var(--peach);
   }
 
   .mock-feature {
     margin-top: 10px;
     margin-left: 0;
     padding: 12px 14px;
-    border-left: 2px solid var(--navy);
+    border-left: 2px solid var(--lavender);
     background: var(--surface);
-    border-radius: 0 8px 8px 0;
   }
 
   .mock-feature__title {
@@ -365,8 +381,8 @@
   .mermaid-wrap {
     position: relative;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 32px 24px;
     overflow: auto;
     margin-bottom: 20px;
@@ -384,8 +400,8 @@
     gap: 2px;
     z-index: 10;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0 var(--border);
     padding: 2px;
   }
 
@@ -398,7 +414,6 @@
     font-family: var(--font-mono);
     font-size: 14px;
     cursor: pointer;
-    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -417,7 +432,7 @@
 
   .diagram-shell__hint {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
     margin-bottom: 8px;
     opacity: 0.7;
@@ -475,15 +490,15 @@
 
   .anim-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 18px 20px;
   }
 
   .anim-card__title {
     font-weight: 600;
     font-size: 13px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -492,7 +507,6 @@
   .anim-card__title .anim-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
     display: inline-block;
   }
 
@@ -505,10 +519,10 @@
   .anim-card__code {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--slate);
-    background: var(--slate-dim);
+    color: var(--sky);
+    background: var(--sky-dim);
+    border: 1px solid var(--sky);
     padding: 8px 12px;
-    border-radius: 6px;
     margin-top: 8px;
     line-height: 1.5;
     white-space: pre;
@@ -525,14 +539,14 @@
 
   .workflow-phase {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 20px;
-    border-top: 3px solid var(--border);
+    border-top: 4px solid var(--border);
   }
 
-  .workflow-phase--teal { border-top-color: var(--teal); }
-  .workflow-phase--amber { border-top-color: var(--amber); }
+  .workflow-phase--teal  { border-top-color: var(--mint); }
+  .workflow-phase--amber { border-top-color: var(--peach); }
 
   .workflow-phase__title {
     font-weight: 600;
@@ -563,13 +577,13 @@
     position: absolute;
     left: 0;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--text-dim);
     background: var(--bg-alt);
+    border: 1px solid var(--border);
     width: 20px;
     height: 20px;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -579,8 +593,8 @@
   /* ============ MIGRATION TABLE ============ */
   .migration-table-wrap {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     overflow: hidden;
     margin-bottom: 20px;
   }
@@ -606,7 +620,7 @@
     color: var(--text-dim);
     padding: 10px 16px;
     text-align: left;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
   }
 
   .migration-table td {
@@ -630,20 +644,21 @@
     letter-spacing: 0.3px;
     text-transform: uppercase;
     padding: 2px 6px;
-    border-radius: 3px;
+    border: 1px solid;
+    box-shadow: 2px 2px 0 var(--border);
   }
 
-  .type-badge--spec { background: var(--teal-dim); color: var(--teal); }
-  .type-badge--decision { background: var(--slate-dim); color: var(--slate); }
-  .type-badge--roadmap { background: var(--amber-dim); color: var(--amber); }
-  .type-badge--placeholder { background: var(--rose-dim); color: var(--rose); }
+  .type-badge--spec        { background: var(--mint-dim);    color: var(--mint);    border-color: var(--mint); }
+  .type-badge--decision    { background: var(--sky-dim);     color: var(--sky);     border-color: var(--sky); }
+  .type-badge--roadmap     { background: var(--peach-dim);   color: var(--peach);   border-color: var(--peach); }
+  .type-badge--placeholder { background: var(--pink-dim);    color: var(--pink);    border-color: var(--pink); }
 
   /* ============ CALLOUT ============ */
   .callout {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--teal);
-    border-radius: 0 10px 10px 0;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
+    border-left: 4px solid var(--mint);
     padding: 16px 20px;
     font-size: 13px;
     line-height: 1.6;
@@ -656,35 +671,34 @@
   .callout code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--teal-dim);
-    color: var(--teal);
+    background: var(--mint-dim);
+    color: var(--mint);
     padding: 1px 5px;
-    border-radius: 3px;
   }
 
   /* ============ FOOTER ============ */
   .footer {
     margin-top: 56px;
     padding-top: 16px;
-    border-top: 1px solid var(--border);
+    border-top: 2px solid var(--border);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
     display: flex;
     justify-content: space-between;
   }
 
-  .footer a { color: var(--navy); text-decoration: none; }
+  .footer a { color: var(--lavender); text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
 
   /* ============ RESPONSIVE ============ */
   @media (max-width: 640px) {
-    h1 { font-size: 26px; }
+    h1 { font-size: 14px; }
     .overview-grid { grid-template-columns: 1fr; }
     .anim-grid { grid-template-columns: 1fr; }
     .workflow-cols { grid-template-columns: 1fr; }
     .mock-epic { grid-template-columns: 32px 1fr; }
-    .mock-epic__num { font-size: 20px; }
+    .mock-epic__num { font-size: 13px; }
   }
 </style>
 </head>
@@ -708,14 +722,14 @@
     <div class="overview-card overview-card--teal a" style="--i:4">
       <div class="overview-card__title">JSON Manifest</div>
       <div class="overview-card__desc">
-        <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 5px;border-radius:3px">docs-manifest.json</code>
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--mint-dim);color:var(--mint);padding:1px 5px">docs-manifest.json</code>
         on the docs branch. Nested structure: epics &rarr; features &rarr; docs. Decisions and roadmap as flat sections.
       </div>
     </div>
     <div class="overview-card overview-card--amber a" style="--i:5">
       <div class="overview-card__title">Dynamic Index</div>
       <div class="overview-card__desc">
-        <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 5px;border-radius:3px">index.html</code>
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--peach-dim);color:var(--peach);padding:1px 5px">index.html</code>
         fetches the manifest on load. Renders epic cards with nested feature sub-cards and SPEC/IMPL tag pills.
       </div>
     </div>
@@ -723,7 +737,7 @@
       <div class="overview-card__title">Auto-Publish</div>
       <div class="overview-card__desc">
         Two GitHub Actions workflows. Reusable
-        <code style="font-family:var(--font-mono);font-size:11px;background:var(--navy-dim);color:var(--navy);padding:1px 5px;border-radius:3px">publish-doc.yml</code>
+        <code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 5px">publish-doc.yml</code>
         engine + automated PR trigger. Manual dispatch as fallback.
       </div>
     </div>
@@ -738,7 +752,7 @@
       <div class="schema-node">
         <div class="schema-node__key">epics[]</div>
         <div class="schema-node__val">
-          <code>number</code> <code>title</code> <code>desc</code> <code>color</code> &mdash; each epic maps to a CSS variable (<code>--navy</code>, <code>--slate</code>, <code>--teal</code>, <code>--amber</code>)
+          <code>number</code> <code>title</code> <code>desc</code> <code>color</code> &mdash; each epic maps to a CSS variable (<code>--lavender</code>, <code>--sky</code>, <code>--mint</code>, <code>--peach</code>)
         </div>
         <div class="schema-nested">
           <div class="schema-node schema-node--teal">
@@ -795,7 +809,7 @@
       </div>
     </div>
     <div class="mock-epic" style="opacity: 0.5;">
-      <div class="mock-epic__num" style="color: var(--amber);">4</div>
+      <div class="mock-epic__num" style="color: var(--peach);">4</div>
       <div class="mock-epic__body">
         <div class="mock-epic__title">Pixel Office UI</div>
         <div class="mock-epic__desc" style="font-style: italic;">coming soon</div>
@@ -859,8 +873,8 @@
       <div class="workflow-phase__title">Spec Phase</div>
       <ol class="workflow-phase__steps">
         <li>Finish writing the epic/feature spec</li>
-        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 4px;border-radius:3px">/visual-explainer</code> on the spec</li>
-        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--teal-dim);color:var(--teal);padding:1px 4px;border-radius:3px">/animate</code> for polish</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--mint-dim);color:var(--mint);padding:1px 4px">/visual-explainer</code> on the spec</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--mint-dim);color:var(--mint);padding:1px 4px">/animate</code> for polish</li>
         <li>Save as <code style="font-family:var(--font-mono);font-size:10px">*-spec.html</code> with meta tags</li>
         <li>Commit, push &mdash; PR opens &rarr; auto-published</li>
       </ol>
@@ -869,8 +883,8 @@
       <div class="workflow-phase__title">Implementation Phase</div>
       <ol class="workflow-phase__steps">
         <li>Implementation complete, PR reviewed</li>
-        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 4px;border-radius:3px">/visual-explainer</code> on the impl</li>
-        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--amber-dim);color:var(--amber);padding:1px 4px;border-radius:3px">/animate</code> for polish</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--peach-dim);color:var(--peach);padding:1px 4px">/visual-explainer</code> on the impl</li>
+        <li>Run <code style="font-family:var(--font-mono);font-size:11px;background:var(--peach-dim);color:var(--peach);padding:1px 4px">/animate</code> for polish</li>
         <li>Save as <code style="font-family:var(--font-mono);font-size:10px">*-impl.html</code></li>
         <li>Add <code style="font-family:var(--font-mono);font-size:10px">ready-to-merge</code> label &rarr; auto-published</li>
       </ol>
@@ -882,27 +896,27 @@
 
   <div class="anim-grid">
     <div class="anim-card a" style="--i:1">
-      <div class="anim-card__title"><span class="anim-dot" style="background:var(--teal)"></span> Skeleton Shimmer</div>
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--mint)"></span> Skeleton Shimmer</div>
       <div class="anim-card__desc">3 card-shaped placeholders with CSS gradient animation while the manifest loads. Crossfades to real content in 200ms.</div>
       <div class="anim-card__code">background-size: 200% 100%;
 animation: shimmer 1.5s infinite;</div>
     </div>
     <div class="anim-card a" style="--i:2">
-      <div class="anim-card__title"><span class="anim-dot" style="background:var(--navy)"></span> Scroll Entrance</div>
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--lavender)"></span> Scroll Entrance</div>
       <div class="anim-card__desc">IntersectionObserver (threshold 0.1) fires fadeUp on each section and card group. Staggered by --i custom property.</div>
       <div class="anim-card__code">opacity: 0 -> 1
 translateY(12px) -> 0
 delay: var(--i) * 0.1s</div>
     </div>
     <div class="anim-card a" style="--i:3">
-      <div class="anim-card__title"><span class="anim-dot" style="background:var(--amber)"></span> Card Hover</div>
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--peach)"></span> Card Hover</div>
       <div class="anim-card__desc">translateY(-3px), border highlight, box-shadow expansion, arrow slides right. All 200ms ease-out-quart.</div>
       <div class="anim-card__code">transform: translateY(-3px);
-box-shadow: 0 4px 20px rgba(0,0,0,.07);
+box-shadow: 6px 6px 0 var(--border-strong);
 transition: 200ms var(--ease-out-quart);</div>
     </div>
     <div class="anim-card a" style="--i:4">
-      <div class="anim-card__title"><span class="anim-dot" style="background:var(--rose)"></span> Reduced Motion</div>
+      <div class="anim-card__title"><span class="anim-dot" style="background:var(--pink)"></span> Reduced Motion</div>
       <div class="anim-card__desc">All animation-duration and transition-duration collapse to 0.01ms. Content is immediately visible with no motion.</div>
       <div class="anim-card__code">@media (prefers-reduced-motion: reduce) {
   animation-duration: 0.01ms !important;
@@ -1032,19 +1046,19 @@ transition: 200ms var(--ease-out-quart);</div>
     themeVariables: {
       fontFamily: "'DM Sans', system-ui, sans-serif",
       fontSize: '14px',
-      primaryColor: isDark ? '#1a2e44' : '#e8f0f8',
-      primaryBorderColor: isDark ? '#7db0de' : '#1e3a5f',
-      primaryTextColor: isDark ? '#d4dce8' : '#1a2332',
-      secondaryColor: isDark ? '#0a2e2a' : '#e6f7f4',
-      secondaryBorderColor: isDark ? '#34d399' : '#0e7c6b',
-      secondaryTextColor: isDark ? '#d4dce8' : '#1a2332',
-      tertiaryColor: isDark ? '#2e2618' : '#fef3e0',
-      tertiaryBorderColor: isDark ? '#fbbf24' : '#b45309',
-      tertiaryTextColor: isDark ? '#d4dce8' : '#1a2332',
-      lineColor: isDark ? '#7a8da6' : '#5a6a7e',
-      noteBkgColor: isDark ? '#1a2e44' : '#fefce8',
-      noteTextColor: isDark ? '#d4dce8' : '#1a2332',
-      noteBorderColor: isDark ? '#fbbf24' : '#b45309',
+      primaryColor:       isDark ? '#261e3a' : '#f3ede4',
+      primaryBorderColor: isDark ? '#bea0f0' : '#a78bdb',
+      primaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
+      secondaryColor:       isDark ? '#1a2e28' : '#edf7f3',
+      secondaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
+      secondaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
+      tertiaryColor:       isDark ? '#2e2218' : '#fef4e8',
+      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
+      tertiaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
+      lineColor:     isDark ? '#9a8eb0' : '#7a6e62',
+      noteBkgColor:  isDark ? '#261e3a' : '#faf5ef',
+      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
+      noteBorderColor: isDark ? '#f0e068' : '#e8d44d',
     }
   });
 
@@ -1151,7 +1165,7 @@ transition: 200ms var(--ease-out-quart);</div>
       if (!svg) return;
       const clone = svg.cloneNode(true);
       clone.style.width = ''; clone.style.height = '';
-      const bg = isDark ? '#0f1724' : '#f8f6f1';
+      const bg = isDark ? '#151020' : '#faf5ef';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
       open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
     }
@@ -1162,10 +1176,7 @@ transition: 200ms var(--ease-out-quart);</div>
         if (!code) { label.textContent = 'Error: Empty source'; return; }
         const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         const { svg } = await mermaid.render(id, code);
-        const parser = new DOMParser();
-        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-        canvas.innerHTML = '';
-        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        canvas.innerHTML = svg;
         const svgNode = canvas.querySelector('svg');
         if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
         const size = readSvgNaturalSize(svgNode);

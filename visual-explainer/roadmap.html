@@ -6,72 +6,82 @@
 <title>Roadmap — agenKic-orKistrator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-display: 'Press Start 2P', cursive;
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-    --bg: #f8f6f1;
+    --bg: #faf5ef;
     --surface: #ffffff;
-    --surface-alt: #f1ede6;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.18);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
+    --surface-alt: #f3ede4;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
 
-    --navy: #1e3a5f;
-    --navy-light: rgba(30, 58, 95, 0.08);
-    --navy-dim: rgba(30, 58, 95, 0.12);
-    --gold: #d4a73a;
-    --gold-dim: rgba(212, 167, 58, 0.12);
-    --teal: #0e7c6b;
-    --teal-dim: rgba(14, 124, 107, 0.08);
-    --rose: #b4364a;
-    --rose-dim: rgba(180, 54, 74, 0.08);
-    --amber: #c07d20;
-    --amber-dim: rgba(192, 125, 32, 0.10);
-    --slate: #64748b;
-    --slate-dim: rgba(100, 116, 139, 0.10);
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167,139,219,0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107,201,166,0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240,168,104,0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122,184,224,0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232,135,155,0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232,212,77,0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1724;
-      --surface: #182032;
-      --surface-alt: #1c2640;
-      --border: rgba(212, 167, 58, 0.10);
-      --border-strong: rgba(212, 167, 58, 0.16);
-      --text: #e8e4dc;
-      --text-dim: #8a95a8;
+      --bg: #151020;
+      --surface: #1e1830;
+      --surface-alt: #261e3a;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
 
-      --navy: #7eb0e0;
-      --navy-light: rgba(126, 176, 224, 0.10);
-      --navy-dim: rgba(126, 176, 224, 0.14);
-      --gold: #e8c15a;
-      --gold-dim: rgba(232, 193, 90, 0.10);
-      --teal: #34d4b0;
-      --teal-dim: rgba(52, 212, 176, 0.08);
-      --rose: #f07088;
-      --rose-dim: rgba(240, 112, 136, 0.08);
-      --amber: #d4a73a;
-      --amber-dim: rgba(212, 167, 58, 0.10);
-      --slate: #94a3b8;
-      --slate-dim: rgba(148, 163, 184, 0.10);
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190,160,240,0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128,224,184,0.12);
+      --peach: #f0b878;
+      --peach-dim: rgba(240,184,120,0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144,200,240,0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240,160,180,0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240,224,104,0.12);
     }
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
     background-color: var(--bg);
+    background-image:
+      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     line-height: 1.6;
     min-height: 100vh;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-image:
+        linear-gradient(rgba(90,74,112,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(90,74,112,0.06) 1px, transparent 1px);
+    }
   }
 
   /* ── ANIMATIONS ── */
@@ -124,23 +134,22 @@
   .hero { margin-bottom: 56px; }
   .hero-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--gold);
-    margin-bottom: 12px;
+    color: var(--lemon);
+    margin-bottom: 16px;
   }
   .hero h1 {
     font-family: var(--font-display);
-    font-size: clamp(36px, 5vw, 56px);
-    font-weight: 400;
-    line-height: 1.1;
+    font-size: clamp(16px, 2.5vw, 20px);
+    line-height: 1.6;
     color: var(--text);
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
   .hero-desc {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--text-dim);
     max-width: 640px;
     line-height: 1.7;
@@ -151,8 +160,8 @@
     margin-top: 28px;
     padding: 20px 24px;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
   }
   .progress-strip-head {
     display: flex;
@@ -162,7 +171,7 @@
   }
   .progress-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -170,21 +179,20 @@
   }
   .progress-pct {
     font-family: var(--font-display);
-    font-size: 24px;
-    color: var(--navy);
+    font-size: 14px;
+    color: var(--lavender);
   }
   .progress-track {
-    height: 6px;
+    height: 8px;
     background: var(--surface-alt);
-    border-radius: 3px;
+    border: 1px solid var(--border);
     overflow: hidden;
   }
   .progress-bar-fill {
     --progress-target: 35%;
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--teal), var(--navy));
-    border-radius: 3px;
+    background: linear-gradient(90deg, var(--mint), var(--lavender));
     animation: progressFill 1.2s var(--ease-out-quart) 0.5s forwards;
   }
   .progress-phases {
@@ -201,12 +209,11 @@
   .progress-phase-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
     flex-shrink: 0;
   }
   .progress-phase-name {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-dim);
     white-space: nowrap;
   }
@@ -225,14 +232,12 @@
     bottom: 0;
     width: 2px;
     background: var(--border);
-    border-radius: 1px;
     overflow: hidden;
   }
   .timeline-line-fill {
     width: 100%;
     height: 0%;
-    background: linear-gradient(to bottom, var(--teal), var(--navy) 50%, var(--border) 50%);
-    border-radius: 1px;
+    background: linear-gradient(to bottom, var(--mint), var(--lavender) 50%, var(--border) 50%);
     animation: lineGrow 1.4s var(--ease-out-quart) 0.3s forwards;
   }
 
@@ -253,9 +258,8 @@
     top: 14px;
     width: 18px;
     height: 18px;
-    border-radius: 50%;
     background: var(--surface);
-    border: 2.5px solid currentColor;
+    border: 2px solid currentColor;
     z-index: 2;
     transition: transform 0.2s var(--ease-out-quart);
   }
@@ -265,8 +269,8 @@
 
   .milestone-card {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 var(--border);
     padding: 20px 24px;
     cursor: pointer;
     transition:
@@ -278,11 +282,11 @@
   .milestone-card:hover {
     border-color: var(--border-strong);
     transform: translateY(-2px) translateX(2px);
-    box-shadow: 0 6px 24px rgba(0,0,0,0.07);
+    box-shadow: 6px 6px 0 var(--border-strong);
     opacity: 1 !important;
   }
   .milestone-card:focus-visible {
-    outline: 2px solid var(--navy);
+    outline: 2px solid var(--lavender);
     outline-offset: 2px;
   }
 
@@ -301,53 +305,53 @@
   }
   .milestone-phase {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: 1.2px;
     text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 4px;
+    margin-bottom: 8px;
   }
   .milestone-title {
     font-family: var(--font-display);
-    font-size: 22px;
-    font-weight: 400;
-    line-height: 1.2;
+    font-size: 12px;
+    line-height: 1.6;
     color: var(--text);
   }
 
   /* ── STATUS BADGE ── */
   .status-badge {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.8px;
     text-transform: uppercase;
     padding: 4px 10px;
-    border-radius: 20px;
     white-space: nowrap;
     flex-shrink: 0;
     margin-top: 2px;
+    border: 2px solid;
+    box-shadow: 2px 2px 0 var(--border);
   }
   .badge-in-progress {
-    background: var(--gold-dim);
-    color: var(--gold);
-    border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+    background: var(--lemon-dim);
+    color: var(--lemon);
+    border-color: var(--lemon);
   }
   .badge-planned {
-    background: var(--slate-dim);
-    color: var(--slate);
-    border: 1px solid color-mix(in srgb, var(--slate) 25%, transparent);
+    background: var(--sky-dim);
+    color: var(--sky);
+    border-color: var(--sky);
   }
   .badge-future {
-    background: var(--rose-dim);
-    color: var(--rose);
-    border: 1px solid color-mix(in srgb, var(--rose) 20%, transparent);
+    background: var(--pink-dim);
+    color: var(--pink);
+    border-color: var(--pink);
   }
   .badge-complete {
-    background: var(--teal-dim);
-    color: var(--teal);
-    border: 1px solid color-mix(in srgb, var(--teal) 25%, transparent);
+    background: var(--mint-dim);
+    color: var(--mint);
+    border-color: var(--mint);
   }
 
   /* ── FEATURE LISTS ── */
@@ -356,7 +360,7 @@
   }
   .feature-section-label {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.8px;
     text-transform: uppercase;
@@ -379,33 +383,31 @@
   .feature-item::before {
     content: '';
     display: inline-block;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
+    width: 4px;
+    height: 4px;
     background: currentColor;
     opacity: 0.5;
     flex-shrink: 0;
   }
   .feature-tag {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     background: var(--surface-alt);
     color: var(--text-dim);
     padding: 3px 8px;
-    border-radius: 4px;
     border: 1px solid var(--border);
     white-space: nowrap;
   }
   .feature-tag.done {
-    color: var(--teal);
-    border-color: color-mix(in srgb, var(--teal) 20%, transparent);
-    background: var(--teal-dim);
+    color: var(--mint);
+    border-color: var(--mint);
+    background: var(--mint-dim);
     text-decoration: none;
   }
   .feature-tag.open {
-    color: var(--gold);
-    border-color: color-mix(in srgb, var(--gold) 20%, transparent);
-    background: var(--gold-dim);
+    color: var(--lemon);
+    border-color: var(--lemon);
+    background: var(--lemon-dim);
   }
 
   /* ── STAT CALLOUT ── */
@@ -415,12 +417,12 @@
     gap: 12px;
     margin-top: 16px;
     padding: 12px 16px;
-    border-radius: 8px;
-    border-left: 3px solid currentColor;
+    border: 2px solid currentColor;
+    box-shadow: 3px 3px 0 var(--border);
   }
   .stat-callout-num {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 18px;
     line-height: 1;
     flex-shrink: 0;
   }
@@ -436,17 +438,17 @@
   }
 
   /* Color themes per phase */
-  .phase-navy  { color: var(--navy); }
-  .phase-slate { color: var(--slate); }
-  .phase-teal  { color: var(--teal); }
-  .phase-amber { color: var(--amber); }
-  .phase-rose  { color: var(--rose); }
+  .phase-lavender { color: var(--lavender); }
+  .phase-sky      { color: var(--sky); }
+  .phase-mint     { color: var(--mint); }
+  .phase-peach    { color: var(--peach); }
+  .phase-pink     { color: var(--pink); }
 
-  .stat-navy  { background: var(--navy-dim);  color: var(--navy);  }
-  .stat-slate { background: var(--slate-dim); color: var(--slate); }
-  .stat-teal  { background: var(--teal-dim);  color: var(--teal);  }
-  .stat-amber { background: var(--amber-dim); color: var(--amber); }
-  .stat-rose  { background: var(--rose-dim);  color: var(--rose);  }
+  .stat-lavender  { background: var(--lavender-dim); color: var(--lavender); }
+  .stat-sky       { background: var(--sky-dim);      color: var(--sky); }
+  .stat-mint      { background: var(--mint-dim);     color: var(--mint); }
+  .stat-peach     { background: var(--peach-dim);    color: var(--peach); }
+  .stat-pink      { background: var(--pink-dim);     color: var(--pink); }
 
   /* Connecting arrow hint between phases */
   .phase-connector {
@@ -456,7 +458,7 @@
     padding-left: 60px;
     padding-bottom: 12px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-dim);
     opacity: 0.5;
   }
@@ -485,10 +487,9 @@
   .horizon-item::before {
     content: '';
     display: inline-block;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--rose);
+    width: 4px;
+    height: 4px;
+    background: var(--pink);
     opacity: 0.6;
     margin-top: 7px;
     flex-shrink: 0;
@@ -500,7 +501,7 @@
     align-items: center;
     gap: 5px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-dim);
     margin-top: 8px;
     opacity: 0.7;
@@ -526,7 +527,7 @@
 
   .expand-hint {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-dim);
     margin-top: 12px;
     opacity: 0.6;
@@ -547,14 +548,11 @@
   /* ── SECTION DIVIDER ── */
   .section-divider {
     margin: 0 0 24px 0;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    color: var(--gold);
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: 10px;
+    color: var(--lemon);
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border);
   }
 
   @media (max-width: 600px) {
@@ -586,23 +584,23 @@
       </div>
       <div class="progress-phases">
         <div class="progress-phase-item">
-          <div class="progress-phase-dot" style="background:var(--navy)"></div>
+          <div class="progress-phase-dot" style="background:var(--lavender)"></div>
           <span class="progress-phase-name">Epic 1 &mdash; In Progress</span>
         </div>
         <div class="progress-phase-item">
-          <div class="progress-phase-dot" style="background:var(--slate)"></div>
+          <div class="progress-phase-dot" style="background:var(--sky)"></div>
           <span class="progress-phase-name">Epic 2 &mdash; In Progress</span>
         </div>
         <div class="progress-phase-item">
-          <div class="progress-phase-dot" style="background:var(--teal)"></div>
+          <div class="progress-phase-dot" style="background:var(--mint)"></div>
           <span class="progress-phase-name">Epic 3 &mdash; Planned</span>
         </div>
         <div class="progress-phase-item">
-          <div class="progress-phase-dot" style="background:var(--amber)"></div>
+          <div class="progress-phase-dot" style="background:var(--peach)"></div>
           <span class="progress-phase-name">Epic 4 &mdash; Future</span>
         </div>
         <div class="progress-phase-item">
-          <div class="progress-phase-dot" style="background:var(--rose)"></div>
+          <div class="progress-phase-dot" style="background:var(--pink)"></div>
           <span class="progress-phase-name">Post-MVP &mdash; Future</span>
         </div>
       </div>
@@ -622,7 +620,7 @@
          PHASE 1: FOUNDATION (Epic 1)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-navy is-active" aria-hidden="true"></div>
+      <div class="milestone-dot phase-lavender is-active" aria-hidden="true"></div>
       <div
         class="milestone-card"
         tabindex="0"
@@ -662,7 +660,7 @@
         </div>
 
         <!-- Stat -->
-        <div class="stat-callout stat-navy">
+        <div class="stat-callout stat-lavender">
           <span class="stat-callout-num">10</span>
           <div class="stat-callout-text">
             <strong>Go packages</strong>
@@ -701,7 +699,7 @@
          PHASE 2: TERMINAL LAYER (Epic 2)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-slate" aria-hidden="true"></div>
+      <div class="milestone-dot phase-sky" aria-hidden="true"></div>
       <div
         class="milestone-card"
         tabindex="0"
@@ -731,7 +729,7 @@
         </div>
 
         <!-- Stat -->
-        <div class="stat-callout stat-slate">
+        <div class="stat-callout stat-sky">
           <span class="stat-callout-num">6</span>
           <div class="stat-callout-text">
             <strong>Interface methods</strong>
@@ -770,7 +768,7 @@
          PHASE 3: INTELLIGENCE (Epic 3)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-teal" aria-hidden="true"></div>
+      <div class="milestone-dot phase-mint" aria-hidden="true"></div>
       <div
         class="milestone-card is-future"
         tabindex="0"
@@ -799,7 +797,7 @@
         </div>
 
         <!-- Stat -->
-        <div class="stat-callout stat-teal">
+        <div class="stat-callout stat-mint">
           <span class="stat-callout-num">3</span>
           <div class="stat-callout-text">
             <strong>Routing tiers</strong>
@@ -838,7 +836,7 @@
          PHASE 4: INTERFACE (Epic 4)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-amber" aria-hidden="true"></div>
+      <div class="milestone-dot phase-peach" aria-hidden="true"></div>
       <div
         class="milestone-card is-future"
         tabindex="0"
@@ -867,8 +865,8 @@
         </div>
 
         <!-- Stat -->
-        <div class="stat-callout stat-amber">
-          <span class="stat-callout-num" style="font-size:18px;font-family:var(--font-mono)">Pixel</span>
+        <div class="stat-callout stat-peach">
+          <span class="stat-callout-num" style="font-size:14px;font-family:var(--font-mono)">Pixel</span>
           <div class="stat-callout-text">
             <strong>Pixel-art office aesthetic</strong>
             Real-time agent coordination view
@@ -906,7 +904,7 @@
          POST-MVP HORIZONS
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-rose" aria-hidden="true"></div>
+      <div class="milestone-dot phase-pink" aria-hidden="true"></div>
       <div
         class="milestone-card is-future"
         tabindex="0"
@@ -949,7 +947,7 @@
   </div><!-- /.timeline-outer -->
 
   <!-- ═══ FOOTER ═══ -->
-  <div style="margin-top:56px; padding-top:20px; border-top:1px solid var(--border); font-family:var(--font-mono); font-size:10px; color:var(--text-dim); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+  <div style="margin-top:56px; padding-top:20px; border-top:2px solid var(--border); font-family:var(--font-mono); font-size:9px; color:var(--text-dim); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <span>agenKic-orKistrator &mdash; Roadmap</span>
     <span>Generated 2026-03-24</span>
   </div>

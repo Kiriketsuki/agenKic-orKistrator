@@ -6,49 +6,58 @@
 <title>agenKic-orKistrator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Instrument Serif', Georgia, serif;
-    --font-body: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Press Start 2P', cursive;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
-    --bg: #f5f3ee;
+
+    --bg: #faf5ef;
     --surface: #ffffff;
-    --border: rgba(30, 58, 95, 0.10);
-    --border-strong: rgba(30, 58, 95, 0.18);
-    --text: #1a2332;
-    --text-dim: #5a6a7e;
-    --navy: #1e3a5f;
-    --navy-dim: rgba(30, 58, 95, 0.06);
-    --teal: #0e7c6b;
-    --teal-dim: rgba(14, 124, 107, 0.07);
-    --amber: #b45309;
-    --amber-dim: rgba(180, 83, 9, 0.07);
-    --slate: #3d5a80;
-    --slate-dim: rgba(61, 90, 128, 0.07);
-    --rose: #9f1239;
-    --rose-dim: rgba(159, 18, 57, 0.07);
+    --surface-alt: #f3ede4;
+    --border: #c4b8a8;
+    --border-strong: #9e8e7a;
+    --text: #2d2520;
+    --text-dim: #7a6e62;
+
+    --lavender: #a78bdb;
+    --lavender-dim: rgba(167, 139, 219, 0.12);
+    --mint: #6bc9a6;
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: #f0a868;
+    --peach-dim: rgba(240, 168, 104, 0.12);
+    --sky: #7ab8e0;
+    --sky-dim: rgba(122, 184, 224, 0.12);
+    --pink: #e8879b;
+    --pink-dim: rgba(232, 135, 155, 0.12);
+    --lemon: #e8d44d;
+    --lemon-dim: rgba(232, 212, 77, 0.12);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1724;
-      --surface: #182032;
-      --border: rgba(200, 220, 240, 0.08);
-      --border-strong: rgba(200, 220, 240, 0.15);
-      --text: #d4dce8;
-      --text-dim: #7a8da6;
-      --navy: #7db0de;
-      --navy-dim: rgba(125, 176, 222, 0.10);
-      --teal: #34d399;
-      --teal-dim: rgba(52, 211, 153, 0.10);
-      --amber: #fbbf24;
-      --amber-dim: rgba(251, 191, 36, 0.10);
-      --slate: #93b5d6;
-      --slate-dim: rgba(147, 181, 214, 0.10);
-      --rose: #fb7185;
-      --rose-dim: rgba(251, 113, 133, 0.10);
+      --bg: #151020;
+      --surface: #1e1830;
+      --surface-alt: #261e3a;
+      --border: #3a3050;
+      --border-strong: #5a4a70;
+      --text: #e8e0f0;
+      --text-dim: #9a8eb0;
+
+      --lavender: #bea0f0;
+      --lavender-dim: rgba(190, 160, 240, 0.12);
+      --mint: #80e0b8;
+      --mint-dim: rgba(128, 224, 184, 0.12);
+      --peach: #f0b878;
+      --peach-dim: rgba(240, 184, 120, 0.12);
+      --sky: #90c8f0;
+      --sky-dim: rgba(144, 200, 240, 0.12);
+      --pink: #f0a0b4;
+      --pink-dim: rgba(240, 160, 180, 0.12);
+      --lemon: #f0e068;
+      --lemon-dim: rgba(240, 224, 104, 0.12);
     }
   }
 
@@ -56,12 +65,26 @@
 
   body {
     background: var(--bg);
+    background-image:
+      linear-gradient(rgba(196, 184, 168, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(196, 184, 168, 0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
     min-height: 100vh;
     display: flex;
     justify-content: center;
     padding: 60px 24px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(rgba(58, 48, 80, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(58, 48, 80, 0.06) 1px, transparent 1px);
+      background-size: 16px 16px;
+    }
   }
 
   @keyframes fadeUp {
@@ -123,10 +146,11 @@
 
   h1 {
     font-family: var(--font-display);
-    font-size: 32px;
+    font-size: 20px;
     font-weight: 400;
-    letter-spacing: -0.3px;
-    margin-bottom: 8px;
+    letter-spacing: 0;
+    line-height: 1.5;
+    margin-bottom: 16px;
   }
 
   .subtitle {
@@ -138,23 +162,24 @@
   }
 
   .section-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
     color: var(--text-dim);
     margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 8px;
+    line-height: 1.6;
   }
   .section-label::before {
     content: '';
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--navy);
+    width: 6px;
+    height: 6px;
+    background: var(--lavender);
+    flex-shrink: 0;
   }
 
   .card-list { display: flex; flex-direction: column; gap: 12px; }
@@ -165,37 +190,38 @@
     align-items: center;
     gap: 16px;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 2px solid var(--border);
+    border-radius: 0;
     padding: 20px 22px;
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart), transform 0.2s var(--ease-out-quart);
+    box-shadow: 4px 4px 0 var(--border);
+    transition: border-color 0.15s var(--ease-out-quart), box-shadow 0.15s var(--ease-out-quart), transform 0.15s var(--ease-out-quart);
   }
 
   a.card:hover {
     border-color: var(--border-strong);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+    box-shadow: 4px 4px 0 var(--border-strong);
     transform: translateY(-2px);
   }
 
   .card__num {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 18px;
     font-weight: 400;
     text-align: center;
     line-height: 1;
-    transition: transform 0.2s var(--ease-out-quart);
+    transition: transform 0.15s var(--ease-out-quart);
   }
 
   a.card:hover .card__num {
-    transform: scale(1.01);
+    transform: scale(1.06);
   }
 
   .card__body { min-width: 0; }
 
   .card__title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     margin-bottom: 3px;
   }
@@ -209,21 +235,21 @@
   .card__arrow {
     font-size: 18px;
     color: var(--text-dim);
-    transition: transform 0.2s var(--ease-out-quart);
+    transition: transform 0.15s var(--ease-out-quart);
   }
 
   a.card:hover .card__arrow { transform: translateX(4px); }
 
-  .card--epic1 .card__num { color: var(--navy); }
-  .card--epic2 .card__num { color: var(--slate); }
-  .card--epic3 .card__num { color: var(--teal); }
-  .card--epic4 .card__num { color: var(--amber); }
+  .card--epic1 .card__num { color: var(--lavender); }
+  .card--epic2 .card__num { color: var(--sky); }
+  .card--epic3 .card__num { color: var(--mint); }
+  .card--epic4 .card__num { color: var(--peach); }
 
   /* Decision cards — no number column */
   a.card--decision {
     grid-template-columns: 1fr auto;
   }
-  a.card--decision .card__title { font-size: 15px; }
+  a.card--decision .card__title { font-size: 14px; }
   .card__tag {
     font-family: var(--font-mono);
     font-size: 9px;
@@ -237,7 +263,7 @@
   /* Roadmap card — accent stripe */
   a.card--roadmap {
     grid-template-columns: 1fr auto;
-    border-left: 3px solid var(--teal);
+    border-left: 4px solid var(--mint);
   }
 
   .section-label + .section-label { margin-top: 36px; }
@@ -245,7 +271,7 @@
   .footer {
     margin-top: 48px;
     padding-top: 16px;
-    border-top: 1px solid var(--border);
+    border-top: 2px solid var(--border);
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-dim);
@@ -255,13 +281,13 @@
     gap: 8px;
   }
 
-  .footer a { color: var(--navy); text-decoration: none; }
+  .footer a { color: var(--lavender); text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
 
   @media (max-width: 520px) {
     a.card { grid-template-columns: 40px 1fr auto; padding: 16px; gap: 12px; }
-    .card__num { font-size: 22px; }
-    h1 { font-size: 26px; }
+    .card__num { font-size: 14px; }
+    h1 { font-size: 14px; }
   }
 </style>
 </head>
@@ -305,11 +331,11 @@
       <div class="card__arrow">&rarr;</div>
     </a>
 
-    <a class="card card--epic4 a" style="--i:7" href="#">
+    <a class="card card--epic4 a" style="--i:7" href="visual-explainer/epic-4-pixel-office-ui.html">
       <div class="card__num">4</div>
       <div class="card__body">
         <div class="card__title">Pixel Office UI</div>
-        <div class="card__desc">Godot 4 pixel-art office, godot-xterm, agent sprites &mdash; coming soon</div>
+        <div class="card__desc">Godot 4 pixel-art office, godot-xterm, agent sprites, panel layout</div>
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
