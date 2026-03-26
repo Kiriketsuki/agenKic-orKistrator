@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -336,5 +337,85 @@ func TestSupervisor_RegisterAgent_TooLongID(t *testing.T) {
 	err := sv.RegisterAgent(context.Background(), longID)
 	if !errors.Is(err, supervisor.ErrInvalidAgentID) {
 		t.Fatalf("want ErrInvalidAgentID, got %v", err)
+	}
+}
+
+// TestConcurrency_CrashCompleteRace stress-tests concurrent crashAgent and
+// completeAgent calls on the same agent to verify the per-agent mutex
+// prevents data races and maintains state machine invariants.
+//
+// Both functions acquire the same per-agent mutex before applying their
+// respective events, so only one can win per iteration. After both goroutines
+// complete:
+//   - Agent must be in idle state (both paths end in idle).
+//   - Task must appear in the queue at most once (crash re-enqueues; complete
+//     clears the task — duplication is impossible when the mutex holds).
+//
+// Run with -race to confirm no data races exist on shared supervisor state.
+func TestConcurrency_CrashCompleteRace(t *testing.T) {
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "race-agent"
+	const iterations = 100
+
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	for i := 0; i < iterations; i++ {
+		taskID := fmt.Sprintf("race-task-%d", i)
+
+		// Seed the agent directly into REPORTING state with a task binding.
+		// SetAgentFields bypasses the state machine — this is intentional for
+		// test precondition setup. The race itself goes through CAS in machine.ApplyEvent.
+		if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+			State:               state.AgentStateReporting,
+			CurrentTaskID:       taskID,
+			CurrentTaskPriority: 1.0,
+			RegisteredAt:        time.Now().UnixMilli(),
+		}); err != nil {
+			t.Fatalf("iteration %d: SetAgentFields: %v", i, err)
+		}
+
+		// Race: one goroutine crashes the agent, the other completes it.
+		// The per-agent mutex serializes them — exactly one wins.
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			sv.CrashAgentForTest(ctx, agentID)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = sv.CompleteAgentForTest(ctx, agentID)
+		}()
+		wg.Wait()
+
+		// Invariant 1: agent must be idle regardless of which operation won.
+		stateStr, err := store.GetAgentState(ctx, agentID)
+		if err != nil {
+			t.Fatalf("iteration %d: GetAgentState: %v", i, err)
+		}
+		if stateStr != string(agent.StateIdle) {
+			t.Fatalf("iteration %d: want state %q, got %q", i, agent.StateIdle, stateStr)
+		}
+
+		// Invariant 2: task must not be duplicated in the queue.
+		// crash path re-enqueues once; complete path clears — queue length ≤ 1.
+		n, err := store.QueueLength(ctx)
+		if err != nil {
+			t.Fatalf("iteration %d: QueueLength: %v", i, err)
+		}
+		if n > 1 {
+			t.Fatalf("iteration %d: task duplicated — expected queue length 0 or 1, got %d", i, n)
+		}
+
+		// Drain re-enqueued task before the next iteration.
+		if n == 1 {
+			if _, _, err := store.DequeueTask(ctx); err != nil {
+				t.Fatalf("iteration %d: DequeueTask: %v", i, err)
+			}
+		}
 	}
 }
