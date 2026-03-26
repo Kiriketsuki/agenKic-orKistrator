@@ -1,6 +1,9 @@
 package state
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // AgentState* are the canonical lifecycle state strings stored in Redis.
 // Both the state package and any consumer that inspects state strings must use
@@ -19,6 +22,12 @@ type AgentFields struct {
 	CurrentTaskID       string
 	CurrentTaskPriority float64 // original priority for crash re-enqueue
 	RegisteredAt        int64   // unix millis
+}
+
+// StreamEvent wraps an Event with its Redis-assigned stream entry ID.
+type StreamEvent struct {
+	ID    string // Redis stream entry ID (e.g., "1234567890-0")
+	Event Event
 }
 
 // Event represents an entry published to the event stream.
@@ -77,6 +86,19 @@ type StateStore interface {
 
 	// ── Event stream ─────────────────────────────────────────────────────────
 	PublishEvent(ctx context.Context, event Event) error
+	// ReadEvents returns up to count StreamEvents published after lastID.
+	// Use "0" to read from the beginning. Returns an empty slice when no
+	// new events exist.
+	ReadEvents(ctx context.Context, lastID string, count int64) ([]StreamEvent, error)
+	// CreateConsumerGroup creates a consumer group on the event stream.
+	// Idempotent — returns nil if the group already exists.
+	CreateConsumerGroup(ctx context.Context, group string, startID string) error
+	// SubscribeEvents reads events via a consumer group (XREADGROUP).
+	// Returns events assigned to the named consumer; competing consumers
+	// in the same group each receive distinct events.
+	SubscribeEvents(ctx context.Context, group, consumer string, count int64, block time.Duration) ([]StreamEvent, error)
+	// AckEvent acknowledges processed events so they are not re-delivered.
+	AckEvent(ctx context.Context, group string, ids ...string) error
 
 	// ── Agent task binding ──────────────────────────────────────────────────
 	// ClearCurrentTask atomically zeroes CurrentTaskID and CurrentTaskPriority

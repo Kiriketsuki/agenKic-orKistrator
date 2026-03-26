@@ -3,6 +3,7 @@ package state_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -358,6 +359,220 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		got, _ := store.GetAgentState(ctx, agentID)
 		if got != "assigned" {
 			t.Fatalf("final state: want \"assigned\", got %q", got)
+		}
+	})
+
+	t.Run("ReadEvents returns published events", func(t *testing.T) {
+		evs := []state.Event{
+			{Type: "re-type-1", AgentID: "re-agent-1", TaskID: "re-task-1"},
+			{Type: "re-type-2", AgentID: "re-agent-2", TaskID: "re-task-2"},
+			{Type: "re-type-3", AgentID: "re-agent-3", TaskID: "re-task-3"},
+		}
+		for _, ev := range evs {
+			if err := store.PublishEvent(ctx, ev); err != nil {
+				t.Fatalf("PublishEvent: %v", err)
+			}
+		}
+		// Drain from beginning; prior sub-tests may have published events too.
+		all, err := store.ReadEvents(ctx, "0", 1000)
+		if err != nil {
+			t.Fatalf("ReadEvents: %v", err)
+		}
+		if len(all) < 3 {
+			t.Fatalf("want at least 3 events, got %d", len(all))
+		}
+		// Verify the last 3 match what we published.
+		got := all[len(all)-3:]
+		for i, ev := range evs {
+			if got[i].ID == "" {
+				t.Fatalf("event[%d] has empty ID", i)
+			}
+			if got[i].Event.Type != ev.Type {
+				t.Fatalf("event[%d].Type: want %q, got %q", i, ev.Type, got[i].Event.Type)
+			}
+			if got[i].Event.AgentID != ev.AgentID {
+				t.Fatalf("event[%d].AgentID: want %q, got %q", i, ev.AgentID, got[i].Event.AgentID)
+			}
+			if got[i].Event.TaskID != ev.TaskID {
+				t.Fatalf("event[%d].TaskID: want %q, got %q", i, ev.TaskID, got[i].Event.TaskID)
+			}
+		}
+	})
+
+	t.Run("ReadEvents with cursor returns only newer events", func(t *testing.T) {
+		evs := []state.Event{
+			{Type: "cur-type-1", AgentID: "cur-agent-1", TaskID: "cur-task-1"},
+			{Type: "cur-type-2", AgentID: "cur-agent-2", TaskID: "cur-task-2"},
+			{Type: "cur-type-3", AgentID: "cur-agent-3", TaskID: "cur-task-3"},
+		}
+		for _, ev := range evs {
+			if err := store.PublishEvent(ctx, ev); err != nil {
+				t.Fatalf("PublishEvent: %v", err)
+			}
+		}
+		// Read all to locate our 3 events (they are the last 3).
+		all, err := store.ReadEvents(ctx, "0", 1000)
+		if err != nil {
+			t.Fatalf("ReadEvents all: %v", err)
+		}
+		if len(all) < 3 {
+			t.Fatalf("want at least 3 events, got %d", len(all))
+		}
+		// The 2nd of our published events is at index len(all)-2.
+		secondID := all[len(all)-2].ID
+
+		// Read events after the 2nd one — should only get the 3rd.
+		after, err := store.ReadEvents(ctx, secondID, 10)
+		if err != nil {
+			t.Fatalf("ReadEvents with cursor: %v", err)
+		}
+		if len(after) != 1 {
+			t.Fatalf("want 1 event after cursor, got %d", len(after))
+		}
+		if after[0].Event.Type != "cur-type-3" {
+			t.Fatalf("want cur-type-3, got %q", after[0].Event.Type)
+		}
+	})
+
+	t.Run("ReadEvents on empty stream returns empty slice", func(t *testing.T) {
+		// The stream may have events from prior sub-tests. Advance to the
+		// current tail, then assert no further events exist.
+		all, err := store.ReadEvents(ctx, "0", 1000)
+		if err != nil {
+			t.Fatalf("ReadEvents drain: %v", err)
+		}
+		if len(all) == 0 {
+			// Stream was empty — already proven.
+			return
+		}
+		lastID := all[len(all)-1].ID
+		after, err := store.ReadEvents(ctx, lastID, 10)
+		if err != nil {
+			t.Fatalf("ReadEvents after tail: %v", err)
+		}
+		if len(after) != 0 {
+			t.Fatalf("want empty slice after tail, got %d events", len(after))
+		}
+	})
+
+	t.Run("CreateConsumerGroup is idempotent", func(t *testing.T) {
+		if err := store.CreateConsumerGroup(ctx, "cg-idem", "0"); err != nil {
+			t.Fatalf("CreateConsumerGroup (1st): %v", err)
+		}
+		if err := store.CreateConsumerGroup(ctx, "cg-idem", "0"); err != nil {
+			t.Fatalf("CreateConsumerGroup (2nd): %v", err)
+		}
+	})
+
+	t.Run("SubscribeEvents delivers events to a consumer", func(t *testing.T) {
+		// Create group at tail before publishing so we get exactly our 3 events.
+		if err := store.CreateConsumerGroup(ctx, "cg-sub", "$"); err != nil {
+			t.Fatalf("CreateConsumerGroup: %v", err)
+		}
+		evs := []state.Event{
+			{Type: "sub-type-1", AgentID: "sub-agent-1", TaskID: "sub-task-1"},
+			{Type: "sub-type-2", AgentID: "sub-agent-2", TaskID: "sub-task-2"},
+			{Type: "sub-type-3", AgentID: "sub-agent-3", TaskID: "sub-task-3"},
+		}
+		for _, ev := range evs {
+			if err := store.PublishEvent(ctx, ev); err != nil {
+				t.Fatalf("PublishEvent: %v", err)
+			}
+		}
+		got, err := store.SubscribeEvents(ctx, "cg-sub", "w1", 10, 0)
+		if err != nil {
+			t.Fatalf("SubscribeEvents: %v", err)
+		}
+		if len(got) != 3 {
+			t.Fatalf("want 3 events, got %d", len(got))
+		}
+	})
+
+	t.Run("Competing consumers receive distinct events", func(t *testing.T) {
+		// Create group at the current tail BEFORE publishing so both consumers
+		// only see our 6 events (works for mock and Redis alike).
+		if err := store.CreateConsumerGroup(ctx, "cg-compete", "$"); err != nil {
+			t.Fatalf("CreateConsumerGroup: %v", err)
+		}
+
+		for i := 1; i <= 6; i++ {
+			ev := state.Event{
+				Type:    "compete-type",
+				AgentID: fmt.Sprintf("compete-agent-%d", i),
+				TaskID:  fmt.Sprintf("compete-task-%d", i),
+			}
+			if err := store.PublishEvent(ctx, ev); err != nil {
+				t.Fatalf("PublishEvent: %v", err)
+			}
+		}
+
+		c1, err := store.SubscribeEvents(ctx, "cg-compete", "c1", 3, 0)
+		if err != nil {
+			t.Fatalf("SubscribeEvents c1: %v", err)
+		}
+		c2, err := store.SubscribeEvents(ctx, "cg-compete", "c2", 3, 0)
+		if err != nil {
+			t.Fatalf("SubscribeEvents c2: %v", err)
+		}
+
+		total := len(c1) + len(c2)
+		if total != 6 {
+			t.Fatalf("want 6 total events across consumers, got %d (c1=%d, c2=%d)", total, len(c1), len(c2))
+		}
+		seen := make(map[string]bool)
+		for _, ev := range c1 {
+			if seen[ev.ID] {
+				t.Fatalf("duplicate event ID %q in c1", ev.ID)
+			}
+			seen[ev.ID] = true
+		}
+		for _, ev := range c2 {
+			if seen[ev.ID] {
+				t.Fatalf("event ID %q delivered to both consumers", ev.ID)
+			}
+			seen[ev.ID] = true
+		}
+	})
+
+	t.Run("Acked events are not re-delivered", func(t *testing.T) {
+		// Create the group at the current tail BEFORE publishing, then publish
+		// 2 events. This works for both mock ("$" → len(streamEvents)) and Redis.
+		if err := store.CreateConsumerGroup(ctx, "cg-ack", "$"); err != nil {
+			t.Fatalf("CreateConsumerGroup: %v", err)
+		}
+
+		evs := []state.Event{
+			{Type: "ack-type-1", AgentID: "ack-agent-1", TaskID: "ack-task-1"},
+			{Type: "ack-type-2", AgentID: "ack-agent-2", TaskID: "ack-task-2"},
+		}
+		for _, ev := range evs {
+			if err := store.PublishEvent(ctx, ev); err != nil {
+				t.Fatalf("PublishEvent: %v", err)
+			}
+		}
+
+		first, err := store.SubscribeEvents(ctx, "cg-ack", "w1", 10, 0)
+		if err != nil {
+			t.Fatalf("SubscribeEvents (1st): %v", err)
+		}
+		if len(first) != 2 {
+			t.Fatalf("want 2 events on first subscribe, got %d", len(first))
+		}
+
+		ids := make([]string, len(first))
+		for i, ev := range first {
+			ids[i] = ev.ID
+		}
+		if err := store.AckEvent(ctx, "cg-ack", ids...); err != nil {
+			t.Fatalf("AckEvent: %v", err)
+		}
+
+		second, err := store.SubscribeEvents(ctx, "cg-ack", "w1", 10, 0)
+		if err != nil {
+			t.Fatalf("SubscribeEvents (2nd): %v", err)
+		}
+		if len(second) != 0 {
+			t.Fatalf("want 0 events after ack, got %d", len(second))
 		}
 	})
 }
