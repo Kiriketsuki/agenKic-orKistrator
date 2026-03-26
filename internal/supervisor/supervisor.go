@@ -496,6 +496,19 @@ func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
 	return nil
 }
 
+// StartWork signals that an agent has started executing its assigned task
+// (ASSIGNED → WORKING).
+func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
+	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
+	return err
+}
+
+// ReportOutput signals that an agent has output ready (WORKING → REPORTING).
+func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
+	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
+	return err
+}
+
 // CompleteAgent is the public entry point for signaling agent task completion.
 // It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
 func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) error {
