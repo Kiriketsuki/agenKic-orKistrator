@@ -578,6 +578,8 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	if sv.completionRegistry != nil {
 		if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil && fields.CurrentTaskID != "" {
 			sv.completionRegistry.Complete(fields.CurrentTaskID)
+		} else if fErr != nil {
+			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, CompletionRegistry.Complete skipped: %v", agentID, fErr)
 		}
 	}
 
