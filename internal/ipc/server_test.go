@@ -707,3 +707,55 @@ func TestReportOutput_NotFound_GRPC(t *testing.T) {
 		t.Fatalf("expected NotFound, got %v", st.Code())
 	}
 }
+
+// ── StreamOutput FINAL failure path ──────────────────────────────────────────
+
+func TestStreamOutput_FinalFailsOnWrongState(t *testing.T) {
+	client, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register agent — starts in IDLE, not WORKING.
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "final-fail-agent"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Seed into ASSIGNED state (not WORKING — ReportOutput requires WORKING).
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State: state.AgentStateAssigned,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	// Open stream and send a FINAL chunk — should trigger ReportOutput failure.
+	stream, err := client.StreamOutput(ctx)
+	if err != nil {
+		t.Fatalf("StreamOutput: %v", err)
+	}
+	if err := stream.Send(&pb.OutputChunk{
+		AgentId:  agentID,
+		TaskId:   "task-final-fail",
+		Type:     pb.OutputType_OUTPUT_TYPE_FINAL,
+		Sequence: 1,
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// The stream should return an error (not a success ack).
+	_, err = stream.Recv()
+	if err == nil {
+		t.Fatal("expected error from stream after FINAL on wrong state, got success ack")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.Internal {
+		t.Fatalf("expected Internal, got %v", st.Code())
+	}
+}

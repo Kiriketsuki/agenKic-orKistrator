@@ -94,3 +94,43 @@ func TestCompletionRegistry_Cleanup(t *testing.T) {
 		t.Fatalf("Wait after Cleanup+Complete: %v", err)
 	}
 }
+
+func TestCompletionRegistry_CompleteAfterCleanup_NoLeak(t *testing.T) {
+	r := NewCompletionRegistry()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Simulate the cancelled BlockingSubmitter path:
+	// 1. Wait is called (creates channel)
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Wait(ctx, "task-leak")
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+
+	// 2. Context cancelled — Wait returns error
+	cancel()
+	if err := <-done; err == nil {
+		t.Fatal("expected context error, got nil")
+	}
+
+	// 3. Cleanup removes the waiter (leaves tombstone)
+	r.Cleanup("task-leak")
+
+	// 4. Late Complete fires — should consume tombstone, not create orphaned entry
+	r.Complete("task-leak")
+
+	// 5. Verify both maps are empty (no leak)
+	r.mu.Lock()
+	waiterLen := len(r.waiters)
+	cleanedLen := len(r.cleaned)
+	r.mu.Unlock()
+
+	if waiterLen != 0 {
+		t.Fatalf("expected 0 waiters, got %d — orphaned entry leak", waiterLen)
+	}
+	if cleanedLen != 0 {
+		t.Fatalf("expected 0 cleaned entries, got %d — tombstone not consumed", cleanedLen)
+	}
+}

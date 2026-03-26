@@ -245,7 +245,8 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 	// Pre-read task binding before transitioning — if store is degraded,
 	// skip the crash so the heartbeat loop can retry next tick.
 	// Per-agent mutex is held: no concurrent modification of CurrentTaskID
-	// is possible (tryAssignTask and completeAgent acquire the same mutex).
+	// is possible (tryAssignTask, completeAgent, Heartbeat, StartWork, and
+	// ReportOutput all acquire the same per-agent mutex).
 	preFields, preErr := sv.store.GetAgentFields(ctx, agentID)
 	if preErr != nil {
 		log.Printf("supervisor: crashAgent %s — GetAgentFields failed, deferring crash: %v", agentID, preErr)
@@ -482,6 +483,8 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 }
 
 // Heartbeat refreshes the agent's LastHeartbeat timestamp.
+// The per-agent mutex is held for the entire read-modify-write to prevent
+// interleaving with tryAssignTask (which writes CurrentTaskID under the same mutex).
 func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
 	if agentID == "" || len(agentID) > 128 {
 		return ErrInvalidAgentID
@@ -492,6 +495,13 @@ func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
 		return ErrSupervisorStopped
 	}
 	sv.mu.RUnlock()
+
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		return ErrSupervisorStopped
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	fields, err := sv.store.GetAgentFields(ctx, agentID)
 	if err != nil {
@@ -505,14 +515,33 @@ func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
 }
 
 // StartWork signals that an agent has started executing its assigned task
-// (ASSIGNED → WORKING).
+// (ASSIGNED → WORKING). The per-agent mutex is held to prevent interleaving
+// with crashAgent's pre-read/ApplyEvent compound operation (council 7 invariant).
 func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		// Agent not registered (no mutex entry) — let ApplyEvent return the
+		// proper ErrAgentNotFound rather than masking it as ErrSupervisorStopped.
+		_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
 	return err
 }
 
 // ReportOutput signals that an agent has output ready (WORKING → REPORTING).
+// The per-agent mutex is held to prevent interleaving with crashAgent (council 7 invariant).
 func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
+	mu := sv.getAgentMutex(agentID)
+	if mu == nil {
+		// Agent not registered — let ApplyEvent return ErrAgentNotFound.
+		_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
 	return err
 }

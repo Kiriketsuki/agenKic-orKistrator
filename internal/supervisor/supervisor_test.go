@@ -587,3 +587,57 @@ func TestReportOutput_InvalidTransition(t *testing.T) {
 		t.Fatal("expected error for invalid transition, got nil")
 	}
 }
+
+// ── Heartbeat concurrent with assign ─────────────────────────────────────────
+
+func TestHeartbeat_ConcurrentWithAssign(t *testing.T) {
+	t.Parallel()
+
+	store := state.NewMockStore()
+	machine := agent.NewMachine(store)
+	policy := supervisor.NewRestartPolicy()
+	sv := supervisor.NewSupervisor(machine, store, policy,
+		supervisor.WithTaskPollInterval(5*time.Millisecond),
+	)
+
+	ctx := context.Background()
+
+	const agentID = "agent-hb-race"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Enqueue a task so the supervisor tries to assign it.
+	if err := store.EnqueueTask(ctx, "task-hb-race", 1.0); err != nil {
+		t.Fatalf("EnqueueTask: %v", err)
+	}
+
+	// Fire concurrent heartbeats while the supervisor runs (which triggers tryAssignTask).
+	var heartbeatCount atomic.Int64
+	hbCtx, hbCancel := context.WithCancel(ctx)
+	defer hbCancel()
+
+	go func() {
+		for hbCtx.Err() == nil {
+			_ = sv.Heartbeat(ctx, agentID)
+			heartbeatCount.Add(1)
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	// Run supervisor briefly to trigger assignment + heartbeat racing.
+	runCtx, runCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer runCancel()
+	_ = sv.Run(runCtx)
+	hbCancel()
+
+	// Verify: if agent was assigned, CurrentTaskID must not be empty.
+	fields, err := store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.State == state.AgentStateAssigned && fields.CurrentTaskID == "" {
+		t.Fatalf("agent ASSIGNED but CurrentTaskID is empty after %d heartbeats — race detected",
+			heartbeatCount.Load())
+	}
+}

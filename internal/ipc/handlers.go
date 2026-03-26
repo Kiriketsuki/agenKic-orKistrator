@@ -118,9 +118,12 @@ func (s *OrchestratorServer) StreamOutput(stream grpc.BidiStreamingServer[pb.Out
 		}
 
 		// 2. On FINAL chunk, trigger working→reporting transition.
+		// If the transition fails, close the stream with an error so the
+		// agent has a recovery signal (rather than receiving a silent success ack).
 		if chunk.Type == pb.OutputType_OUTPUT_TYPE_FINAL {
 			if err := s.supervisor.ReportOutput(stream.Context(), chunk.AgentId); err != nil {
 				log.Printf("StreamOutput: ReportOutput failed for agent %s: %v", chunk.AgentId, err)
+				return status.Errorf(codes.Internal, "ReportOutput failed for agent %s: %v", chunk.AgentId, err)
 			}
 		}
 
