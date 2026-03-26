@@ -27,6 +27,9 @@ service OrchestratorService {
 
   // Signal that an agent has completed its task (REPORTING → IDLE).
   rpc CompleteAgent(CompleteAgentRequest) returns (CompleteAgentResponse);
+
+  // Heartbeat refreshes the agent's liveness timestamp.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
 
 // ─── Agent Registration ──────────────────────────────────────────────────────
@@ -164,3 +167,11 @@ message CompleteAgentRequest {
 }
 
 message CompleteAgentResponse {}
+
+// ─── Heartbeat ───────────────────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatResponse {}

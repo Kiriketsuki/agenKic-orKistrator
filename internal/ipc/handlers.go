@@ -8,6 +8,7 @@ import (
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -130,6 +131,20 @@ func (s *OrchestratorServer) CompleteAgent(ctx context.Context, req *pb.Complete
 		return nil, status.Errorf(codes.Internal, "complete agent %s: %v", req.AgentId, err)
 	}
 	return &pb.CompleteAgentResponse{}, nil
+}
+
+// Heartbeat refreshes the agent's liveness timestamp.
+func (s *OrchestratorServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	if req.AgentId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "agent_id is required")
+	}
+	if err := s.supervisor.Heartbeat(ctx, req.AgentId); err != nil {
+		if errors.Is(err, state.ErrAgentNotFound) {
+			return nil, status.Errorf(codes.NotFound, "agent %s not found", req.AgentId)
+		}
+		return nil, status.Errorf(codes.Internal, "heartbeat: %v", err)
+	}
+	return &pb.HeartbeatResponse{}, nil
 }
 
 // GetDAGStatus returns the current execution state of a DAG.

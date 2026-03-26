@@ -412,3 +412,167 @@ func TestSubmitDAG_FullLifecycle(t *testing.T) {
 		}
 	}
 }
+
+// setupTestServerWithStore returns a client, the underlying mock store (for
+// state seeding), and a cleanup function.
+func setupTestServerWithStore(t *testing.T) (pb.OrchestratorServiceClient, *state.MockStore, func()) {
+	t.Helper()
+
+	store := state.NewMockStore()
+	machine := agent.NewMachine(store)
+	policy := supervisor.NewRestartPolicy()
+	sv := supervisor.NewSupervisor(machine, store, policy)
+
+	submitter := dag.NewStoreSubmitter(store)
+	executor := dag.NewExecutor(context.Background(), submitter)
+	server := NewOrchestratorServer(sv, store, executor)
+
+	buf := 1024 * 1024
+	lis := bufconn.Listen(buf)
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterOrchestratorServiceServer(grpcServer, server)
+
+	go func() { _ = grpcServer.Serve(lis) }()
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+
+	client := pb.NewOrchestratorServiceClient(conn)
+	cleanup := func() {
+		conn.Close()
+		grpcServer.GracefulStop()
+	}
+	return client, store, cleanup
+}
+
+// ── StartWork gRPC tests ─────────────────────────────────────────────────────
+
+func TestStartWork_GRPCRoundTrip(t *testing.T) {
+	client, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register an agent.
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "sw-agent"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Seed into ASSIGNED state.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State: state.AgentStateAssigned,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	_, err = client.StartWork(ctx, &pb.StartWorkRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+
+	// Verify state is WORKING.
+	stateResp, err := client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_WORKING {
+		t.Fatalf("expected AGENT_STATE_WORKING, got %v", stateResp.State)
+	}
+}
+
+func TestStartWork_InvalidTransition_GRPC(t *testing.T) {
+	client, _, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register an agent (starts IDLE, not ASSIGNED).
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "sw-invalid-agent"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	_, err = client.StartWork(ctx, &pb.StartWorkRequest{AgentId: regResp.AgentId})
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.FailedPrecondition {
+		t.Fatalf("expected FailedPrecondition, got %v", st.Code())
+	}
+}
+
+// ── ReportOutput gRPC tests ──────────────────────────────────────────────────
+
+func TestReportOutput_GRPCRoundTrip(t *testing.T) {
+	client, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register an agent.
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "ro-agent"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	// Seed into WORKING state.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State: state.AgentStateWorking,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	_, err = client.ReportOutput(ctx, &pb.ReportOutputRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("ReportOutput: %v", err)
+	}
+
+	// Verify state is REPORTING.
+	stateResp, err := client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_REPORTING {
+		t.Fatalf("expected AGENT_STATE_REPORTING, got %v", stateResp.State)
+	}
+}
+
+func TestReportOutput_NotFound_GRPC(t *testing.T) {
+	client, _, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	_, err := client.ReportOutput(ctx, &pb.ReportOutputRequest{AgentId: "nonexistent-agent"})
+	if err == nil {
+		t.Fatal("expected error for nonexistent agent, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Fatalf("expected NotFound, got %v", st.Code())
+	}
+}
