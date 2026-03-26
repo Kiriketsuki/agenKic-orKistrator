@@ -48,6 +48,9 @@ func (t *TmuxSubstrate) SpawnSession(ctx context.Context, name string, cmd strin
 	if err := ValidateSessionName(name); err != nil {
 		return Session{}, err
 	}
+	if err := ValidateCommand(cmd); err != nil {
+		return Session{}, err
+	}
 
 	args := []string{"new-session", "-d", "-s", name, "-x", "200", "-y", "50"}
 	if cmd != "" {

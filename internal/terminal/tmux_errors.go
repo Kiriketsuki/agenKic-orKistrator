@@ -56,6 +56,33 @@ func parseTmuxError(stderr string) error {
 	}
 }
 
+// MaxCommandLen is the maximum allowed length for a command string passed to
+// SendCommand or SpawnSession. Commands exceeding this length are rejected.
+const MaxCommandLen = 8192
+
+// ValidateCommand checks that cmd does not contain structurally unsafe content.
+// It rejects null bytes, dangerous control characters (\x01-\x08, \x0b, \x0c,
+// \x0e-\x1f), and commands exceeding MaxCommandLen. Tab (\x09), newline (\x0a),
+// and carriage return (\x0d) are permitted as legitimate whitespace.
+// An empty command is valid (SpawnSession uses "" for default shell).
+func ValidateCommand(cmd string) error {
+	if len(cmd) > MaxCommandLen {
+		return fmt.Errorf("%w: exceeds maximum length %d (got %d)", ErrInvalidCommand, MaxCommandLen, len(cmd))
+	}
+	for i := 0; i < len(cmd); i++ {
+		b := cmd[i]
+		if b == 0 {
+			return fmt.Errorf("%w: contains null byte at position %d", ErrInvalidCommand, i)
+		}
+		// Reject control characters \x01-\x08, \x0b, \x0c, \x0e-\x1f
+		// Allow: \x09 (tab), \x0a (newline), \x0d (carriage return)
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
+			return fmt.Errorf("%w: contains control character 0x%02x at position %d", ErrInvalidCommand, b, i)
+		}
+	}
+	return nil
+}
+
 // ValidateSessionName returns an error if name contains characters that tmux
 // does not accept in session names (spaces, colons, or other special chars).
 // Valid characters are: alphanumeric, dash (-), underscore (_), dot (.).

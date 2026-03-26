@@ -14,6 +14,9 @@ func (t *TmuxSubstrate) SendCommand(ctx context.Context, session string, cmd str
 	if err := ValidateSessionName(session); err != nil {
 		return err
 	}
+	if err := ValidateCommand(cmd); err != nil {
+		return err
+	}
 	if _, err := t.run(ctx, "send-keys", "-t", session, cmd, "Enter"); err != nil {
 		return fmt.Errorf("send command to session %q: %w", session, err)
 	}

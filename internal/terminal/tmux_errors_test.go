@@ -104,6 +104,81 @@ func TestDestroySession_InvalidSessionName(t *testing.T) {
 	}
 }
 
+// TestValidateCommand_Valid verifies accepted command patterns.
+func TestValidateCommand_Valid(t *testing.T) {
+	valid := []string{
+		"",                                 // empty command (default shell)
+		"echo hello",                       // simple command
+		"ls -la /tmp",                      // flags and paths
+		"echo 'hello\tworld'",              // tab is allowed
+		"echo 'line1\nline2'",              // newline is allowed
+		"echo 'line1\r\nline2'",            // carriage return is allowed
+		strings.Repeat("a", MaxCommandLen), // at max length
+	}
+	for _, cmd := range valid {
+		if err := ValidateCommand(cmd); err != nil {
+			t.Errorf("ValidateCommand(%q) = %v, want nil", cmd, err)
+		}
+	}
+}
+
+// TestValidateCommand_Invalid verifies rejected command patterns.
+func TestValidateCommand_Invalid(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{"null byte", "echo\x00hello"},
+		{"ctrl-c", "echo\x03hello"},
+		{"ctrl-d", "echo\x04hello"},
+		{"ctrl-z", "echo\x1ahello"},
+		{"escape", "echo\x1bhello"},
+		{"ctrl-a", "\x01cmd"},
+		{"file separator", "echo\x1chello"},
+		{"unit separator", "echo\x1fhello"},
+		{"over max length", strings.Repeat("a", MaxCommandLen+1)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCommand(tt.cmd)
+			if err == nil {
+				t.Errorf("ValidateCommand(%q) = nil, want error", tt.name)
+			}
+			if !errors.Is(err, ErrInvalidCommand) {
+				t.Errorf("ValidateCommand(%q) = %v, want ErrInvalidCommand", tt.name, err)
+			}
+		})
+	}
+}
+
+// TestSendCommand_InvalidCommand verifies cmd validation fires before subprocess call.
+func TestSendCommand_InvalidCommand(t *testing.T) {
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	err := sub.SendCommand(ctx, "valid-session", "echo\x00bad")
+	if err == nil {
+		t.Fatal("SendCommand with null byte: expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidCommand) {
+		t.Errorf("SendCommand with null byte = %v, want ErrInvalidCommand", err)
+	}
+}
+
+// TestSpawnSession_InvalidCommand verifies cmd validation fires before subprocess call.
+func TestSpawnSession_InvalidCommand(t *testing.T) {
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	_, err := sub.SpawnSession(ctx, "valid-session", "echo\x03bad")
+	if err == nil {
+		t.Fatal("SpawnSession with ctrl-c: expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidCommand) {
+		t.Errorf("SpawnSession with ctrl-c = %v, want ErrInvalidCommand", err)
+	}
+}
+
 // TestValidateSessionName_Valid verifies accepted name patterns.
 func TestValidateSessionName_Valid(t *testing.T) {
 	valid := []string{

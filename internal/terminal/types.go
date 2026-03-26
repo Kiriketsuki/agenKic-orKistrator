@@ -47,4 +47,8 @@ var (
 
 	// ErrNoServer is returned when no tmux server is running (no sessions exist).
 	ErrNoServer = errors.New("terminal: no tmux server running")
+
+	// ErrInvalidCommand is returned when a command string contains structurally
+	// unsafe content (null bytes, dangerous control characters, or exceeds MaxCommandLen).
+	ErrInvalidCommand = errors.New("terminal: invalid command")
 )
