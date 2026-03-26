@@ -21,11 +21,10 @@ const (
 
 // Supervisor manages the agent pool: heartbeat monitoring and task assignment.
 type Supervisor struct {
-	machine            *agent.Machine
-	store              state.StateStore
-	policy             *RestartPolicy
-	substrate          terminal.Substrate  // optional; nil disables terminal management
-	completionRegistry *CompletionRegistry // optional; nil disables completion signalling
+	machine   *agent.Machine
+	store     state.StateStore
+	policy    *RestartPolicy
+	substrate terminal.Substrate // optional; nil disables terminal management
 
 	heartbeatInterval time.Duration
 	staleThreshold    time.Duration
@@ -66,13 +65,6 @@ func WithTaskPollInterval(d time.Duration) SupervisorOption {
 // and destroys it on agent crash. A nil substrate disables terminal management.
 func WithSubstrate(s terminal.Substrate) SupervisorOption {
 	return func(sv *Supervisor) { sv.substrate = s }
-}
-
-// WithCompletionRegistry wires a CompletionRegistry into the supervisor.
-// When set, completeAgent signals the registry before clearing the task,
-// allowing BlockingSubmitter callers to unblock when a task finishes.
-func WithCompletionRegistry(r *CompletionRegistry) SupervisorOption {
-	return func(sv *Supervisor) { sv.completionRegistry = r }
 }
 
 // NewSupervisor returns a Supervisor wired to the given machine, store, and policy.
@@ -530,14 +522,6 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	}
 
 	sv.policy.RecordSuccess(agentID)
-
-	// Signal task completion BEFORE clearing CurrentTaskID so the task ID is
-	// still readable. BlockingSubmitter callers unblock here.
-	if sv.completionRegistry != nil {
-		if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil && fields.CurrentTaskID != "" {
-			sv.completionRegistry.Complete(fields.CurrentTaskID)
-		}
-	}
 
 	// Clear the assigned task so crashAgent doesn't re-enqueue a completed task.
 	// Uses ClearCurrentTask (conditional write that returns ErrAgentNotFound for

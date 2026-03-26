@@ -44,10 +44,7 @@ func main() {
 	machine := agent.NewMachine(store)
 	policy := supervisor.NewRestartPolicy()
 
-	registry := supervisor.NewCompletionRegistry()
-
 	var svOpts []supervisor.SupervisorOption
-	svOpts = append(svOpts, supervisor.WithCompletionRegistry(registry))
 	if sub, err := terminal.NewTmuxSubstrate(); err != nil {
 		log.Printf("terminal substrate unavailable, running headless: %v", err)
 	} else {
@@ -60,7 +57,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	submitter := dag.NewBlockingSubmitter(store, registry)
+	submitter := dag.NewStoreSubmitter(store)
 	executor := dag.NewExecutor(ctx, submitter)
 
 	agg := health.NewAggregator(store, executor, health.WithMinAgents(minAgents))
