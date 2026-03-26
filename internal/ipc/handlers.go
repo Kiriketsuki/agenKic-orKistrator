@@ -14,6 +14,28 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Handler routing rules:
+//
+//   Supervisor-routed (agent state transitions):
+//     RegisterAgent  — creates agent record, initializes per-agent mutex
+//     CompleteAgent   — CAS state transition, policy update, cooldown/circuit reset
+//
+//   Store-direct (stateless queue/read operations):
+//     SubmitTask     — appends to task queue; no agent state involved
+//     GetAgentState  — pure read; no coordination needed
+//
+//   DAG engine:
+//     SubmitDAG      — delegates to DAG executor
+//     GetDAGStatus   — reads DAG execution state from status tracker
+//
+//   Streaming:
+//     StreamOutput   — bidi stream; MVP echo-ack (no supervisor interaction)
+//
+// Queue writes (SubmitTask) bypass the supervisor because they are append-only
+// operations on a shared buffer. The supervisor's role is to dequeue and assign
+// tasks to agents, not to gate task submission. Reads (GetAgentState) are
+// stateless and need no coordination.
+
 // RegisterAgent generates a UUID, registers it with the supervisor, returns the ID.
 func (s *OrchestratorServer) RegisterAgent(ctx context.Context, req *pb.RegisterAgentRequest) (*pb.RegisterAgentResponse, error) {
 	id := uuid.New().String()
