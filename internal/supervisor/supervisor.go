@@ -473,6 +473,29 @@ func (sv *Supervisor) findIdleAgent(ctx context.Context) (string, bool) {
 	return "", false
 }
 
+// Heartbeat refreshes the agent's LastHeartbeat timestamp.
+func (sv *Supervisor) Heartbeat(ctx context.Context, agentID string) error {
+	if agentID == "" || len(agentID) > 128 {
+		return ErrInvalidAgentID
+	}
+	sv.mu.RLock()
+	if sv.stopped {
+		sv.mu.RUnlock()
+		return ErrSupervisorStopped
+	}
+	sv.mu.RUnlock()
+
+	fields, err := sv.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		return fmt.Errorf("heartbeat agent %s: %w", agentID, err)
+	}
+	fields.LastHeartbeat = time.Now().UnixMilli()
+	if err := sv.store.SetAgentFields(ctx, agentID, fields); err != nil {
+		return fmt.Errorf("heartbeat agent %s: %w", agentID, err)
+	}
+	return nil
+}
+
 // CompleteAgent is the public entry point for signaling agent task completion.
 // It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
 func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) error {

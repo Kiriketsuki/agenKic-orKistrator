@@ -28,3 +28,8 @@ Thumbs.db
 
 # Council reports
 *-council-*.md
+
+# Claude Code internal
+.claude/worktrees/
+.claude/handoffs/
+.observer.lock

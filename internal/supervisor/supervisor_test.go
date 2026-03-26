@@ -321,6 +321,62 @@ func TestSupervisor_TryAssignTask_CASConflict_NoBackoff(t *testing.T) {
 	}
 }
 
+func TestHeartbeat_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	if err := sv.RegisterAgent(ctx, "agent-hb"); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	before, err := store.GetAgentFields(ctx, "agent-hb")
+	if err != nil {
+		t.Fatalf("GetAgentFields (before): %v", err)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	if err := sv.Heartbeat(ctx, "agent-hb"); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+
+	after, err := store.GetAgentFields(ctx, "agent-hb")
+	if err != nil {
+		t.Fatalf("GetAgentFields (after): %v", err)
+	}
+	if after.LastHeartbeat <= before.LastHeartbeat {
+		t.Errorf("LastHeartbeat not updated: before=%d after=%d", before.LastHeartbeat, after.LastHeartbeat)
+	}
+}
+
+func TestHeartbeat_NotFound(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	err := sv.Heartbeat(ctx, "nonexistent-agent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent agent, got nil")
+	}
+}
+
+func TestHeartbeat_Stopped(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	sv.Stop()
+
+	err := sv.Heartbeat(ctx, "any-agent")
+	if !errors.Is(err, supervisor.ErrSupervisorStopped) {
+		t.Fatalf("want ErrSupervisorStopped, got %v", err)
+	}
+}
+
 func TestSupervisor_RegisterAgent_EmptyID(t *testing.T) {
 	t.Parallel()
 	sv, _ := newTestSupervisor(t)
@@ -417,5 +473,117 @@ func TestConcurrency_CrashCompleteRace(t *testing.T) {
 				t.Fatalf("iteration %d: DequeueTask: %v", i, err)
 			}
 		}
+	}
+}
+
+// ── StartWork tests ──────────────────────────────────────────────────────────
+
+func TestStartWork_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-sw-ok"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into ASSIGNED state directly via store (bypasses state machine,
+	// same pattern as TestConcurrency_CrashCompleteRace).
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateAssigned,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	if err := sv.StartWork(ctx, agentID); err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+
+	stateStr, err := store.GetAgentState(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateStr != state.AgentStateWorking {
+		t.Errorf("want state %q, got %q", state.AgentStateWorking, stateStr)
+	}
+}
+
+func TestStartWork_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	sv, _ := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-sw-invalid"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	// Agent is IDLE — StartWork requires ASSIGNED.
+
+	err := sv.StartWork(ctx, agentID)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
+	}
+}
+
+// ── ReportOutput tests ───────────────────────────────────────────────────────
+
+func TestReportOutput_Success(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-ro-ok"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into WORKING state.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateWorking,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	if err := sv.ReportOutput(ctx, agentID); err != nil {
+		t.Fatalf("ReportOutput: %v", err)
+	}
+
+	stateStr, err := store.GetAgentState(ctx, agentID)
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateStr != state.AgentStateReporting {
+		t.Errorf("want state %q, got %q", state.AgentStateReporting, stateStr)
+	}
+}
+
+func TestReportOutput_InvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	sv, store := newTestSupervisor(t)
+	ctx := context.Background()
+
+	const agentID = "agent-ro-invalid"
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	// Seed agent into ASSIGNED — ReportOutput requires WORKING.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:        state.AgentStateAssigned,
+		RegisteredAt: time.Now().UnixMilli(),
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	err := sv.ReportOutput(ctx, agentID)
+	if err == nil {
+		t.Fatal("expected error for invalid transition, got nil")
 	}
 }
