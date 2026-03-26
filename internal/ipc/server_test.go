@@ -173,12 +173,13 @@ func TestStreamOutput(t *testing.T) {
 		t.Fatalf("StreamOutput: %v", err)
 	}
 
-	// Send a chunk.
+	// Send a chunk with explicit sequence.
 	chunk := &pb.OutputChunk{
-		AgentId: "agent-1",
-		TaskId:  "task-1",
-		Type:    pb.OutputType_OUTPUT_TYPE_STDOUT,
-		Payload: []byte("hello world"),
+		AgentId:  "agent-1",
+		TaskId:   "task-1",
+		Type:     pb.OutputType_OUTPUT_TYPE_STDOUT,
+		Payload:  []byte("hello world"),
+		Sequence: 1,
 	}
 	if err := stream.Send(chunk); err != nil {
 		t.Fatalf("Send: %v", err)
@@ -192,12 +193,142 @@ func TestStreamOutput(t *testing.T) {
 	if !ack.Received {
 		t.Fatal("expected ack.Received=true")
 	}
-	expectedChunkID := "agent-1:task-1"
+	expectedChunkID := "agent-1:task-1:1"
 	if ack.ChunkId != expectedChunkID {
 		t.Fatalf("expected chunk_id=%s, got %s", expectedChunkID, ack.ChunkId)
 	}
 
 	// Close the send side and verify clean shutdown.
+	if err := stream.CloseSend(); err != nil {
+		t.Fatalf("CloseSend: %v", err)
+	}
+}
+
+func TestStreamOutput_PublishesEvents(t *testing.T) {
+	client, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	stream, err := client.StreamOutput(ctx)
+	if err != nil {
+		t.Fatalf("StreamOutput: %v", err)
+	}
+
+	// Send 3 chunks.
+	for i := int64(1); i <= 3; i++ {
+		if err := stream.Send(&pb.OutputChunk{
+			AgentId:  "agent-evt",
+			TaskId:   "task-evt",
+			Type:     pb.OutputType_OUTPUT_TYPE_STDOUT,
+			Payload:  []byte("chunk"),
+			Sequence: i,
+		}); err != nil {
+			t.Fatalf("Send chunk %d: %v", i, err)
+		}
+		if _, err := stream.Recv(); err != nil {
+			t.Fatalf("Recv ack %d: %v", i, err)
+		}
+	}
+	if err := stream.CloseSend(); err != nil {
+		t.Fatalf("CloseSend: %v", err)
+	}
+
+	// Verify 3 events were published.
+	events, err := store.ReadEvents(ctx, "0", 10)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	var outputEvents []state.StreamEvent
+	for _, e := range events {
+		if e.Event.Type == "output_chunk" {
+			outputEvents = append(outputEvents, e)
+		}
+	}
+	if len(outputEvents) != 3 {
+		t.Fatalf("expected 3 output_chunk events, got %d", len(outputEvents))
+	}
+}
+
+func TestStreamOutput_FinalTriggersReportOutput(t *testing.T) {
+	client, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register agent and seed into WORKING state.
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "final-agent"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State: state.AgentStateWorking,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	// Send a FINAL chunk.
+	stream, err := client.StreamOutput(ctx)
+	if err != nil {
+		t.Fatalf("StreamOutput: %v", err)
+	}
+	if err := stream.Send(&pb.OutputChunk{
+		AgentId:  agentID,
+		TaskId:   "task-final",
+		Type:     pb.OutputType_OUTPUT_TYPE_FINAL,
+		Sequence: 1,
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if _, err := stream.Recv(); err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if err := stream.CloseSend(); err != nil {
+		t.Fatalf("CloseSend: %v", err)
+	}
+
+	// Verify agent transitioned to REPORTING.
+	stateResp, err := client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_REPORTING {
+		t.Fatalf("expected AGENT_STATE_REPORTING, got %v", stateResp.State)
+	}
+}
+
+func TestStreamOutput_SequenceInAck(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	stream, err := client.StreamOutput(ctx)
+	if err != nil {
+		t.Fatalf("StreamOutput: %v", err)
+	}
+
+	if err := stream.Send(&pb.OutputChunk{
+		AgentId:  "agent-seq",
+		TaskId:   "task-seq",
+		Type:     pb.OutputType_OUTPUT_TYPE_STDOUT,
+		Sequence: 42,
+	}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	ack, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+
+	expected := "agent-seq:task-seq:42"
+	if ack.ChunkId != expected {
+		t.Fatalf("expected chunk_id=%q, got %q", expected, ack.ChunkId)
+	}
+
 	if err := stream.CloseSend(); err != nil {
 		t.Fatalf("CloseSend: %v", err)
 	}

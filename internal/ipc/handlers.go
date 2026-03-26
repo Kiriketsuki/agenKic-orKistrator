@@ -3,7 +3,10 @@ package ipc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log"
+	"time"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
@@ -13,13 +16,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // Handler routing rules:
 //
 //   Supervisor-routed (agent state transitions):
 //     RegisterAgent  — creates agent record, initializes per-agent mutex
-//     CompleteAgent   — CAS state transition, policy update, cooldown/circuit reset
+//     StartWork      — ASSIGNED → WORKING
+//     ReportOutput   — WORKING → REPORTING
+//     CompleteAgent  — REPORTING → IDLE; policy update, cooldown/circuit reset
 //
 //   Store-direct (stateless queue/read operations):
 //     SubmitTask     — appends to task queue; no agent state involved
@@ -30,7 +36,8 @@ import (
 //     GetDAGStatus   — reads DAG execution state from status tracker
 //
 //   Streaming:
-//     StreamOutput   — bidi stream; MVP echo-ack (no supervisor interaction)
+//     StreamOutput   — bidi stream; publishes chunks to event stream,
+//                      triggers WORKING→REPORTING on FINAL chunk
 //
 // Queue writes (SubmitTask) bypass the supervisor because they are append-only
 // operations on a shared buffer. The supervisor's role is to dequeue and assign
@@ -80,8 +87,8 @@ func (s *OrchestratorServer) GetAgentState(ctx context.Context, req *pb.GetAgent
 	}, nil
 }
 
-// StreamOutput receives OutputChunk messages and sends OutputAck replies.
-// Basic MVP: ack each chunk with received=true.
+// StreamOutput receives OutputChunk messages, publishes each to the event
+// stream, triggers working→reporting on FINAL chunks, and acks every chunk.
 func (s *OrchestratorServer) StreamOutput(stream grpc.BidiStreamingServer[pb.OutputChunk, pb.OutputAck]) error {
 	for {
 		chunk, err := stream.Recv()
@@ -91,11 +98,38 @@ func (s *OrchestratorServer) StreamOutput(stream grpc.BidiStreamingServer[pb.Out
 		if err != nil {
 			return err
 		}
-		ack := &pb.OutputAck{
-			ChunkId:  chunk.AgentId + ":" + chunk.TaskId,
-			Received: true,
+
+		// 1. Publish chunk to event stream.
+		serialized, marshalErr := proto.Marshal(chunk)
+		if marshalErr != nil {
+			log.Printf("StreamOutput: marshal chunk failed: %v", marshalErr)
+		} else {
+			ts := chunk.Timestamp
+			if ts == 0 {
+				ts = time.Now().UnixMilli()
+			}
+			_ = s.store.PublishEvent(stream.Context(), state.Event{
+				Type:      "output_chunk",
+				AgentID:   chunk.AgentId,
+				TaskID:    chunk.TaskId,
+				Timestamp: ts,
+				Payload:   string(serialized),
+			})
 		}
-		if err := stream.Send(ack); err != nil {
+
+		// 2. On FINAL chunk, trigger working→reporting transition.
+		if chunk.Type == pb.OutputType_OUTPUT_TYPE_FINAL {
+			if err := s.supervisor.ReportOutput(stream.Context(), chunk.AgentId); err != nil {
+				log.Printf("StreamOutput: ReportOutput failed for agent %s: %v", chunk.AgentId, err)
+			}
+		}
+
+		// 3. Send ack with sequence-encoded chunk ID.
+		chunkID := fmt.Sprintf("%s:%s:%d", chunk.AgentId, chunk.TaskId, chunk.Sequence)
+		if err := stream.Send(&pb.OutputAck{
+			ChunkId:  chunkID,
+			Received: true,
+		}); err != nil {
 			return err
 		}
 	}
@@ -120,6 +154,42 @@ func (s *OrchestratorServer) SubmitDAG(ctx context.Context, req *pb.SubmitDAGReq
 	}
 
 	return &pb.SubmitDAGResponse{DagExecutionId: execID}, nil
+}
+
+// StartWork signals that an agent has begun executing its task (ASSIGNED → WORKING).
+func (s *OrchestratorServer) StartWork(ctx context.Context, req *pb.StartWorkRequest) (*pb.StartWorkResponse, error) {
+	if req.AgentId == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent_id is required")
+	}
+	if err := s.supervisor.StartWork(ctx, req.AgentId); err != nil {
+		var invalidTx *agent.InvalidTransitionError
+		if errors.As(err, &invalidTx) {
+			return nil, status.Errorf(codes.FailedPrecondition, "start work: %v", err)
+		}
+		if errors.Is(err, state.ErrAgentNotFound) {
+			return nil, status.Errorf(codes.NotFound, "agent %s not found", req.AgentId)
+		}
+		return nil, status.Errorf(codes.Internal, "start work: %v", err)
+	}
+	return &pb.StartWorkResponse{}, nil
+}
+
+// ReportOutput signals that an agent has output ready (WORKING → REPORTING).
+func (s *OrchestratorServer) ReportOutput(ctx context.Context, req *pb.ReportOutputRequest) (*pb.ReportOutputResponse, error) {
+	if req.AgentId == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent_id is required")
+	}
+	if err := s.supervisor.ReportOutput(ctx, req.AgentId); err != nil {
+		var invalidTx *agent.InvalidTransitionError
+		if errors.As(err, &invalidTx) {
+			return nil, status.Errorf(codes.FailedPrecondition, "report output: %v", err)
+		}
+		if errors.Is(err, state.ErrAgentNotFound) {
+			return nil, status.Errorf(codes.NotFound, "agent %s not found", req.AgentId)
+		}
+		return nil, status.Errorf(codes.Internal, "report output: %v", err)
+	}
+	return &pb.ReportOutputResponse{}, nil
 }
 
 // CompleteAgent signals that an agent has finished its task (REPORTING → IDLE).
