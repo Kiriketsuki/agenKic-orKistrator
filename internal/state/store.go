@@ -15,16 +15,6 @@ const (
 	AgentStateReporting = "reporting"
 )
 
-// AgentState* are the canonical lifecycle state strings stored in Redis.
-// Both the state package and any consumer that inspects state strings must use
-// these constants so a value change here is caught at compile time everywhere.
-const (
-	AgentStateIdle      = "idle"
-	AgentStateAssigned  = "assigned"
-	AgentStateWorking   = "working"
-	AgentStateReporting = "reporting"
-)
-
 // AgentFields holds the full set of mutable agent metadata stored in Redis.
 type AgentFields struct {
 	State               string
