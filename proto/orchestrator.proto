@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package orchestrator;
+
+option go_package = "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator";
+
+// ─── OrchestratorService ────────────────────────────────────────────────────
+
+service OrchestratorService {
+  // Agent registration: agent joins the pool and receives an ID.
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // Task submission: caller enqueues a task; returns a task ID.
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+
+  // Bidirectional output stream: agent sends output chunks, server acks.
+  rpc StreamOutput(stream OutputChunk) returns (stream OutputAck);
+
+  // Query the current state of an agent.
+  rpc GetAgentState(GetAgentStateRequest) returns (GetAgentStateResponse);
+
+  // DAG workflow submission.
+  rpc SubmitDAG(SubmitDAGRequest) returns (SubmitDAGResponse);
+
+  // Query the execution state of a DAG.
+  rpc GetDAGStatus(GetDAGStatusRequest) returns (GetDAGStatusResponse);
+
+  // Signal that an agent has completed its task (REPORTING → IDLE).
+  rpc CompleteAgent(CompleteAgentRequest) returns (CompleteAgentResponse);
+}
+
+// ─── Agent Registration ──────────────────────────────────────────────────────
+
+message AgentInfo {
+  string name        = 1;  // human-readable label
+  string model_tier  = 2;  // "haiku" | "sonnet" | "opus"
+  repeated string capabilities = 3;
+}
+
+message RegisterAgentRequest {
+  AgentInfo info = 1;
+}
+
+message RegisterAgentResponse {
+  string agent_id = 1;
+}
+
+// ─── Agent State ─────────────────────────────────────────────────────────────
+
+enum AgentState {
+  AGENT_STATE_UNSPECIFIED = 0;
+  AGENT_STATE_IDLE        = 1;
+  AGENT_STATE_ASSIGNED    = 2;
+  AGENT_STATE_WORKING     = 3;
+  AGENT_STATE_REPORTING   = 4;
+}
+
+message GetAgentStateRequest {
+  string agent_id = 1;
+}
+
+message GetAgentStateResponse {
+  string    agent_id = 1;
+  AgentState state   = 2;
+}
+
+// ─── Task Submission ─────────────────────────────────────────────────────────
+
+message TaskSpec {
+  string task_id    = 1;
+  string prompt     = 2;
+  string model_tier = 3;
+  double priority   = 4;
+  map<string, string> metadata = 5;
+}
+
+message SubmitTaskRequest {
+  TaskSpec task = 1;
+}
+
+message SubmitTaskResponse {
+  string task_id = 1;
+}
+
+// ─── Streaming Output ────────────────────────────────────────────────────────
+
+enum OutputType {
+  OUTPUT_TYPE_UNSPECIFIED = 0;
+  OUTPUT_TYPE_STDOUT      = 1;
+  OUTPUT_TYPE_STDERR      = 2;
+  OUTPUT_TYPE_TOOL_RESULT = 3;
+  OUTPUT_TYPE_FINAL       = 4;
+}
+
+message OutputChunk {
+  string     agent_id  = 1;
+  string     task_id   = 2;
+  OutputType type      = 3;
+  bytes      payload   = 4;
+  int64      timestamp = 5;  // unix millis
+}
+
+message OutputAck {
+  string chunk_id = 1;
+  bool   received = 2;
+}
+
+// ─── DAG Workflow ────────────────────────────────────────────────────────────
+
+message DAGNode {
+  string   node_id    = 1;
+  TaskSpec task       = 2;
+  repeated string depends_on = 3;  // node_ids that must complete first
+}
+
+message DAGEdge {
+  string from_node = 1;
+  string to_node   = 2;
+}
+
+message DAGSpec {
+  string dag_id          = 1;
+  repeated DAGNode nodes = 2;
+  repeated DAGEdge edges = 3;
+}
+
+message SubmitDAGRequest {
+  DAGSpec dag = 1;
+}
+
+message SubmitDAGResponse {
+  string dag_execution_id = 1;
+}
+
+enum DAGExecutionState {
+  DAG_EXECUTION_STATE_UNSPECIFIED = 0;
+  DAG_EXECUTION_STATE_PENDING     = 1;
+  DAG_EXECUTION_STATE_RUNNING     = 2;
+  DAG_EXECUTION_STATE_COMPLETED   = 3;
+  DAG_EXECUTION_STATE_FAILED      = 4;
+}
+
+message DAGNodeStatus {
+  string           node_id = 1;
+  DAGExecutionState state  = 2;
+  string           agent_id = 3;
+  string           error    = 4;
+}
+
+message GetDAGStatusRequest {
+  string dag_execution_id = 1;
+}
+
+message GetDAGStatusResponse {
+  string              dag_execution_id = 1;
+  DAGExecutionState   state            = 2;
+  repeated DAGNodeStatus node_statuses = 3;
+}
+
+// ─── Agent Completion ───────────────────────────────────────────────────────
+
+message CompleteAgentRequest {
+  string agent_id = 1;
+}
+
+message CompleteAgentResponse {}
