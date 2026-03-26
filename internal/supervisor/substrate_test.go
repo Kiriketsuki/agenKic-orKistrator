@@ -182,6 +182,60 @@ func TestSupervisor_CrashAgent_SubstrateFailure_StillCrashes(t *testing.T) {
 	}
 }
 
+func TestSupervisor_Stop_DestroysAllSessions(t *testing.T) {
+	stub := &stubSubstrate{}
+	sv, _ := newTestSupervisorWithSubstrate(stub)
+	ctx := context.Background()
+
+	agents := []string{"agent-stop-1", "agent-stop-2", "agent-stop-3"}
+	for _, id := range agents {
+		if err := sv.RegisterAgent(ctx, id); err != nil {
+			t.Fatalf("RegisterAgent(%s) failed: %v", id, err)
+		}
+	}
+
+	sv.Stop()
+
+	destroyed := stub.getDestroyed()
+	if len(destroyed) != len(agents) {
+		t.Fatalf("expected %d destroy calls, got %d: %v", len(agents), len(destroyed), destroyed)
+	}
+
+	// Verify all agents had their sessions destroyed (order may vary).
+	want := map[string]bool{}
+	for _, id := range agents {
+		want["agent-"+id] = true
+	}
+	for _, name := range destroyed {
+		if !want[name] {
+			t.Errorf("unexpected destroy call for %q", name)
+		}
+		delete(want, name)
+	}
+	if len(want) > 0 {
+		t.Errorf("missing destroy calls for: %v", want)
+	}
+}
+
+func TestSupervisor_Stop_SubstrateFailure_StillStops(t *testing.T) {
+	stub := &stubSubstrate{destroyErr: errors.New("tmux down")}
+	sv, _ := newTestSupervisorWithSubstrate(stub)
+	ctx := context.Background()
+
+	if err := sv.RegisterAgent(ctx, "agent-stop-fail"); err != nil {
+		t.Fatalf("RegisterAgent failed: %v", err)
+	}
+
+	// Stop should complete without panicking despite substrate errors.
+	sv.Stop()
+
+	// Verify the supervisor is actually stopped.
+	err := sv.RegisterAgent(ctx, "agent-after-stop")
+	if !errors.Is(err, ErrSupervisorStopped) {
+		t.Errorf("RegisterAgent after Stop: got %v, want ErrSupervisorStopped", err)
+	}
+}
+
 func TestSupervisor_NilSubstrate_NoPanic(t *testing.T) {
 	store := state.NewMockStore()
 	machine := agent.NewMachine(store)

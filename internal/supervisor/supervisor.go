@@ -128,11 +128,25 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 	return nil
 }
 
-// Stop marks the supervisor as stopped. Subsequent RegisterAgent calls return ErrSupervisorStopped.
+// Stop marks the supervisor as stopped and destroys all spawned tmux sessions.
+// Subsequent RegisterAgent calls return ErrSupervisorStopped.
 func (sv *Supervisor) Stop() {
 	sv.mu.Lock()
 	sv.stopped = true
+	agentIDs := make([]string, 0, len(sv.agentMu))
+	for id := range sv.agentMu {
+		agentIDs = append(agentIDs, id)
+	}
 	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		for _, id := range agentIDs {
+			sessionName := "agent-" + id
+			if err := sv.substrate.DestroySession(context.Background(), sessionName); err != nil {
+				log.Printf("supervisor: Stop: DestroySession %q failed (agent %s): %v", sessionName, id, err)
+			}
+		}
+	}
 }
 
 // Run starts the heartbeat and task-assignment loops. Blocks until ctx is done.

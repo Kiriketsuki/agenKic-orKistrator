@@ -60,6 +60,19 @@ func TestSendCommand_SpecialCharacters(t *testing.T) {
 	}
 }
 
+func TestSendCommand_InvalidSessionName(t *testing.T) {
+	// Validation fires before any subprocess call, so no tmux required.
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	for _, name := range []string{"", "bad session", "bad:colon", "bad/slash"} {
+		err := sub.SendCommand(ctx, name, "echo hi")
+		if err == nil {
+			t.Errorf("SendCommand(session=%q): expected validation error, got nil", name)
+		}
+	}
+}
+
 func TestSendCommand_SessionNotFound(t *testing.T) {
 	skipIfNoTmux(t)
 

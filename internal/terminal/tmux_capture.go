@@ -14,6 +14,9 @@ func (t *TmuxSubstrate) CaptureOutput(ctx context.Context, session string, lines
 	if lines <= 0 {
 		return "", ErrInvalidLines
 	}
+	if err := ValidateSessionName(session); err != nil {
+		return "", err
+	}
 
 	// -p  prints to stdout
 	// -S  start-line: negative offset counts back from the visible pane top

@@ -22,6 +22,19 @@ func TestCaptureOutput_InvalidLines(t *testing.T) {
 	}
 }
 
+func TestCaptureOutput_InvalidSessionName(t *testing.T) {
+	// Validation fires before any subprocess call, so no tmux required.
+	sub := &TmuxSubstrate{tmuxPath: "tmux"}
+	ctx := context.Background()
+
+	for _, name := range []string{"", "bad session", "bad:colon", "bad/slash"} {
+		_, err := sub.CaptureOutput(ctx, name, 10)
+		if err == nil {
+			t.Errorf("CaptureOutput(session=%q): expected validation error, got nil", name)
+		}
+	}
+}
+
 func TestCaptureOutput_SessionNotFound(t *testing.T) {
 	skipIfNoTmux(t)
 
@@ -84,14 +97,28 @@ func TestCaptureOutput_LargeScrollback(t *testing.T) {
 		t.Fatalf("SendCommand: %v", err)
 	}
 
-	// Wait for the loop to finish producing output.
-	time.Sleep(3 * time.Second)
-
-	// Capture a window large enough to contain the last lines.
-	out, err := sub.CaptureOutput(ctx, sessionName, 100)
-	if err != nil {
-		t.Fatalf("CaptureOutput: %v", err)
+	// Poll until the final marker appears in output (or timeout).
+	deadline := time.After(10 * time.Second)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	var out string
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for SCROLLTEST-LINE-500; last capture:\n%s", out)
+		case <-ticker.C:
+			captured, err := sub.CaptureOutput(ctx, sessionName, 100)
+			if err != nil {
+				continue // session may not be ready yet
+			}
+			if strings.Contains(captured, "SCROLLTEST-LINE-500") {
+				out = captured
+				goto captured
+			}
+			out = captured
+		}
 	}
+captured:
 
 	// The last line of the loop output should be within the capture window.
 	if !strings.Contains(out, "SCROLLTEST-LINE-500") {
