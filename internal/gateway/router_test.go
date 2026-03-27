@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -333,6 +334,12 @@ func TestJudgeRouter_InvalidOverrideTier(t *testing.T) {
 		WithDefaultTier(TierMid),
 	)
 
+	// Capture slog output to verify warn-leg of warn-and-continue path.
+	var logBuf strings.Builder
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(oldDefault) })
+
 	decision, err := router.Classify(context.Background(), TaskSpec{
 		ID:           "iot1",
 		Description:  "format a CSV",
@@ -352,6 +359,14 @@ func TestJudgeRouter_InvalidOverrideTier(t *testing.T) {
 
 	if !strings.Contains(decision.Reason, "classified as cheap") {
 		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "classified as cheap")
+	}
+
+	if decision.RawResponse != "cheap" {
+		t.Errorf("RawResponse = %q, want %q", decision.RawResponse, "cheap")
+	}
+
+	if !strings.Contains(logBuf.String(), "invalid override tier ignored") {
+		t.Errorf("expected warn log containing %q, got: %q", "invalid override tier ignored", logBuf.String())
 	}
 }
 
