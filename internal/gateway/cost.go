@@ -92,7 +92,9 @@ func EstimateCost(model string, inputTokens, outputTokens int, pricing map[strin
 }
 
 // NewCostRecordFromResponse constructs a CostRecord from a CompletionResponse,
-// bridging gateway completion output to cost tracking in one call.
+// bridging gateway completion output to cost tracking. Note: CostRecord.Metadata
+// is not populated by this constructor; callers must set it from
+// CompletionRequest.Metadata when metadata propagation is required.
 func NewCostRecordFromResponse(resp CompletionResponse, tier ModelTier, pricing map[string]TokenCost) CostRecord {
 	return CostRecord{
 		Timestamp:     time.Now(),

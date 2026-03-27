@@ -7,8 +7,14 @@ import (
 	"time"
 )
 
-// testPricing reuses DefaultPricing for all cost tests.
-var testPricing = DefaultPricing
+// testPricing is a deep copy of DefaultPricing to prevent test pollution.
+var testPricing = func() map[string]TokenCost {
+	m := make(map[string]TokenCost, len(DefaultPricing))
+	for k, v := range DefaultPricing {
+		m[k] = v
+	}
+	return m
+}()
 
 func baseTime() time.Time {
 	return time.Date(2026, 3, 22, 12, 0, 0, 0, time.UTC)
