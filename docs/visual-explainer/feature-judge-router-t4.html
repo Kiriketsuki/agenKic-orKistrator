@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Judge-Router (T4): Task Complexity Classification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#164e63',
+    primaryTextColor: '#e2e8f0',
+    primaryBorderColor: '#0891b2',
+    lineColor: '#475569',
+    secondaryColor: '#1e293b',
+    tertiaryColor: '#0f172a',
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: '13px',
+    nodeBorder: '#0891b2',
+    mainBkg: '#164e63',
+    clusterBkg: '#1e293b',
+    clusterBorder: '#334155',
+    titleColor: '#e2e8f0',
+    edgeLabelBackground: '#1e293b',
+    noteTextColor: '#e2e8f0',
+    noteBkgColor: '#164e63',
+    noteBorderColor: '#0891b2',
+    stateBkg: '#164e63',
+    stateBorder: '#0891b2',
+    labelColor: '#e2e8f0',
+    sequenceNumberColor: '#e2e8f0',
+    actorBkg: '#164e63',
+    actorBorder: '#0891b2',
+    actorTextColor: '#e2e8f0',
+    actorLineColor: '#475569',
+    signalColor: '#94a3b8',
+    signalTextColor: '#e2e8f0',
+    activationBorderColor: '#0891b2',
+    activationBkgColor: '#1e293b'
+  }
+});
+</script>
+<style>
+  :root {
+    --bg-deep: #0f172a;
+    --bg-mid: #1e293b;
+    --bg-card: #1e293b;
+    --border: rgba(255,255,255,0.08);
+    --border-accent: rgba(8,145,178,0.4);
+    --teal: #0891b2;
+    --teal-dim: #164e63;
+    --amber: #d97706;
+    --amber-dim: #92400e;
+    --emerald: #059669;
+    --emerald-dim: #065f46;
+    --red: #dc2626;
+    --red-dim: #991b1b;
+    --violet: #7c3aed;
+    --violet-dim: #4c1d95;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-mono);
+    background: var(--bg-deep);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    background-image:
+      linear-gradient(rgba(8,145,178,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(8,145,178,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Fade-in animation */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-in { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* Layout */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 48px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--text), var(--teal));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero .subtitle {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+  }
+  .hero-stats {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--bg-mid);
+  }
+  .stat-pill .num {
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .stat-pill.green .num { color: var(--emerald); }
+  .stat-pill.amber .num { color: var(--amber); }
+  .stat-pill.violet .num { color: #a78bfa; }
+
+  /* Section */
+  section {
+    padding: 56px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-of-type { border-bottom: none; }
+
+  h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 3vw, 1.6rem);
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .section-num {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--teal);
+    background: var(--teal-dim);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+  .section-desc {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 28px;
+    max-width: 700px;
+  }
+
+  /* Mermaid container */
+  .mermaid-wrap {
+    position: relative;
+    background: var(--bg-mid);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    padding: 24px 16px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+  .mermaid-wrap .mermaid {
+    display: flex;
+    justify-content: center;
+  }
+  .mermaid-wrap .mermaid svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+  }
+  .zoom-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg-deep);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-family: var(--font-mono);
+    transition: border-color 0.2s;
+  }
+  .zoom-btn:hover {
+    border-color: var(--teal);
+    color: var(--teal);
+  }
+
+  /* Cards grid */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border-accent); }
+  .card h3 {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .card .card-path {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    word-break: break-all;
+  }
+  .card p, .card ul {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .card ul { padding-left: 16px; }
+  .card li { margin-bottom: 3px; }
+
+  .card-accent-teal { border-left: 3px solid var(--teal); }
+  .card-accent-amber { border-left: 3px solid var(--amber); }
+  .card-accent-emerald { border-left: 3px solid var(--emerald); }
+  .card-accent-red { border-left: 3px solid var(--red); }
+  .card-accent-violet { border-left: 3px solid #7c3aed; }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 20px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--bg-mid);
+    border-bottom: 2px solid var(--teal-dim);
+    color: var(--teal);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    vertical-align: top;
+  }
+  tbody tr:hover td { background: rgba(8,145,178,0.04); }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .tag-teal { background: var(--teal-dim); color: var(--teal); }
+  .tag-amber { background: var(--amber-dim); color: var(--amber); }
+  .tag-emerald { background: var(--emerald-dim); color: var(--emerald); }
+  .tag-red { background: var(--red-dim); color: #fca5a5; }
+  .tag-violet { background: var(--violet-dim); color: #a78bfa; }
+
+  /* Code inline */
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    background: rgba(8,145,178,0.1);
+    color: var(--teal);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* Council timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--teal-dim), var(--emerald-dim));
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 24px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -26px;
+    top: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--teal-dim);
+    border: 2px solid var(--teal);
+  }
+  .timeline-item.verdict-for::before {
+    background: var(--emerald-dim);
+    border-color: var(--emerald);
+  }
+  .timeline-item.verdict-conditional::before {
+    background: var(--amber-dim);
+    border-color: var(--amber);
+  }
+  .timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .timeline-title {
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .timeline-body {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+  .timeline-body p {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .timeline-body ul {
+    list-style: none;
+    padding: 0;
+  }
+  .timeline-body li {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    padding: 3px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .timeline-body li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--teal);
+  }
+
+  /* Option detail row */
+  .option-default {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .option-default code {
+    font-size: 0.72rem;
+  }
+
+  /* Data flow code block */
+  .code-block {
+    background: var(--bg-mid);
+    border: 1px solid var(--border-accent);
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    overflow-x: auto;
+    line-height: 1.7;
+    white-space: pre;
+    font-family: var(--font-mono);
+  }
+  .code-block .kw { color: var(--teal); }
+  .code-block .cmt { color: var(--text-muted); }
+  .code-block .ok { color: var(--emerald); }
+  .code-block .warn { color: var(--amber); }
+  .code-block .err { color: #fca5a5; }
+
+  /* Footer */
+  footer {
+    padding: 32px 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  footer a { color: var(--teal); text-decoration: none; }
+
+  /* Tier badge */
+  .tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .tier-cheap { background: var(--emerald-dim); color: #6ee7b7; }
+  .tier-mid { background: var(--teal-dim); color: #67e8f9; }
+  .tier-frontier { background: var(--violet-dim); color: #c4b5fd; }
+
+  /* Prompt block */
+  .prompt-block {
+    background: rgba(8,145,178,0.06);
+    border: 1px solid var(--border-accent);
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .prompt-block .highlight { color: var(--amber); font-weight: 600; }
+
+  /* Two-col layout helper */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  /* Nav */
+  .nav-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(15,23,42,0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-inner::-webkit-scrollbar { display: none; }
+  .nav-link {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.2s, background 0.2s;
+    white-space: nowrap;
+  }
+  .nav-link:hover {
+    color: var(--teal);
+    background: var(--teal-dim);
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav-bar">
+  <div class="container">
+    <div class="nav-inner">
+      <a href="#hero" class="nav-link">Overview</a>
+      <a href="#architecture" class="nav-link">Architecture</a>
+      <a href="#sequence" class="nav-link">Decision Flow</a>
+      <a href="#options" class="nav-link">Options</a>
+      <a href="#tests" class="nav-link">Tests</a>
+      <a href="#council" class="nav-link">Council</a>
+      <a href="#decisions" class="nav-link">Design Decisions</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div id="hero" class="hero">
+  <div class="container">
+    <div class="fade-in">
+      <h1>Judge-Router (T4)</h1>
+      <p class="subtitle">Task Complexity Classification &mdash; Model Gateway Feature &bull; PR #47 &bull; Issue #34</p>
+      <div class="hero-stats">
+        <span class="stat-pill green"><span class="num">22</span> tests pass</span>
+        <span class="stat-pill"><span class="num">100%</span> branch coverage</span>
+        <span class="stat-pill amber"><span class="num">5</span> council reviews</span>
+        <span class="stat-pill"><span class="num">166</span> lines (router.go)</span>
+        <span class="stat-pill violet"><span class="num">60&ndash;90%</span> cost savings target</span>
+        <span class="stat-pill green"><span class="num">0</span> external deps</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Architecture -->
+<section id="architecture">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">01</span>Architecture</h2>
+      <p class="section-desc">
+        The JudgeRouter wraps a Completer interface and classifies every incoming TaskSpec into one of three tiers.
+        Functional options configure every field at construction time; the zero value is never used directly.
+      </p>
+
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="zoomIn(this)" title="Zoom in">+</button>
+          <button class="zoom-btn" onclick="zoomOut(this)" title="Zoom out">-</button>
+          <button class="zoom-btn" onclick="zoomReset(this)" title="Reset">&#8635;</button>
+        </div>
+        <div class="mermaid">
+flowchart TD
+    A([TaskSpec input]) --> B{OverrideTier set\nand valid?}
+    B -- yes --> C[slog.Info\noverride]
+    C --> RD1([RoutingDecision\nTier=override\nRawResponse=&quot;&quot;])
+
+    B -- invalid override --> WARN1[slog.Warn\ninvalid tier ignored]
+    WARN1 --> B2{completer\n== nil?}
+
+    B -- no override --> B2
+
+    B2 -- yes --> C2[slog.Warn\nno completer]
+    C2 --> RD2([RoutingDecision\nTier=defaultTier\nRawResponse=&quot;&quot;])
+
+    B2 -- no --> B3{prompt has\nexactly one %s\nno other verbs?}
+    B3 -- no --> C3[slog.Warn\nbad prompt]
+    C3 --> RD3([RoutingDecision\nTier=defaultTier\nRawResponse=&quot;&quot;])
+
+    B3 -- yes --> D[fmt.Sprintf\nprompt + task.Description]
+    D --> E[completer.Complete\nMaxTokens=10\nTemperature=0]
+
+    E -- error --> F[slog.Warn\njudge call failed]
+    F --> RD4([RoutingDecision\nTier=defaultTier\nRawResponse=&quot;&quot;])
+
+    E -- ok --> G[parseTier\nTrimSpace+ToLower]
+    G -- valid tier --> H[slog.Info\nclassified]
+    H --> RD5([RoutingDecision\nTier=tier\nModel=resp.Model\nRawResponse=resp.Content])
+
+    G -- unrecognised --> I[slog.Warn\nunrecognised response]
+    I --> RD6([RoutingDecision\nTier=defaultTier\nRawResponse=resp.Content])
+
+    subgraph opts [Functional Options]
+        direction TB
+        O1[WithJudgeModel]
+        O2[WithDefaultTier]
+        O3[WithCompleter]
+        O4[WithClassificationPrompt]
+        O5[WithLogger]
+    end
+
+    opts -.-> D
+    opts -.-> B2
+
+    style RD1 fill:#065f46,stroke:#059669
+    style RD5 fill:#065f46,stroke:#059669
+    style RD2 fill:#92400e,stroke:#d97706
+    style RD3 fill:#92400e,stroke:#d97706
+    style RD4 fill:#92400e,stroke:#d97706
+    style RD6 fill:#92400e,stroke:#d97706
+    style opts fill:#1e293b,stroke:#334155
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card card-accent-emerald">
+          <h3>Success paths (green)</h3>
+          <ul>
+            <li>OverrideTier valid &rarr; immediate return, zero completer calls</li>
+            <li>Judge classified successfully &rarr; RawResponse populated with raw model output</li>
+          </ul>
+        </div>
+        <div class="card card-accent-amber">
+          <h3>Fallback paths (amber)</h3>
+          <ul>
+            <li>Nil completer, bad prompt, judge error, unrecognised response</li>
+            <li>All fallbacks return <code>defaultTier</code> with logged reason &mdash; never a non-nil error</li>
+            <li>RawResponse empty except on unrecognised response (raw garbage preserved for debugging)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Sequence -->
+<section id="sequence">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">02</span>Routing Decision Flow</h2>
+      <p class="section-desc">
+        Sequence view showing the caller&ndash;router&ndash;judge interaction across the three routing outcomes.
+        The completer is only called on the normal classification path.
+      </p>
+
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="zoomIn(this)" title="Zoom in">+</button>
+          <button class="zoom-btn" onclick="zoomOut(this)" title="Zoom out">-</button>
+          <button class="zoom-btn" onclick="zoomReset(this)" title="Reset">&#8635;</button>
+        </div>
+        <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant C as Caller
+    participant R as JudgeRouter
+    participant J as Completer (judge)
+
+    Note over C,R: Path A — OverrideTier set
+    C->>R: Classify(ctx, TaskSpec{OverrideTier: frontier})
+    R->>R: task.OverrideTier.Valid() == true
+    R-->>C: RoutingDecision{Tier: frontier, Reason: "override: ...", RawResponse: ""}
+
+    Note over C,R: Path B — Normal classification
+    C->>R: Classify(ctx, TaskSpec{Description: "Design a distributed cache"})
+    R->>R: no override, completer != nil, prompt valid
+    R->>J: Complete(ctx, {Model: haiku, MaxTokens: 10, Temperature: 0})
+    J-->>R: CompletionResponse{Content: "frontier"}
+    R->>R: parseTier("frontier") == TierFrontier
+    R-->>C: RoutingDecision{Tier: frontier, Model: haiku, Reason: "judge classified as frontier", RawResponse: "frontier"}
+
+    Note over C,R: Path C — Classification failure fallback
+    C->>R: Classify(ctx, TaskSpec{Description: "do something"})
+    R->>J: Complete(ctx, judgeRequest)
+    J-->>R: error("network timeout")
+    R->>R: slog.Warn + fallback to defaultTier
+    R-->>C: RoutingDecision{Tier: mid, Reason: "judge call failed (network timeout); falling back...", RawResponse: ""}
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <div class="card card-accent-teal">
+          <h3><span class="tier-badge tier-cheap">cheap</span></h3>
+          <p class="card-path">Haiku-class models / Claude Haiku 4.5</p>
+          <ul>
+            <li>Simple lookups and formatting</li>
+            <li>Summarizing short text</li>
+            <li>Straightforward code fixes</li>
+            <li>~$0.0003 per 1K output tokens</li>
+          </ul>
+        </div>
+        <div class="card card-accent-amber">
+          <h3><span class="tier-badge tier-mid">mid</span></h3>
+          <p class="card-path">Sonnet-class models / Claude Sonnet 4.6</p>
+          <ul>
+            <li>Moderate analysis tasks</li>
+            <li>Code generation</li>
+            <li>Multi-step reasoning</li>
+            <li>Default fallback tier</li>
+          </ul>
+        </div>
+        <div class="card card-accent-violet">
+          <h3><span class="tier-badge tier-frontier">frontier</span></h3>
+          <p class="card-path">Opus-class models / Claude Opus 4</p>
+          <ul>
+            <li>Complex architecture decisions</li>
+            <li>Novel problem-solving</li>
+            <li>Long-form creative work</li>
+            <li>Maximum reasoning depth</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Functional Options -->
+<section id="options">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">03</span>Functional Options</h2>
+      <p class="section-desc">
+        All JudgeRouter fields are configurable via the options pattern. <code>NewJudgeRouter()</code> with no
+        arguments produces a fully usable router with sensible defaults.
+      </p>
+
+      <div class="card-grid">
+
+        <div class="card card-accent-teal">
+          <h3>WithJudgeModel</h3>
+          <p class="card-path">router.go:38&ndash;40</p>
+          <p>Sets the model sent as <code>Model</code> in every classification CompletionRequest. The judge model
+          should be fast and cheap &mdash; a Haiku-class model for penny-per-call overhead.</p>
+          <div class="option-default">Default: <code>"claude-haiku-4-5-20251001"</code></div>
+        </div>
+
+        <div class="card card-accent-amber">
+          <h3>WithDefaultTier</h3>
+          <p class="card-path">router.go:44&ndash;46</p>
+          <p>Sets the fallback tier returned on all failure paths: nil completer, bad prompt, judge error, or
+          unrecognised response. Operators can set this to <code>TierFrontier</code> to fail safe on the
+          high-quality side.</p>
+          <div class="option-default">Default: <code>TierMid</code></div>
+        </div>
+
+        <div class="card card-accent-emerald">
+          <h3>WithCompleter</h3>
+          <p class="card-path">router.go:49&ndash;51</p>
+          <p>Injects the <code>Completer</code> interface used for judge calls. Accepts any implementation:
+          LiteLLM client, mock, or direct provider adapter. If nil at Classify time, the router falls back
+          gracefully rather than panicking.</p>
+          <div class="option-default">Default: <code>nil</code> (no-op fallback)</div>
+        </div>
+
+        <div class="card card-accent-red">
+          <h3>WithClassificationPrompt</h3>
+          <p class="card-path">router.go:55&ndash;57</p>
+          <p>Overrides the built-in prompt template. Must contain exactly one <code>%s</code> verb and no other
+          format verbs. Task description is injected via <code>fmt.Sprintf</code>. Enables prompt tuning without
+          recompiling.</p>
+          <div class="option-default">Default: built-in three-tier prompt with <code>%s</code></div>
+        </div>
+
+        <div class="card card-accent-teal">
+          <h3>WithLogger</h3>
+          <p class="card-path">router.go:61&ndash;63</p>
+          <p>Injects a <code>*slog.Logger</code> for all structured routing log output. Avoids mutating the
+          global <code>slog.Default()</code> logger, making routers safe to use in parallel and in tests
+          with captured log output.</p>
+          <div class="option-default">Default: <code>slog.Default()</code></div>
+        </div>
+
+      </div>
+
+      <div style="margin-top: 28px;">
+        <h3 style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 12px;">
+          Built-in Classification Prompt
+        </h3>
+        <div class="prompt-block">You are a task complexity classifier. Classify the following task into exactly one of three tiers.
+
+Respond with ONLY one word &mdash; no punctuation, no explanation:
+- "cheap"    &mdash; simple lookups, formatting, summarizing short text, straightforward code fixes
+- "mid"      &mdash; moderate analysis, code generation, multi-step reasoning
+- "frontier" &mdash; complex architecture, novel problem-solving, long-form creative work
+
+Task: <span class="highlight">%s</span></div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;">
+          MaxTokens=10, Temperature=0 &mdash; single word response, deterministic, caps output tightly to prevent verbose hallucination
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tests -->
+<section id="tests">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">04</span>Test Coverage</h2>
+      <p class="section-desc">
+        22 test cases across 5 test functions covering every code path in <code>router.go</code>.
+        All tests use table-driven style with a <code>mockCompleter</code> that captures call counts and
+        last request.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Test Function / Case</th>
+              <th>What it tests</th>
+              <th>Key assertions</th>
+              <th>Lines</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>TestJudgeRouter_Classify</code></td>
+              <td colspan="3" style="color: var(--text-muted); font-style: italic;">Table-driven main suite &mdash; 12 sub-cases below</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">override tier skips classification</td>
+              <td>Valid OverrideTier bypasses completer</td>
+              <td>tier=frontier, calls=0, reason contains "override", RawResponse=""</td>
+              <td>37&ndash;49</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">judge returns cheap</td>
+              <td>Normal cheap classification path</td>
+              <td>tier=cheap, calls=1, reason "classified as cheap", RawResponse="cheap"</td>
+              <td>50&ndash;60</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">judge returns mid</td>
+              <td>Normal mid classification path</td>
+              <td>tier=mid, calls=1, reason "classified as mid", RawResponse="mid"</td>
+              <td>61&ndash;71</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">judge returns frontier</td>
+              <td>Normal frontier classification path</td>
+              <td>tier=frontier, calls=1, reason "classified as frontier", RawResponse="frontier"</td>
+              <td>72&ndash;82</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">uppercase CHEAP</td>
+              <td>Case-insensitive parseTier via full Classify path</td>
+              <td>tier=cheap, RawResponse="CHEAP" (original case preserved)</td>
+              <td>83&ndash;93</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">garbage response fallback</td>
+              <td>Unrecognised response falls back to defaultTier</td>
+              <td>tier=mid, reason "unrecognised response" + "bananas", RawResponse="bananas"</td>
+              <td>94&ndash;104</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">completer error fallback</td>
+              <td>Network error falls back gracefully</td>
+              <td>no error returned, tier=mid, reason "network timeout", RawResponse=""</td>
+              <td>105&ndash;115</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">HTTP 500 error fallback</td>
+              <td>Provider 500 error falls back gracefully</td>
+              <td>no error returned, tier=mid, reason "HTTP 500 Internal Server Error"</td>
+              <td>116&ndash;126</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">empty string response</td>
+              <td>Empty content treated as unrecognised, no panic</td>
+              <td>tier=mid, reason "falling back to default tier", RawResponse=""</td>
+              <td>127&ndash;137</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">whitespace-padded frontier</td>
+              <td>TrimSpace normalisation in parseTier</td>
+              <td>tier=frontier, RawResponse="&nbsp;&nbsp;frontier&nbsp;&nbsp;" (original whitespace preserved)</td>
+              <td>138&ndash;148</td>
+            </tr>
+            <tr>
+              <td style="padding-left: 28px; color: var(--text-muted);">override cheap on complex task</td>
+              <td>OverrideTier=cheap beats complexity of description</td>
+              <td>tier=cheap, calls=0, reason "override", RawResponse=""</td>
+              <td>149&ndash;161</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_ParseTierCaseInsensitive</code></td>
+              <td>Unit tests for parseTier directly &mdash; 7 cases</td>
+              <td>cheap/CHEAP/mid(padded)/Frontier/FRONTIER &rarr; correct tier; unknown/"" &rarr; invalid</td>
+              <td>197&ndash;216</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_NoCompleterUsesDefault</code></td>
+              <td>Nil completer path; no panic</td>
+              <td>tier=cheap (custom default), RawResponse="", reason "no completer configured"</td>
+              <td>218&ndash;233</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_MissingFormatVerb</code></td>
+              <td>Prompt with no %s rejected before completer call</td>
+              <td>tier=mid, calls=0, reason "exactly one %s verb", RawResponse=""</td>
+              <td>235&ndash;264</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_ExcessFormatVerbs</code></td>
+              <td>Prompt with two %s verbs rejected</td>
+              <td>tier=mid, calls=0, reason "exactly one %s verb and no other format verbs"</td>
+              <td>266&ndash;295</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_NonSFormatVerb</code></td>
+              <td>Prompt with %s + %d rejected (non-%s verb)</td>
+              <td>tier=mid, calls=0, reason "no other format verbs"</td>
+              <td>297&ndash;326</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_InvalidOverrideTier</code></td>
+              <td>Invalid OverrideTier ("bogus") warns and falls through to classification</td>
+              <td>tier=cheap (from judge), calls=1, warn log contains "invalid override tier ignored" + task_id + tier=bogus</td>
+              <td>328&ndash;378</td>
+            </tr>
+            <tr>
+              <td><code>TestJudgeRouter_CustomClassificationPrompt</code></td>
+              <td>WithClassificationPrompt overrides built-in prompt</td>
+              <td>completer receives prompt containing "Rate this: build a spaceship"</td>
+              <td>380&ndash;406</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Council Review History -->
+<section id="council">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">05</span>Council Review History</h2>
+      <p class="section-desc">
+        Five adversarial council review rounds were run before the feature reached FOR verdict.
+        Each round consisted of ADVOCATE, CRITIC, QUESTIONER, and ARBITER roles per the council protocol.
+      </p>
+
+      <div class="timeline">
+
+        <div class="timeline-item verdict-conditional">
+          <div class="timeline-header">
+            <span class="timeline-title">Council 1</span>
+            <span class="tag tag-amber">CONDITIONAL</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Initial implementation review</span>
+          </div>
+          <div class="timeline-body">
+            <p>First review of the JudgeRouter implementation. Three required fixes identified before FOR could be issued.</p>
+            <ul>
+              <li>Add prompt <code>%s</code> validation: reject prompts missing the format verb to prevent silent task description omission</li>
+              <li>Add <code>TestJudgeRouter_MissingFormatVerb</code> test case to cover the new guard</li>
+              <li>Slog housekeeping: ensure all log calls use <code>log/slog</code> structured logging; no <code>log.Printf</code> remnants</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="timeline-item verdict-conditional">
+          <div class="timeline-header">
+            <span class="timeline-title">Council 2</span>
+            <span class="tag tag-amber">CONDITIONAL</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Prompt validation strengthening</span>
+          </div>
+          <div class="timeline-body">
+            <p>The Council 1 fix for <code>%s</code> validation was deemed insufficient &mdash; it only detected missing verbs but not wrong-type verbs.</p>
+            <ul>
+              <li>Strengthen the <code>%s</code> guard: reject prompts containing non-<code>%s</code> format verbs (e.g., <code>%d</code>, <code>%v</code>) in addition to the missing-verb check</li>
+              <li>The validation must count <code>%s</code> occurrences as exactly 1, and total <code>%</code> occurrences as exactly 1 (after stripping <code>%%</code> escape sequences)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="timeline-item verdict-conditional">
+          <div class="timeline-header">
+            <span class="timeline-title">Council 3</span>
+            <span class="tag tag-amber">CONDITIONAL</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Non-%s verb rejection + OverrideTier test</span>
+          </div>
+          <div class="timeline-body">
+            <p>Implementation updated with strengthened validation. Two remaining conditions identified.</p>
+            <ul>
+              <li>Implement and test the non-<code>%s</code> format verb rejection path (<code>TestJudgeRouter_NonSFormatVerb</code>)</li>
+              <li>Add <code>TestJudgeRouter_InvalidOverrideTier</code> test: invalid OverrideTier must warn and fall through to classification, not silently use default tier</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="timeline-item verdict-conditional">
+          <div class="timeline-header">
+            <span class="timeline-title">Council 4</span>
+            <span class="tag tag-amber">CONDITIONAL</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Warn-leg and RawResponse assertions</span>
+          </div>
+          <div class="timeline-body">
+            <p>NonSFormatVerb test and InvalidOverrideTier test added. Final condition: existing tests lacked assertions on log output and RawResponse in warn paths.</p>
+            <ul>
+              <li>Add warn-leg assertions to <code>TestJudgeRouter_InvalidOverrideTier</code>: verify log output contains <code>"invalid override tier ignored"</code>, <code>task_id=iot1</code>, <code>tier=bogus</code></li>
+              <li>Add <code>RawResponse</code> assertion in the InvalidOverrideTier test (expect <code>"cheap"</code> since judge classifies successfully after warn)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="timeline-item verdict-for">
+          <div class="timeline-header">
+            <span class="timeline-title">Council 5</span>
+            <span class="tag tag-emerald">FOR</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">All conditions satisfied</span>
+          </div>
+          <div class="timeline-body">
+            <p>All four council rounds&rsquo; conditions were satisfied. No new issues found. Follow-on items rolled in to the implementation without blocking the FOR verdict.</p>
+            <ul>
+              <li>Warn-leg assertions present and passing in <code>TestJudgeRouter_InvalidOverrideTier</code></li>
+              <li>RawResponse assertions complete across all test cases</li>
+              <li>All 22 tests pass with <code>go test ./internal/gateway/...</code></li>
+              <li>Compile-time Router interface assertion present: <code>var _ Router = (*JudgeRouter)(nil)</code></li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Key Design Decisions -->
+<section id="decisions">
+  <div class="container">
+    <div class="fade-in">
+      <h2><span class="section-num">06</span>Key Design Decisions</h2>
+      <p class="section-desc">
+        Four architectural choices that shaped this implementation, each with the rationale that was validated
+        through the council review process.
+      </p>
+
+      <div class="card-grid">
+
+        <div class="card card-accent-teal">
+          <h3>Judge-then-work pattern</h3>
+          <p class="card-path">Motivation: 60&ndash;90% cost savings</p>
+          <p>Without intelligent routing, every task goes to a frontier model (Opus-class). A Haiku-class judge
+          call costs a fraction of a cent and adds ~200ms p50 latency &mdash; negligible against the work model
+          call. By classifying before routing, simple tasks (formatting, lookups, short summaries) never touch
+          expensive models. The <code>OverrideTier</code> fast path eliminates judge overhead for callers that
+          already know the tier, covering latency-critical paths.</p>
+        </div>
+
+        <div class="card card-accent-amber">
+          <h3>Functional options over config struct</h3>
+          <p class="card-path">Go idiom: accept interfaces, return structs</p>
+          <p>A flat config struct would require every caller to specify all fields or use a zero-value struct
+          with surprising defaults. Functional options make defaults explicit and self-documenting at the call
+          site. Adding a new option (e.g., <code>WithTimeout</code>) is additive and backwards-compatible;
+          no existing callers break. The pattern also enables per-test configuration without global state
+          mutation.</p>
+        </div>
+
+        <div class="card card-accent-emerald">
+          <h3>WithLogger over slog.SetDefault</h3>
+          <p class="card-path">Test isolation + production safety</p>
+          <p>Calling <code>slog.SetDefault</code> in a constructor mutates global state, breaking test
+          parallelism and leaking log output across router instances. <code>WithLogger</code> scopes the
+          logger to a single router instance. Tests can inject a <code>slog.New(slog.NewTextHandler(&buf, ...))</code>
+          to capture and assert on specific log messages without affecting other test cases or the default
+          logger.</p>
+        </div>
+
+        <div class="card card-accent-red">
+          <h3>%s format verb validation</h3>
+          <p class="card-path">Defence against operator misconfiguration</p>
+          <p>If an operator supplies a prompt via <code>WithClassificationPrompt</code> without a <code>%s</code>
+          verb, <code>fmt.Sprintf</code> silently produces a prompt with no task description &mdash; the judge
+          model classifies an empty context. The guard checks that the prompt contains exactly one <code>%s</code>
+          and no other format verbs (after stripping <code>%%</code> escapes). This is validated before any
+          completer call so bad configuration is caught immediately, not silently absorbed.</p>
+        </div>
+
+      </div>
+
+      <div style="margin-top: 28px;">
+        <h3 style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 12px;">
+          Data Flow: Classify Path with RawResponse Population
+        </h3>
+        <div class="code-block"><span class="kw">Classify</span>(ctx, task)
+  <span class="cmt">// Fast path</span>
+  <span class="kw">if</span> task.OverrideTier != "" &amp;&amp; task.OverrideTier.Valid()
+    slog.InfoContext  → <span class="ok">return {Tier: override, RawResponse: ""}</span>
+  <span class="kw">elif</span> task.OverrideTier != ""
+    slog.WarnContext  → <span class="warn">warn: invalid tier, continue to classification</span>
+
+  <span class="cmt">// Guard rails</span>
+  <span class="kw">if</span> r.completer == nil
+    slog.WarnContext  → <span class="warn">return {Tier: defaultTier, RawResponse: ""}</span>
+  <span class="kw">if</span> prompt %s count != 1 || total % count != 1
+    slog.WarnContext  → <span class="warn">return {Tier: defaultTier, RawResponse: ""}</span>
+
+  <span class="cmt">// Judge call</span>
+  prompt := fmt.Sprintf(classificationPrompt, task.Description)
+  resp, err := r.completer.Complete(ctx, {MaxTokens: 10, Temperature: 0})
+  <span class="kw">if</span> err != nil
+    slog.WarnContext  → <span class="warn">return {Tier: defaultTier, RawResponse: ""}</span>
+
+  <span class="cmt">// Parse + return</span>
+  tier := parseTier(resp.Content)  <span class="cmt">// TrimSpace + ToLower</span>
+  <span class="kw">if</span> !tier.Valid()
+    slog.WarnContext  → <span class="warn">return {Tier: defaultTier, RawResponse: resp.Content}</span>  <span class="cmt">// raw preserved</span>
+  slog.InfoContext    → <span class="ok">return {Tier: tier, Model: resp.Model, RawResponse: resp.Content}</span>
+
+  <span class="cmt">// Note: Classify NEVER returns non-nil error</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>
+      Generated 2026-03-27 &bull;
+      <a href="../../judge-router-spec.md">judge-router-spec.md</a> &bull;
+      <a href="../../internal/gateway/router.go">router.go</a> &bull;
+      <a href="../../internal/gateway/router_test.go">router_test.go</a> &bull;
+      <a href="../../internal/gateway/gateway.go">gateway.go</a>
+    </p>
+    <p style="margin-top: 4px;">agenKic-orKistrator &bull; branch: feature/34-feature-judge-router-t4</p>
+  </div>
+</footer>
+
+<script>
+  // Scroll-triggered fade-in
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // Zoom controls
+  function getScale(wrap) {
+    const svg = wrap.querySelector('svg');
+    if (!svg) return 1;
+    const transform = svg.style.transform;
+    const match = transform.match(/scale\(([^)]+)\)/);
+    return match ? parseFloat(match[1]) : 1;
+  }
+
+  function applyScale(wrap, scale) {
+    const svg = wrap.querySelector('svg');
+    if (!svg) return;
+    scale = Math.max(0.4, Math.min(3, scale));
+    svg.style.transform = `scale(${scale})`;
+    svg.style.transformOrigin = 'top center';
+    svg.style.transition = 'transform 0.2s ease';
+    const h = svg.getBoundingClientRect().height;
+    wrap.style.minHeight = (h * scale + 32) + 'px';
+  }
+
+  function getWrap(btn) {
+    return btn.closest('.mermaid-wrap');
+  }
+
+  function zoomIn(btn) {
+    const wrap = getWrap(btn);
+    applyScale(wrap, getScale(wrap) + 0.15);
+  }
+
+  function zoomOut(btn) {
+    const wrap = getWrap(btn);
+    applyScale(wrap, getScale(wrap) - 0.15);
+  }
+
+  function zoomReset(btn) {
+    const wrap = getWrap(btn);
+    const svg = wrap.querySelector('svg');
+    if (svg) {
+      svg.style.transform = '';
+      wrap.style.minHeight = '';
+    }
+  }
+</script>
+</body>
+</html>
