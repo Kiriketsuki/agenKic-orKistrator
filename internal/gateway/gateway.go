@@ -61,9 +61,10 @@ type TaskSpec struct {
 
 // RoutingDecision captures the judge-router's classification output.
 type RoutingDecision struct {
-	Tier   ModelTier
-	Model  string
-	Reason string
+	Tier        ModelTier
+	Model       string
+	Reason      string
+	RawResponse string // Raw judge model output; empty on override/error paths.
 }
 
 // CompletionRequest is the provider-agnostic input to a model completion call.
