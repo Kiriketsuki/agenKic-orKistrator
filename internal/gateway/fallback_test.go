@@ -199,3 +199,29 @@ func TestFallbackCompleter_FallbackOnlyModel_SingleAttempt(t *testing.T) {
 		t.Errorf("Content = %q, want %q", resp.Content, "direct")
 	}
 }
+
+func TestFallbackCompleter_CancelledContext_StopsChain(t *testing.T) {
+	cfg := testConfig()
+	completers := map[string]Completer{
+		"model-primary":    &stubCompleter{provider: "p1", resp: CompletionResponse{Content: "should not reach"}},
+		"model-fallback-1": &stubCompleter{provider: "p2", resp: CompletionResponse{Content: "should not reach"}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before calling Complete
+
+	fc := NewFallbackCompleter(completers, cfg)
+	_, err := fc.Complete(ctx, CompletionRequest{Model: "model-primary"})
+	if err == nil {
+		t.Fatal("expected error for cancelled context, got nil")
+	}
+	var fe *FallbackError
+	if !errors.As(err, &fe) {
+		t.Fatalf("error type = %T, want *FallbackError", err)
+	}
+	if len(fe.Errors) == 0 {
+		t.Fatal("FallbackError.Errors is empty, want at least one entry")
+	}
+	if !errors.Is(fe.Errors[0].Err, context.Canceled) {
+		t.Errorf("fe.Errors[0].Err = %v, want context.Canceled", fe.Errors[0].Err)
+	}
+}
