@@ -1,6 +1,9 @@
 package gateway
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var (
 	// ErrNoProvider is returned when no provider is configured for the requested model.
@@ -72,4 +75,16 @@ func (e *FallbackError) Error() string {
 	return msg
 }
 
-func (e *FallbackError) Unwrap() error { return ErrAllProvidersFailed }
+// Unwrap returns ErrAllProvidersFailed plus any context errors found in the
+// chain. This allows errors.Is(err, context.Canceled) and
+// errors.Is(err, context.DeadlineExceeded) to work transparently.
+func (e *FallbackError) Unwrap() []error {
+	errs := []error{ErrAllProvidersFailed}
+	for _, pe := range e.Errors {
+		if pe.Err != nil && (pe.Err == context.Canceled || pe.Err == context.DeadlineExceeded) {
+			errs = append(errs, pe.Err)
+			break // only one context error is possible per chain
+		}
+	}
+	return errs
+}
