@@ -329,16 +329,16 @@ func TestJudgeRouter_InvalidOverrideTier(t *testing.T) {
 	mc := &mockCompleter{
 		response: CompletionResponse{Content: "cheap", Model: defaultJudgeModel},
 	}
+
+	// Inject a captured logger via WithLogger — no global mutation needed.
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
 	router := NewJudgeRouter(
 		WithCompleter(mc),
 		WithDefaultTier(TierMid),
+		WithLogger(logger),
 	)
-
-	// Capture slog output to verify warn-leg of warn-and-continue path.
-	var logBuf strings.Builder
-	oldDefault := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	t.Cleanup(func() { slog.SetDefault(oldDefault) })
 
 	decision, err := router.Classify(context.Background(), TaskSpec{
 		ID:           "iot1",
@@ -365,8 +365,15 @@ func TestJudgeRouter_InvalidOverrideTier(t *testing.T) {
 		t.Errorf("RawResponse = %q, want %q", decision.RawResponse, "cheap")
 	}
 
-	if !strings.Contains(logBuf.String(), "invalid override tier ignored") {
-		t.Errorf("expected warn log containing %q, got: %q", "invalid override tier ignored", logBuf.String())
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "invalid override tier ignored") {
+		t.Errorf("expected warn log containing %q, got: %q", "invalid override tier ignored", logOutput)
+	}
+	if !strings.Contains(logOutput, "task_id=iot1") {
+		t.Errorf("expected warn log containing %q, got: %q", "task_id=iot1", logOutput)
+	}
+	if !strings.Contains(logOutput, "tier=bogus") {
+		t.Errorf("expected warn log containing %q, got: %q", "tier=bogus", logOutput)
 	}
 }
 

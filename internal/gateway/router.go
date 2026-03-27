@@ -27,6 +27,7 @@ type JudgeRouter struct {
 	judgeModel           string
 	defaultTier          ModelTier
 	classificationPrompt string
+	logger               *slog.Logger
 }
 
 // RouterOption configures a JudgeRouter.
@@ -55,12 +56,19 @@ func WithClassificationPrompt(prompt string) RouterOption {
 	return func(r *JudgeRouter) { r.classificationPrompt = prompt }
 }
 
+// WithLogger sets the structured logger for the router.
+// Defaults to slog.Default().
+func WithLogger(l *slog.Logger) RouterOption {
+	return func(r *JudgeRouter) { r.logger = l }
+}
+
 // NewJudgeRouter returns a JudgeRouter configured with the given options.
 func NewJudgeRouter(opts ...RouterOption) *JudgeRouter {
 	r := &JudgeRouter{
 		judgeModel:           defaultJudgeModel,
 		defaultTier:          TierMid,
 		classificationPrompt: defaultClassificationPrompt,
+		logger:               slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -72,18 +80,18 @@ func NewJudgeRouter(opts ...RouterOption) *JudgeRouter {
 // immediately. Otherwise the judge model is consulted to classify the task.
 func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecision, error) {
 	if task.OverrideTier != "" && task.OverrideTier.Valid() {
-		slog.InfoContext(ctx, "gateway/router: override tier", "task_id", task.ID, "tier", task.OverrideTier)
+		r.logger.InfoContext(ctx, "gateway/router: override tier", "task_id", task.ID, "tier", task.OverrideTier)
 		return RoutingDecision{
 			Tier:        task.OverrideTier,
 			Reason:      fmt.Sprintf("override: tier forced to %s", task.OverrideTier),
 			RawResponse: "",
 		}, nil
 	} else if task.OverrideTier != "" {
-		slog.WarnContext(ctx, "gateway/router: invalid override tier ignored", "task_id", task.ID, "tier", task.OverrideTier)
+		r.logger.WarnContext(ctx, "gateway/router: invalid override tier ignored", "task_id", task.ID, "tier", task.OverrideTier)
 	}
 
 	if r.completer == nil {
-		slog.WarnContext(ctx, "gateway/router: no completer configured", "task_id", task.ID, "tier", r.defaultTier)
+		r.logger.WarnContext(ctx, "gateway/router: no completer configured", "task_id", task.ID, "tier", r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
 			Reason:      "no completer configured; using default tier",
@@ -93,7 +101,7 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 
 	cleaned := strings.ReplaceAll(r.classificationPrompt, "%%", "")
 	if strings.Count(cleaned, "%s") != 1 || strings.Count(cleaned, "%") != 1 {
-		slog.WarnContext(ctx, "gateway/router: classification prompt must contain exactly one %s verb and no other format verbs", "task_id", task.ID, "tier", r.defaultTier)
+		r.logger.WarnContext(ctx, "gateway/router: classification prompt must contain exactly one %s verb and no other format verbs", "task_id", task.ID, "tier", r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
 			Reason:      "classification prompt must contain exactly one %s verb and no other format verbs; using default tier",
@@ -113,7 +121,7 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 
 	resp, err := r.completer.Complete(ctx, req)
 	if err != nil {
-		slog.WarnContext(ctx, "gateway/router: judge call failed", "task_id", task.ID, "tier", r.defaultTier, "model", r.judgeModel, "error", err)
+		r.logger.WarnContext(ctx, "gateway/router: judge call failed", "task_id", task.ID, "tier", r.defaultTier, "model", r.judgeModel, "error", err)
 		reason := fmt.Sprintf("judge call failed (%v); falling back to default tier %s", err, r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
@@ -124,7 +132,7 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 
 	tier := parseTier(resp.Content)
 	if !tier.Valid() {
-		slog.WarnContext(ctx, "gateway/router: unrecognised judge response", "task_id", task.ID, "tier", r.defaultTier, "raw_response", resp.Content)
+		r.logger.WarnContext(ctx, "gateway/router: unrecognised judge response", "task_id", task.ID, "tier", r.defaultTier, "raw_response", resp.Content)
 		reason := fmt.Sprintf("judge returned unrecognised response %q; falling back to default tier %s", resp.Content, r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
@@ -133,7 +141,7 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 		}, nil
 	}
 
-	slog.InfoContext(ctx, "gateway/router: classified", "task_id", task.ID, "tier", tier, "model", resp.Model)
+	r.logger.InfoContext(ctx, "gateway/router: classified", "task_id", task.ID, "tier", tier, "model", resp.Model)
 	return RoutingDecision{
 		Tier:        tier,
 		Model:       resp.Model,
