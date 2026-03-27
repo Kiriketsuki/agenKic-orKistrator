@@ -78,6 +78,8 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 			Reason:      fmt.Sprintf("override: tier forced to %s", task.OverrideTier),
 			RawResponse: "",
 		}, nil
+	} else if task.OverrideTier != "" {
+		slog.WarnContext(ctx, "gateway/router: invalid override tier ignored", "task_id", task.ID, "tier", task.OverrideTier)
 	}
 
 	if r.completer == nil {
@@ -85,6 +87,15 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 		return RoutingDecision{
 			Tier:        r.defaultTier,
 			Reason:      "no completer configured; using default tier",
+			RawResponse: "",
+		}, nil
+	}
+
+	if !strings.Contains(r.classificationPrompt, "%s") {
+		slog.WarnContext(ctx, "gateway/router: classification prompt missing %s verb", "task_id", task.ID, "tier", r.defaultTier)
+		return RoutingDecision{
+			Tier:        r.defaultTier,
+			Reason:      "classification prompt missing %s verb; using default tier",
 			RawResponse: "",
 		}, nil
 	}
@@ -101,7 +112,7 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 
 	resp, err := r.completer.Complete(ctx, req)
 	if err != nil {
-		slog.WarnContext(ctx, "gateway/router: judge call failed", "task_id", task.ID, "tier", r.defaultTier, "error", err)
+		slog.WarnContext(ctx, "gateway/router: judge call failed", "task_id", task.ID, "tier", r.defaultTier, "model", r.judgeModel, "error", err)
 		reason := fmt.Sprintf("judge call failed (%v); falling back to default tier %s", err, r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
