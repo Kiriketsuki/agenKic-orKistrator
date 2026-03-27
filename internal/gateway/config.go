@@ -51,7 +51,7 @@ type rawGatewayConfig struct {
 func LoadConfig(path string) (GatewayConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return GatewayConfig{}, fmt.Errorf("gateway: read config %q: %w", path, err)
+		return GatewayConfig{}, fmt.Errorf("%w: read config %q: %v", ErrConfigInvalid, path, err)
 	}
 	return parseConfig(data)
 }
@@ -104,14 +104,6 @@ func ValidateConfig(cfg GatewayConfig) error {
 	}
 	if len(cfg.Tiers) == 0 {
 		return fmt.Errorf("%w: at least one tier must be defined", ErrConfigInvalid)
-	}
-
-	// Build a set of all declared model names for reference checks.
-	allModels := make(map[string]struct{})
-	for _, pc := range cfg.Providers {
-		for _, m := range pc.Models {
-			allModels[m] = struct{}{}
-		}
 	}
 
 	for tier, tc := range cfg.Tiers {

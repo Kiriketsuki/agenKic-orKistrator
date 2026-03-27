@@ -6,6 +6,9 @@ import (
 	"fmt"
 )
 
+// Compile-time interface assertion.
+var _ Completer = (*FallbackCompleter)(nil)
+
 // FallbackCompleter wraps a set of per-model Completers and applies the
 // fallback chain defined in GatewayConfig when the primary model fails.
 type FallbackCompleter struct {
@@ -21,6 +24,9 @@ func NewFallbackCompleter(completers map[string]Completer, config GatewayConfig)
 		config:     config,
 	}
 }
+
+// Provider returns the logical provider name for this fallback dispatcher.
+func (fc *FallbackCompleter) Provider() string { return "fallback" }
 
 // Complete resolves the model in req to a tier, then attempts the primary
 // model and each fallback in order. The first success is returned.
@@ -71,6 +77,11 @@ func (fc *FallbackCompleter) tryChain(ctx context.Context, req CompletionRequest
 	var errs []ProviderError
 
 	for i, model := range chain {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, ProviderError{Provider: model, Err: err})
+			return CompletionResponse{}, &FallbackError{Errors: errs}
+		}
+
 		c, ok := fc.completers[model]
 		if !ok {
 			errs = append(errs, ProviderError{

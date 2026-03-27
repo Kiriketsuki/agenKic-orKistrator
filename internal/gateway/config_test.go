@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"errors"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -168,5 +170,43 @@ func TestValidateConfig(t *testing.T) {
 				t.Errorf("error = %v, want wrapping ErrConfigInvalid", err)
 			}
 		})
+	}
+}
+
+// repoRoot returns the repository root by walking up from the test file location.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot determine test file path")
+	}
+	// internal/gateway/config_test.go → repo root is two dirs up
+	return filepath.Join(filepath.Dir(filename), "..", "..")
+}
+
+func TestLoadConfig(t *testing.T) {
+	path := filepath.Join(repoRoot(t), "config", "models.yaml")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig(%q) error: %v", path, err)
+	}
+	if cfg.Gateway.LiteLLMBaseURL != "http://localhost:4000" {
+		t.Errorf("LiteLLMBaseURL = %q, want http://localhost:4000", cfg.Gateway.LiteLLMBaseURL)
+	}
+	if cfg.Gateway.TimeoutSeconds != 30 {
+		t.Errorf("TimeoutSeconds = %d, want 30", cfg.Gateway.TimeoutSeconds)
+	}
+	if len(cfg.Tiers) != 3 {
+		t.Errorf("len(Tiers) = %d, want 3", len(cfg.Tiers))
+	}
+}
+
+func TestLoadConfig_FileNotFound(t *testing.T) {
+	_, err := LoadConfig("/nonexistent/path/models.yaml")
+	if err == nil {
+		t.Fatal("expected error for nonexistent file, got nil")
+	}
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("error = %v, want wrapping ErrConfigInvalid", err)
 	}
 }

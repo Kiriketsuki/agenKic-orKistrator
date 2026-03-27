@@ -179,3 +179,23 @@ func TestFallbackCompleter_CompleteWithTier_InvalidTier(t *testing.T) {
 		t.Errorf("error = %v, want ErrInvalidTier", err)
 	}
 }
+
+func TestFallbackCompleter_FallbackOnlyModel_SingleAttempt(t *testing.T) {
+	cfg := testConfig()
+	// "model-fallback-1" appears only in cheap tier's fallback chain, never as a PrimaryModel.
+	completers := map[string]Completer{
+		"model-fallback-1": &stubCompleter{provider: "p2", resp: CompletionResponse{Content: "direct"}},
+	}
+
+	fc := NewFallbackCompleter(completers, cfg)
+	resp, err := fc.Complete(context.Background(), CompletionRequest{Model: "model-fallback-1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.FallbackUsed {
+		t.Error("FallbackUsed should be false for single-entry chain")
+	}
+	if resp.Content != "direct" {
+		t.Errorf("Content = %q, want %q", resp.Content, "direct")
+	}
+}
