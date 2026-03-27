@@ -253,12 +253,43 @@ func TestJudgeRouter_MissingFormatVerb(t *testing.T) {
 		t.Errorf("completer called %d times, want 0 (should not reach completer)", mc.calls)
 	}
 
-	if !strings.Contains(decision.Reason, "missing %s verb") {
-		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "missing %s verb")
+	if !strings.Contains(decision.Reason, "exactly one %s verb") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb")
 	}
 
 	if decision.RawResponse != "" {
 		t.Errorf("RawResponse = %q, want empty on missing-verb fallback", decision.RawResponse)
+	}
+}
+
+func TestJudgeRouter_ExcessFormatVerbs(t *testing.T) {
+	mc := &mockCompleter{
+		response: CompletionResponse{Content: "cheap", Model: defaultJudgeModel},
+	}
+	router := NewJudgeRouter(
+		WithCompleter(mc),
+		WithClassificationPrompt("Rate task %s on scale %s"),
+	)
+
+	decision, err := router.Classify(context.Background(), TaskSpec{ID: "ev1", Description: "format a CSV"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if decision.Tier != TierMid {
+		t.Errorf("tier = %q, want %q (default tier)", decision.Tier, TierMid)
+	}
+
+	if mc.calls != 0 {
+		t.Errorf("completer called %d times, want 0 (should not reach completer)", mc.calls)
+	}
+
+	if !strings.Contains(decision.Reason, "exactly one %s verb") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb")
+	}
+
+	if decision.RawResponse != "" {
+		t.Errorf("RawResponse = %q, want empty on excess-verb fallback", decision.RawResponse)
 	}
 }
 

@@ -91,11 +91,11 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 		}, nil
 	}
 
-	if !strings.Contains(r.classificationPrompt, "%s") {
-		slog.WarnContext(ctx, "gateway/router: classification prompt missing %s verb", "task_id", task.ID, "tier", r.defaultTier)
+	if strings.Count(r.classificationPrompt, "%s") != 1 {
+		slog.WarnContext(ctx, "gateway/router: classification prompt must contain exactly one %s verb", "task_id", task.ID, "tier", r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
-			Reason:      "classification prompt missing %s verb; using default tier",
+			Reason:      "classification prompt must contain exactly one %s verb; using default tier",
 			RawResponse: "",
 		}, nil
 	}
