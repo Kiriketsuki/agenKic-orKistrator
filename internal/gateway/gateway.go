@@ -40,6 +40,8 @@ type RoutingDecision struct {
 	Tier   ModelTier
 	Model  string
 	Reason string
+	// RawResponse is the raw judge model output; empty on override/fallback.
+	RawResponse string
 }
 
 // CompletionRequest is the provider-agnostic input to a model completion call.

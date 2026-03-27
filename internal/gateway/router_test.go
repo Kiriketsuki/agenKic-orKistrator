@@ -3,18 +3,21 @@ package gateway
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
 // mockCompleter is a test double for the Completer interface.
 type mockCompleter struct {
-	response CompletionResponse
-	err      error
-	calls    int
+	response    CompletionResponse
+	err         error
+	calls       int
+	lastRequest CompletionRequest
 }
 
-func (m *mockCompleter) Complete(_ context.Context, _ CompletionRequest) (CompletionResponse, error) {
+func (m *mockCompleter) Complete(_ context.Context, req CompletionRequest) (CompletionResponse, error) {
 	m.calls++
+	m.lastRequest = req
 	return m.response, m.err
 }
 
@@ -22,12 +25,13 @@ func (m *mockCompleter) Provider() string { return "mock" }
 
 func TestJudgeRouter_Classify(t *testing.T) {
 	tests := []struct {
-		name          string
-		task          TaskSpec
-		completer     *mockCompleter
-		wantTier      ModelTier
-		wantCalls     int // expected calls to completer.Complete
-		wantReasonSub string
+		name            string
+		task            TaskSpec
+		completer       *mockCompleter
+		wantTier        ModelTier
+		wantCalls       int // expected calls to completer.Complete
+		wantReasonSubs  []string
+		wantRawResponse string
 	}{
 		{
 			name: "override tier skips classification",
@@ -36,10 +40,11 @@ func TestJudgeRouter_Classify(t *testing.T) {
 				Description:  "anything",
 				OverrideTier: TierFrontier,
 			},
-			completer:     &mockCompleter{},
-			wantTier:      TierFrontier,
-			wantCalls:     0,
-			wantReasonSub: "override",
+			completer:       &mockCompleter{},
+			wantTier:        TierFrontier,
+			wantCalls:       0,
+			wantReasonSubs:  []string{"override"},
+			wantRawResponse: "",
 		},
 		{
 			name: "judge returns cheap",
@@ -47,9 +52,21 @@ func TestJudgeRouter_Classify(t *testing.T) {
 			completer: &mockCompleter{
 				response: CompletionResponse{Content: "cheap", Model: defaultJudgeModel},
 			},
-			wantTier:      TierCheap,
-			wantCalls:     1,
-			wantReasonSub: "classified as cheap",
+			wantTier:        TierCheap,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"classified as cheap"},
+			wantRawResponse: "cheap",
+		},
+		{
+			name: "judge returns mid",
+			task: TaskSpec{ID: "t-mid", Description: "generate a moderately complex report"},
+			completer: &mockCompleter{
+				response: CompletionResponse{Content: "mid", Model: defaultJudgeModel},
+			},
+			wantTier:        TierMid,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"classified as mid"},
+			wantRawResponse: "mid",
 		},
 		{
 			name: "judge returns frontier",
@@ -57,9 +74,21 @@ func TestJudgeRouter_Classify(t *testing.T) {
 			completer: &mockCompleter{
 				response: CompletionResponse{Content: "frontier", Model: defaultJudgeModel},
 			},
-			wantTier:      TierFrontier,
-			wantCalls:     1,
-			wantReasonSub: "classified as frontier",
+			wantTier:        TierFrontier,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"classified as frontier"},
+			wantRawResponse: "frontier",
+		},
+		{
+			name: "judge returns uppercase CHEAP through full classify path",
+			task: TaskSpec{ID: "t-upper", Description: "format a CSV"},
+			completer: &mockCompleter{
+				response: CompletionResponse{Content: "CHEAP", Model: defaultJudgeModel},
+			},
+			wantTier:        TierCheap,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"classified as cheap"},
+			wantRawResponse: "CHEAP",
 		},
 		{
 			name: "judge returns garbage falls back to default",
@@ -67,9 +96,10 @@ func TestJudgeRouter_Classify(t *testing.T) {
 			completer: &mockCompleter{
 				response: CompletionResponse{Content: "bananas", Model: defaultJudgeModel},
 			},
-			wantTier:      TierMid, // defaultTier
-			wantCalls:     1,
-			wantReasonSub: "falling back to default tier",
+			wantTier:        TierMid, // defaultTier
+			wantCalls:       1,
+			wantReasonSubs:  []string{"falling back to default tier", "unrecognised response", "bananas"},
+			wantRawResponse: "bananas",
 		},
 		{
 			name: "completer error falls back to default",
@@ -77,9 +107,56 @@ func TestJudgeRouter_Classify(t *testing.T) {
 			completer: &mockCompleter{
 				err: errors.New("network timeout"),
 			},
-			wantTier:      TierMid,
-			wantCalls:     1,
-			wantReasonSub: "falling back to default tier",
+			wantTier:        TierMid,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"falling back to default tier", "network timeout"},
+			wantRawResponse: "",
+		},
+		{
+			name: "completer HTTP 500 error falls back to default",
+			task: TaskSpec{ID: "t-http500", Description: "do something"},
+			completer: &mockCompleter{
+				err: errors.New("HTTP 500 Internal Server Error"),
+			},
+			wantTier:        TierMid,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"falling back to default tier", "HTTP 500 Internal Server Error"},
+			wantRawResponse: "",
+		},
+		{
+			name: "empty string response falls back to default",
+			task: TaskSpec{ID: "t6", Description: "do something"},
+			completer: &mockCompleter{
+				response: CompletionResponse{Content: "", Model: defaultJudgeModel},
+			},
+			wantTier:        TierMid,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"falling back to default tier"},
+			wantRawResponse: "",
+		},
+		{
+			name: "whitespace-padded frontier is parsed correctly",
+			task: TaskSpec{ID: "t7", Description: "build a spaceship"},
+			completer: &mockCompleter{
+				response: CompletionResponse{Content: "  frontier  ", Model: defaultJudgeModel},
+			},
+			wantTier:        TierFrontier,
+			wantCalls:       1,
+			wantReasonSubs:  []string{"classified as frontier"},
+			wantRawResponse: "  frontier  ",
+		},
+		{
+			name: "override cheap on complex task returns cheap",
+			task: TaskSpec{
+				ID:           "t8",
+				Description:  "build a distributed system from scratch",
+				OverrideTier: TierCheap,
+			},
+			completer:       &mockCompleter{},
+			wantTier:        TierCheap,
+			wantCalls:       0,
+			wantReasonSubs:  []string{"override"},
+			wantRawResponse: "",
 		},
 	}
 
@@ -103,10 +180,14 @@ func TestJudgeRouter_Classify(t *testing.T) {
 				t.Errorf("completer called %d times, want %d", tc.completer.calls, tc.wantCalls)
 			}
 
-			if tc.wantReasonSub != "" {
-				if !containsSubstring(decision.Reason, tc.wantReasonSub) {
-					t.Errorf("reason = %q, want it to contain %q", decision.Reason, tc.wantReasonSub)
+			for _, sub := range tc.wantReasonSubs {
+				if !strings.Contains(decision.Reason, sub) {
+					t.Errorf("reason = %q, want it to contain %q", decision.Reason, sub)
 				}
+			}
+
+			if decision.RawResponse != tc.wantRawResponse {
+				t.Errorf("RawResponse = %q, want %q", decision.RawResponse, tc.wantRawResponse)
 			}
 		})
 	}
@@ -142,17 +223,38 @@ func TestJudgeRouter_NoCompleterUsesDefault(t *testing.T) {
 	if decision.Tier != TierCheap {
 		t.Errorf("tier = %q, want %q", decision.Tier, TierCheap)
 	}
-}
-
-func containsSubstring(s, sub string) bool {
-	return len(sub) == 0 || (len(s) >= len(sub) && searchSubstring(s, sub))
-}
-
-func searchSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
+	if decision.RawResponse != "" {
+		t.Errorf("RawResponse = %q, want empty on no-completer path", decision.RawResponse)
 	}
-	return false
+	if !strings.Contains(decision.Reason, "no completer configured") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "no completer configured")
+	}
+}
+
+func TestJudgeRouter_CustomClassificationPrompt(t *testing.T) {
+	mc := &mockCompleter{
+		response: CompletionResponse{Content: "frontier", Model: defaultJudgeModel},
+	}
+	router := NewJudgeRouter(
+		WithCompleter(mc),
+		WithClassificationPrompt("Rate this: %s\nAnswer: cheap/mid/frontier"),
+	)
+
+	_, err := router.Classify(context.Background(), TaskSpec{ID: "p1", Description: "build a spaceship"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if mc.calls != 1 {
+		t.Fatalf("expected 1 completer call, got %d", mc.calls)
+	}
+
+	if len(mc.lastRequest.Messages) == 0 {
+		t.Fatal("no messages sent to completer")
+	}
+
+	prompt := mc.lastRequest.Messages[0].Content
+	if !strings.Contains(prompt, "Rate this: build a spaceship") {
+		t.Errorf("prompt = %q, want it to contain %q", prompt, "Rate this: build a spaceship")
+	}
 }
