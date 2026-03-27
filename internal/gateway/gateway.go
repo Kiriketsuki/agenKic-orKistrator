@@ -183,7 +183,7 @@ type ProviderConfig struct {
 	// BaseURL validation: LiteLLMClient.WithBaseURL rejects non-http/https schemes.
 	// Full host allowlist and private CIDR blocking deferred to config loading (T5).
 	BaseURL string
-	APIKey  string `json:"-"`
+	APIKey  string `json:"-" yaml:"-"`
 	Models  []string
 }
 
