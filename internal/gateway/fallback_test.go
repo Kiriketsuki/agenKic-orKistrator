@@ -200,6 +200,67 @@ func TestFallbackCompleter_FallbackOnlyModel_SingleAttempt(t *testing.T) {
 	}
 }
 
+// cancelAfterNCompleter cancels the given cancel func after n calls to Complete.
+type cancelAfterNCompleter struct {
+	n      int
+	calls  int
+	cancel context.CancelFunc
+	inner  Completer
+}
+
+func (c *cancelAfterNCompleter) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
+	c.calls++
+	resp, err := c.inner.Complete(ctx, req)
+	if c.calls >= c.n {
+		c.cancel()
+	}
+	return resp, err
+}
+
+func (c *cancelAfterNCompleter) Provider() string { return c.inner.Provider() }
+
+func TestFallbackCompleter_MidChainCancellation_PreservesAccumulatedErrors(t *testing.T) {
+	cfg := testConfig()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Primary fails normally, then context is cancelled after primary's Complete returns.
+	// The guard at fallback.go:80 should fire at i=1 with errs already containing
+	// the primary's failure.
+	primaryErr := errors.New("primary down")
+	primary := &cancelAfterNCompleter{
+		n:      1,
+		cancel: cancel,
+		inner:  &stubCompleter{provider: "p1", err: primaryErr},
+	}
+	completers := map[string]Completer{
+		"model-primary":    primary,
+		"model-fallback-1": &stubCompleter{provider: "p2", resp: CompletionResponse{Content: "should not reach"}},
+		"model-fallback-2": &stubCompleter{provider: "p3", resp: CompletionResponse{Content: "should not reach"}},
+	}
+
+	fc := NewFallbackCompleter(completers, cfg)
+	_, err := fc.Complete(ctx, CompletionRequest{Model: "model-primary"})
+	if err == nil {
+		t.Fatal("expected error for mid-chain cancellation, got nil")
+	}
+	var fe *FallbackError
+	if !errors.As(err, &fe) {
+		t.Fatalf("error type = %T, want *FallbackError", err)
+	}
+	// Should have 2 entries: primary failure + context cancellation
+	if len(fe.Errors) != 2 {
+		t.Fatalf("FallbackError.Errors len = %d, want 2", len(fe.Errors))
+	}
+	// Entry 0: primary's error
+	if fe.Errors[0].Err.Error() != "primary down" {
+		t.Errorf("fe.Errors[0].Err = %v, want 'primary down'", fe.Errors[0].Err)
+	}
+	// Entry 1: context cancellation from the guard
+	if !errors.Is(fe.Errors[1].Err, context.Canceled) {
+		t.Errorf("fe.Errors[1].Err = %v, want context.Canceled", fe.Errors[1].Err)
+	}
+}
+
 func TestFallbackCompleter_CancelledContext_StopsChain(t *testing.T) {
 	cfg := testConfig()
 	completers := map[string]Completer{
@@ -223,5 +284,29 @@ func TestFallbackCompleter_CancelledContext_StopsChain(t *testing.T) {
 	}
 	if !errors.Is(fe.Errors[0].Err, context.Canceled) {
 		t.Errorf("fe.Errors[0].Err = %v, want context.Canceled", fe.Errors[0].Err)
+	}
+}
+
+func TestFallbackError_UnwrapExposesContextCanceled(t *testing.T) {
+	cfg := testConfig()
+	completers := map[string]Completer{
+		"model-primary":    &stubCompleter{provider: "p1", resp: CompletionResponse{Content: "should not reach"}},
+		"model-fallback-1": &stubCompleter{provider: "p2", resp: CompletionResponse{Content: "should not reach"}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	fc := NewFallbackCompleter(completers, cfg)
+	_, err := fc.Complete(ctx, CompletionRequest{Model: "model-primary"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	// errors.Is should now find context.Canceled through FallbackError.Unwrap
+	if !errors.Is(err, context.Canceled) {
+		t.Error("errors.Is(err, context.Canceled) = false, want true")
+	}
+	// Should still match ErrAllProvidersFailed
+	if !errors.Is(err, ErrAllProvidersFailed) {
+		t.Error("errors.Is(err, ErrAllProvidersFailed) = false, want true")
 	}
 }

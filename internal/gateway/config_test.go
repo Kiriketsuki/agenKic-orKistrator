@@ -144,6 +144,15 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "empty fallback chain entry",
+			mutate: func(c *GatewayConfig) {
+				tc := c.Tiers[TierCheap]
+				tc.FallbackChain = []string{"gpt-4o-mini", ""}
+				c.Tiers[TierCheap] = tc
+			},
+			wantErr: true,
+		},
+		{
 			name: "unknown tier key",
 			mutate: func(c *GatewayConfig) {
 				c.Tiers[ModelTier("bogus")] = TierConfig{

@@ -113,6 +113,11 @@ func ValidateConfig(cfg GatewayConfig) error {
 		if tc.PrimaryModel == "" {
 			return fmt.Errorf("%w: tier %q has no primary_model", ErrConfigInvalid, tier)
 		}
+		for i, m := range tc.FallbackChain {
+			if m == "" {
+				return fmt.Errorf("%w: tier %q fallback_chain[%d] is empty", ErrConfigInvalid, tier, i)
+			}
+		}
 	}
 
 	return nil
