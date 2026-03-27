@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Config Loader & Fallback Chains (T5, T6)</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#1a2744',
+        primaryTextColor: '#e8dcc8',
+        primaryBorderColor: '#3a4f6f',
+        lineColor: '#d4a73a',
+        secondaryColor: '#0f1a2e',
+        tertiaryColor: '#1e3a5f',
+        fontFamily: 'IBM Plex Mono, monospace',
+        fontSize: '14px',
+        nodeBorder: '#3a4f6f',
+        mainBkg: '#1a2744',
+        clusterBkg: '#0d1520',
+        clusterBorder: '#2a3f5f',
+        titleColor: '#d4a73a',
+        edgeLabelBackground: '#0f1a2e',
+        nodeTextColor: '#e8dcc8'
+      },
+      flowchart: { curve: 'basis', padding: 16 }
+    });
+  </script>
+  <style>
+    :root {
+      --bg: #0a1120;
+      --bg-grid: rgba(26, 39, 68, 0.3);
+      --surface: #0f1a2e;
+      --surface-raised: #152036;
+      --border: rgba(58, 79, 111, 0.5);
+      --border-bright: rgba(58, 79, 111, 0.8);
+      --text: #e8dcc8;
+      --text-dim: #8a9bb5;
+      --text-code: #c9b89a;
+      --accent-gold: #d4a73a;
+      --accent-blue: #4a8fd4;
+      --accent-teal: #2d9a8c;
+      --accent-rose: #c2574a;
+      --accent-green: #5a9e6f;
+      --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      background-image:
+        linear-gradient(var(--bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .page { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* Hero */
+    .hero {
+      padding: 3rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 3rem;
+      animation: fadeIn 0.6s ease-out;
+    }
+    .hero-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent-gold);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+    .hero h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .hero-sub {
+      font-size: 1rem;
+      color: var(--text-dim);
+      max-width: 700px;
+    }
+    .hero-meta {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .hero-meta-item {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      padding: 0.25rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: var(--surface);
+    }
+    .hero-meta-item span { color: var(--accent-gold); }
+
+    /* Sections */
+    .section {
+      margin-bottom: 3.5rem;
+      animation: fadeIn 0.6s ease-out both;
+    }
+    .section:nth-child(2) { animation-delay: 0.1s; }
+    .section:nth-child(3) { animation-delay: 0.2s; }
+    .section:nth-child(4) { animation-delay: 0.3s; }
+    .section:nth-child(5) { animation-delay: 0.4s; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-num {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--accent-gold);
+      background: rgba(212, 167, 58, 0.1);
+      border: 1px solid rgba(212, 167, 58, 0.25);
+      padding: 0.2rem 0.5rem;
+      border-radius: 2px;
+      letter-spacing: 0.1em;
+    }
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .section-desc {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      max-width: 800px;
+    }
+
+    /* Mermaid container */
+    .diagram-shell {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+    .diagram-shell .mermaid-wrap {
+      display: flex;
+      justify-content: center;
+      overflow: auto;
+      max-height: 600px;
+    }
+    .diagram-controls {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      display: flex;
+      gap: 0.25rem;
+      z-index: 10;
+    }
+    .diagram-controls button {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.2rem 0.5rem;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .diagram-controls button:hover {
+      color: var(--accent-gold);
+      border-color: var(--accent-gold);
+    }
+
+    /* Card grid */
+    .card-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    .card-grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .card-grid-4 { grid-template-columns: repeat(2, 1fr); }
+
+    @media (max-width: 768px) {
+      .card-grid-2, .card-grid-3, .card-grid-4 { grid-template-columns: 1fr; }
+    }
+
+    .ve-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+    .ve-card:hover { border-color: var(--border-bright); }
+    .ve-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .ve-card-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-gold { background: var(--accent-gold); }
+    .dot-blue { background: var(--accent-blue); }
+    .dot-teal { background: var(--accent-teal); }
+    .dot-rose { background: var(--accent-rose); }
+    .dot-green { background: var(--accent-green); }
+    .ve-card-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .ve-card-body {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+    .ve-card-body code {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-code);
+      background: rgba(201, 184, 154, 0.08);
+      padding: 0.1rem 0.35rem;
+      border-radius: 2px;
+    }
+
+    /* Code blocks */
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-code);
+      overflow-x: auto;
+      line-height: 1.7;
+      margin: 1rem 0;
+    }
+    .code-block .kw { color: var(--accent-blue); }
+    .code-block .fn { color: var(--accent-gold); }
+    .code-block .str { color: var(--accent-green); }
+    .code-block .cm { color: var(--text-dim); font-style: italic; }
+    .code-block .err { color: var(--accent-rose); }
+    .code-block .type { color: var(--accent-teal); }
+    .code-block .ln {
+      color: rgba(138, 155, 181, 0.4);
+      user-select: none;
+      display: inline-block;
+      width: 2.5em;
+      text-align: right;
+      margin-right: 1.25em;
+    }
+
+    /* Pipeline / flow */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 1.5rem 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .pipeline-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      border-radius: 4px;
+      text-align: center;
+      min-width: 140px;
+    }
+    .pipeline-step-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent-gold);
+      margin-bottom: 0.25rem;
+    }
+    .pipeline-step-detail {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .pipeline-arrow {
+      font-family: var(--font-mono);
+      color: var(--accent-gold);
+      font-size: 1.2rem;
+      padding: 0 0.5rem;
+      flex-shrink: 0;
+    }
+
+    /* Error hierarchy */
+    .error-tree {
+      border-left: 2px solid var(--border);
+      margin-left: 1rem;
+      padding-left: 1.5rem;
+    }
+    .error-node {
+      position: relative;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .error-node::before {
+      content: '';
+      position: absolute;
+      left: -1.5rem;
+      top: 50%;
+      width: 1.5rem;
+      height: 2px;
+      background: var(--border);
+      transform: translateX(-2px);
+    }
+    .error-name {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .error-desc {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+
+    /* Table */
+    .data-table-wrap { overflow-x: auto; margin: 1rem 0; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .data-table th {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--accent-gold);
+      text-align: left;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border-bright);
+      background: var(--surface);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+    }
+    .data-table td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+    .data-table tr:nth-child(even) td { background: rgba(15, 26, 46, 0.4); }
+    .data-table td code {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-code);
+    }
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 2px;
+      display: inline-block;
+    }
+    .badge-green { background: rgba(90, 158, 111, 0.15); color: var(--accent-green); border: 1px solid rgba(90, 158, 111, 0.3); }
+    .badge-blue { background: rgba(74, 143, 212, 0.15); color: var(--accent-blue); border: 1px solid rgba(74, 143, 212, 0.3); }
+    .badge-rose { background: rgba(194, 87, 74, 0.15); color: var(--accent-rose); border: 1px solid rgba(194, 87, 74, 0.3); }
+    .badge-gold { background: rgba(212, 167, 58, 0.15); color: var(--accent-gold); border: 1px solid rgba(212, 167, 58, 0.3); }
+
+    /* Callout */
+    .callout {
+      border-left: 3px solid var(--accent-gold);
+      background: rgba(212, 167, 58, 0.05);
+      padding: 1rem 1.25rem;
+      margin: 1.25rem 0;
+      border-radius: 0 4px 4px 0;
+    }
+    .callout-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--accent-gold);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+    .callout p {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    /* Wide card (spans full width) */
+    .wide-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.5rem;
+      margin: 1rem 0;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-label">PR #50 &mdash; Epic 3: Model Gateway</div>
+    <h1>Config Loader & Fallback Chains</h1>
+    <p class="hero-sub">
+      External YAML configuration for tier-to-model mappings, provider settings,
+      and ordered fallback chains with context-aware abort and transparent error unwrapping.
+    </p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">tasks <span>T5, T6</span></div>
+      <div class="hero-meta-item">files <span>8</span></div>
+      <div class="hero-meta-item">tests <span>33/33</span></div>
+      <div class="hero-meta-item">dep <span>gopkg.in/yaml.v3</span></div>
+    </div>
+  </header>
+
+  <!-- Section 1: High-Level Architecture -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <h2 class="section-title">Request Resolution Flow</h2>
+    </div>
+    <p class="section-desc">
+      A completion request enters the gateway, resolves to a tier, walks the fallback chain,
+      and returns the first successful response &mdash; or a structured error aggregating every attempt.
+    </p>
+
+    <div class="diagram-shell">
+      <div class="diagram-controls">
+        <button onclick="zoomDiagram(this, 1.3)">+</button>
+        <button onclick="zoomDiagram(this, 0.7)">-</button>
+        <button onclick="zoomDiagram(this, 0)">reset</button>
+        <button onclick="expandDiagram(this)">&#x26F6;</button>
+      </div>
+      <div class="mermaid-wrap">
+        <pre class="mermaid">
+flowchart TD
+    REQ["CompletionRequest\n{Model, Messages, Tier}"]
+    FC["FallbackCompleter.Complete()"]
+    CFM["chainForModel(model)"]
+    CWT["CompleteWithTier(tier, req)"]
+    TC["tryChain(ctx, req, chain)"]
+    CTX{"ctx.Err() != nil?"}
+    LOOK{"completer exists?"}
+    CALL["c.Complete(ctx, r)"]
+    OK{"success?"}
+    RESP["CompletionResponse\n{FallbackUsed, ProviderName}"]
+    SKIP["append ProviderError\ncontinue"]
+    NEXT["next model in chain"]
+    FAIL["*FallbackError\n{Errors: []ProviderError}"]
+
+    REQ --> FC
+    FC -->|"by model"| CFM
+    FC -->|"by tier"| CWT
+    CFM --> TC
+    CWT --> TC
+    TC --> CTX
+    CTX -->|"yes"| FAIL
+    CTX -->|"no"| LOOK
+    LOOK -->|"no"| SKIP
+    LOOK -->|"yes"| CALL
+    CALL --> OK
+    OK -->|"yes"| RESP
+    OK -->|"no"| SKIP
+    SKIP --> NEXT
+    NEXT --> CTX
+
+    style REQ fill:#1e3a5f,stroke:#4a8fd4,color:#e8dcc8
+    style RESP fill:#1a3528,stroke:#5a9e6f,color:#e8dcc8
+    style FAIL fill:#2a1a1a,stroke:#c2574a,color:#e8dcc8
+    style CTX fill:#2a2210,stroke:#d4a73a,color:#e8dcc8
+        </pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Config Parsing Pipeline -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <h2 class="section-title">YAML Config Parsing Pipeline</h2>
+    </div>
+    <p class="section-desc">
+      Two-phase parsing separates YAML-specific concerns from domain types.
+      Raw intermediary structs prevent YAML tags from leaking into the domain model.
+    </p>
+
+    <div class="pipeline">
+      <div class="pipeline-step">
+        <div class="pipeline-step-label">models.yaml</div>
+        <div class="pipeline-step-detail">YAML on disk</div>
+      </div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-label">os.ReadFile</div>
+        <div class="pipeline-step-detail">[]byte</div>
+      </div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-label">yaml.Unmarshal</div>
+        <div class="pipeline-step-detail">rawGatewayConfig</div>
+      </div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-label">parseConfig</div>
+        <div class="pipeline-step-detail">GatewayConfig</div>
+      </div>
+      <div class="pipeline-arrow">&rarr;</div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-label">ValidateConfig</div>
+        <div class="pipeline-step-detail">error | nil</div>
+      </div>
+    </div>
+
+    <div class="card-grid card-grid-2">
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-blue"></div>
+          <div class="ve-card-title">rawGatewayConfig</div>
+        </div>
+        <div class="ve-card-body">
+          YAML shape with <code>map[string]rawTierConfig</code> and
+          <code>map[string]rawProviderConfig</code>. String-keyed tiers
+          allow <code>yaml.Unmarshal</code> to parse without custom unmarshaler.
+          No <code>APIKey</code> field &mdash; keys come from env vars only.
+          <br><br>
+          <code>config.go:43-48</code>
+        </div>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-gold"></div>
+          <div class="ve-card-title">GatewayConfig</div>
+        </div>
+        <div class="ve-card-body">
+          Domain type with <code>map[ModelTier]TierConfig</code> and
+          <code>map[string]ProviderConfig</code>. <code>ModelTier</code> is a typed string
+          with <code>UnmarshalText</code> &mdash; invalid tier names fail at parse time.
+          <br><br>
+          <code>config.go:23-28</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Design Decision</div>
+      <p>
+        <code>LoadConfig</code> and <code>ValidateConfig</code> are separate public functions
+        by design. Callers compose them: load for inspection, load for migration, load + validate
+        for production. Go idiom: parsing and validation are distinct steps.
+      </p>
+    </div>
+  </section>
+
+  <!-- Section 3: ValidateConfig Checks -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <h2 class="section-title">ValidateConfig Checks</h2>
+    </div>
+    <p class="section-desc">
+      Structural validation at config load time. All checks return <code>ErrConfigInvalid</code>
+      with context identifying the failing field.
+    </p>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Location</th>
+            <th>Error message</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>LiteLLMBaseURL == ""</code></td>
+            <td><code>config.go:99</code></td>
+            <td>gateway.litellm_base_url is required</td>
+            <td><span class="badge badge-rose">required</span></td>
+          </tr>
+          <tr>
+            <td><code>TimeoutSeconds &lt;= 0</code></td>
+            <td><code>config.go:102</code></td>
+            <td>gateway.timeout_seconds must be positive</td>
+            <td><span class="badge badge-rose">required</span></td>
+          </tr>
+          <tr>
+            <td><code>len(Tiers) == 0</code></td>
+            <td><code>config.go:105</code></td>
+            <td>at least one tier must be defined</td>
+            <td><span class="badge badge-rose">required</span></td>
+          </tr>
+          <tr>
+            <td><code>!tier.Valid()</code></td>
+            <td><code>config.go:110</code></td>
+            <td>unknown tier "X"</td>
+            <td><span class="badge badge-blue">structural</span></td>
+          </tr>
+          <tr>
+            <td><code>PrimaryModel == ""</code></td>
+            <td><code>config.go:113</code></td>
+            <td>tier "X" has no primary_model</td>
+            <td><span class="badge badge-blue">structural</span></td>
+          </tr>
+          <tr>
+            <td><code>FallbackChain[i] == ""</code></td>
+            <td><code>config.go:116</code></td>
+            <td>tier "X" fallback_chain[i] is empty</td>
+            <td><span class="badge badge-green">structural</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:0.78rem; color:var(--text-dim); font-family:var(--font-mono); margin-top:0.5rem;">
+      <span style="color:var(--accent-green);">&#9679;</span> Added by council fix &mdash; commit 0c6bab0
+    </p>
+  </section>
+
+  <!-- Section 4: FallbackCompleter Chain Logic -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <h2 class="section-title">FallbackCompleter: tryChain Logic</h2>
+    </div>
+    <p class="section-desc">
+      The core fallback loop iterates through <code>[primary, fallback-1, fallback-2, ...]</code>,
+      returning on the first success. A context guard at the top of each iteration provides
+      cancellation-aware abort with accumulated error preservation.
+    </p>
+
+    <div class="code-block"><span class="ln"> 76</span><span class="kw">func</span> (fc *<span class="type">FallbackCompleter</span>) <span class="fn">tryChain</span>(ctx <span class="type">context.Context</span>, req <span class="type">CompletionRequest</span>, chain []<span class="type">string</span>) (<span class="type">CompletionResponse</span>, <span class="type">error</span>) {
+<span class="ln"> 77</span>    <span class="kw">var</span> errs []<span class="type">ProviderError</span>
+<span class="ln"> 78</span>
+<span class="ln"> 79</span>    <span class="kw">for</span> i, model := <span class="kw">range</span> chain {
+<span class="ln"> 80</span>        <span class="kw">if</span> err := ctx.<span class="fn">Err</span>(); err != <span class="kw">nil</span> {          <span class="cm">// &larr; ctx guard</span>
+<span class="ln"> 81</span>            errs = <span class="fn">append</span>(errs, <span class="type">ProviderError</span>{Provider: model, Err: err})
+<span class="ln"> 82</span>            <span class="kw">return</span> <span class="type">CompletionResponse</span>{}, &amp;<span class="type">FallbackError</span>{Errors: errs}
+<span class="ln"> 83</span>        }
+<span class="ln"> 84</span>
+<span class="ln"> 85</span>        c, ok := fc.completers[model]  <span class="cm">// &larr; completer lookup</span>
+<span class="ln"> 86</span>        <span class="kw">if</span> !ok {
+<span class="ln"> 87</span>            errs = <span class="fn">append</span>(errs, <span class="type">ProviderError</span>{...})
+<span class="ln"> 88</span>            <span class="kw">continue</span>                     <span class="cm">// &larr; skip, try next</span>
+<span class="ln"> 89</span>        }
+<span class="ln"> 90</span>
+<span class="ln"> 96</span>        resp, err := c.<span class="fn">Complete</span>(ctx, r) <span class="cm">// &larr; actual provider call</span>
+<span class="ln"> 97</span>        <span class="kw">if</span> err != <span class="kw">nil</span> { ... <span class="kw">continue</span> } <span class="cm">// &larr; record error, try next</span>
+<span class="ln">107</span>        resp.<span class="fn">FallbackUsed</span> = i &gt; 0      <span class="cm">// &larr; true only on fallback</span>
+<span class="ln">108</span>        <span class="kw">return</span> resp, <span class="kw">nil</span>
+<span class="ln">109</span>    }
+<span class="ln">111</span>    <span class="kw">return</span> <span class="type">CompletionResponse</span>{}, &amp;<span class="type">FallbackError</span>{Errors: errs}
+<span class="ln">112</span>}</div>
+
+    <div class="card-grid card-grid-3">
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-gold"></div>
+          <div class="ve-card-title">Context Guard</div>
+        </div>
+        <div class="ve-card-body">
+          Fires at the <em>top</em> of each iteration. At <code>i=0</code>: catches pre-cancelled contexts.
+          At <code>i&gt;0</code>: stops the chain after a slow provider if the context timed out during the call.
+          Preserves all accumulated <code>errs</code> from prior iterations.
+          <br><br><code>fallback.go:80-83</code>
+        </div>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-teal"></div>
+          <div class="ve-card-title">Graceful Skip</div>
+        </div>
+        <div class="ve-card-body">
+          Missing completer (no registered provider for model) appends
+          <code>ErrNoProvider</code> and continues. This handles empty-string
+          model names from malformed YAML gracefully &mdash; no crash, chain continues.
+          <br><br><code>fallback.go:85-92</code>
+        </div>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-rose"></div>
+          <div class="ve-card-title">Error Recording</div>
+        </div>
+        <div class="ve-card-body">
+          If the provider returns a <code>*ProviderError</code>, it's recorded verbatim.
+          Generic errors are wrapped with <code>c.Provider()</code>.
+          Ordered slice position maps to chain position for disambiguation.
+          <br><br><code>fallback.go:97-104</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Error Hierarchy -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <h2 class="section-title">Error Hierarchy & Context Transparency</h2>
+    </div>
+    <p class="section-desc">
+      <code>FallbackError.Unwrap()</code> returns <code>[]error</code> (Go 1.20+ multi-error),
+      surfacing both <code>ErrAllProvidersFailed</code> and any <code>context.Canceled</code> /
+      <code>context.DeadlineExceeded</code> found in the chain. This enables
+      <code>errors.Is(err, context.Canceled)</code> to work transparently.
+    </p>
+
+    <div class="wide-card">
+      <div style="display:flex; align-items:flex-start; gap:2rem; flex-wrap:wrap;">
+        <div style="flex:1; min-width:280px;">
+          <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-gold); margin-bottom:1rem; letter-spacing:0.1em;">ERROR TREE</div>
+          <div class="error-tree">
+            <div class="error-node">
+              <div class="error-name" style="color:var(--accent-rose);">*FallbackError</div>
+              <div class="error-desc">Aggregates all chain failures</div>
+            </div>
+            <div class="error-tree">
+              <div class="error-node">
+                <div class="error-name" style="color:var(--accent-gold);">ErrAllProvidersFailed</div>
+                <div class="error-desc">Sentinel &mdash; always returned via Unwrap</div>
+              </div>
+              <div class="error-node">
+                <div class="error-name" style="color:var(--accent-teal);">context.Canceled</div>
+                <div class="error-desc">Returned when chain stopped due to ctx cancellation</div>
+              </div>
+              <div class="error-node">
+                <div class="error-name" style="color:var(--accent-teal);">context.DeadlineExceeded</div>
+                <div class="error-desc">Returned when chain stopped due to ctx timeout</div>
+              </div>
+            </div>
+            <div class="error-tree">
+              <div class="error-node">
+                <div class="error-name" style="color:var(--text-dim);">[]ProviderError</div>
+                <div class="error-desc">Individual per-attempt errors (inspect via fe.Errors)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1; min-width:280px;">
+          <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-gold); margin-bottom:1rem; letter-spacing:0.1em;">UNWRAP IMPLEMENTATION</div>
+          <div class="code-block" style="margin:0;"><span class="kw">func</span> (e *<span class="type">FallbackError</span>) <span class="fn">Unwrap</span>() []<span class="type">error</span> {
+    errs := []<span class="type">error</span>{<span class="err">ErrAllProvidersFailed</span>}
+    <span class="kw">for</span> _, pe := <span class="kw">range</span> e.Errors {
+        <span class="kw">if</span> pe.Err == <span class="type">context</span>.<span class="err">Canceled</span> ||
+           pe.Err == <span class="type">context</span>.<span class="err">DeadlineExceeded</span> {
+            errs = <span class="fn">append</span>(errs, pe.Err)
+            <span class="kw">break</span>
+        }
+    }
+    <span class="kw">return</span> errs
+}</div>
+          <div class="callout" style="margin-top:1rem;">
+            <div class="callout-label">Council Fix</div>
+            <p>
+              Prior design returned <code>error</code> (single). Now returns <code>[]error</code>
+              enabling <code>errors.Is(err, context.Canceled)</code> without manual
+              <code>fe.Errors</code> iteration. Commit <code>0c6bab0</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Tier Resolution -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <h2 class="section-title">Tier &rarr; Model &rarr; Provider Resolution</h2>
+    </div>
+    <p class="section-desc">
+      Three tiers map to primary models with ordered fallback chains.
+      Each model resolves to a registered completer at runtime.
+    </p>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>Primary Model</th>
+            <th>Fallback Chain</th>
+            <th>Provider</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-green">cheap</span></td>
+            <td><code>claude-haiku-4-5-20251001</code></td>
+            <td><code>gpt-4o-mini</code> &rarr; <code>ollama/llama3</code></td>
+            <td>Anthropic &rarr; OpenAI &rarr; Ollama</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-blue">mid</span></td>
+            <td><code>claude-sonnet-4-6</code></td>
+            <td><code>gpt-4o</code></td>
+            <td>Anthropic &rarr; OpenAI</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gold">frontier</span></td>
+            <td><code>claude-opus-4-6</code></td>
+            <td><code>gpt-4o</code> &rarr; <code>claude-sonnet-4-6</code></td>
+            <td>Anthropic &rarr; OpenAI &rarr; Anthropic</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="diagram-shell">
+      <div class="diagram-controls">
+        <button onclick="zoomDiagram(this, 1.3)">+</button>
+        <button onclick="zoomDiagram(this, 0.7)">-</button>
+        <button onclick="zoomDiagram(this, 0)">reset</button>
+        <button onclick="expandDiagram(this)">&#x26F6;</button>
+      </div>
+      <div class="mermaid-wrap">
+        <pre class="mermaid">
+flowchart LR
+    subgraph Tiers
+        CHEAP["cheap"]
+        MID["mid"]
+        FRONT["frontier"]
+    end
+    subgraph Models
+        H["haiku-4-5"]
+        S["sonnet-4-6"]
+        O["opus-4-6"]
+        G4["gpt-4o"]
+        GM["gpt-4o-mini"]
+        LL["ollama/llama3"]
+    end
+    subgraph Providers
+        ANT["Anthropic"]
+        OAI["OpenAI"]
+        OLL["Ollama"]
+    end
+
+    CHEAP --> H
+    CHEAP -.-> GM
+    CHEAP -.-> LL
+    MID --> S
+    MID -.-> G4
+    FRONT --> O
+    FRONT -.-> G4
+    FRONT -.-> S
+
+    H --> ANT
+    S --> ANT
+    O --> ANT
+    G4 --> OAI
+    GM --> OAI
+    LL --> OLL
+
+    style CHEAP fill:#1a3528,stroke:#5a9e6f,color:#e8dcc8
+    style MID fill:#1e3a5f,stroke:#4a8fd4,color:#e8dcc8
+    style FRONT fill:#2a2210,stroke:#d4a73a,color:#e8dcc8
+        </pre>
+      </div>
+    </div>
+    <p style="font-size:0.78rem; color:var(--text-dim); font-family:var(--font-mono);">
+      Solid arrows = primary model &nbsp;&bull;&nbsp; Dashed arrows = fallback chain
+    </p>
+  </section>
+
+  <!-- Section 7: Test Coverage -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <h2 class="section-title">Test Coverage Matrix</h2>
+    </div>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Test</th>
+            <th>File</th>
+            <th>Scenario</th>
+            <th>Council</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>PrimarySucceeds</code></td>
+            <td><code>fallback_test.go:50</code></td>
+            <td>Happy path, no fallback</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>PrimaryFails_FirstFallbackSucceeds</code></td>
+            <td><code>fallback_test.go:70</code></td>
+            <td>Primary fails, first fallback serves</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>PrimaryAndFirstFail_SecondSucceeds</code></td>
+            <td><code>fallback_test.go:91</code></td>
+            <td>Two failures, second fallback serves</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>AllFail_ReturnsFallbackError</code></td>
+            <td><code>fallback_test.go:112</code></td>
+            <td>Full chain exhaustion</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>UnknownModel_ReturnsErrNoProvider</code></td>
+            <td><code>fallback_test.go:138</code></td>
+            <td>Model not in any tier or completer</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>CompleteWithTier_PrimarySucceeds</code></td>
+            <td><code>fallback_test.go:151</code></td>
+            <td>Tier-based routing happy path</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>CompleteWithTier_InvalidTier</code></td>
+            <td><code>fallback_test.go:170</code></td>
+            <td>Invalid tier name</td>
+            <td><span class="badge badge-blue">original</span></td>
+          </tr>
+          <tr>
+            <td><code>FallbackOnlyModel_SingleAttempt</code></td>
+            <td><code>fallback_test.go:183</code></td>
+            <td>Model in chain but not primary</td>
+            <td><span class="badge badge-gold">council 1</span></td>
+          </tr>
+          <tr>
+            <td><code>MidChainCancellation_PreservesAccumulatedErrors</code></td>
+            <td><code>fallback_test.go:203</code></td>
+            <td>Primary fails, ctx cancelled, guard fires at i=1</td>
+            <td><span class="badge badge-green">council 3</span></td>
+          </tr>
+          <tr>
+            <td><code>CancelledContext_StopsChain</code></td>
+            <td><code>fallback_test.go:264</code></td>
+            <td>Pre-cancelled context, guard at i=0</td>
+            <td><span class="badge badge-gold">council 2</span></td>
+          </tr>
+          <tr>
+            <td><code>FallbackError_UnwrapExposesContextCanceled</code></td>
+            <td><code>fallback_test.go:290</code></td>
+            <td>errors.Is(err, context.Canceled) transparency</td>
+            <td><span class="badge badge-green">council 3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Section 8: Council Audit Trail -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <h2 class="section-title">Council Audit Trail</h2>
+    </div>
+
+    <div class="card-grid card-grid-3">
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-blue"></div>
+          <div class="ve-card-title">Council 1 &mdash; Initial Review</div>
+        </div>
+        <div class="ve-card-body">
+          <strong>CONDITIONAL</strong> &mdash; 6 fixes required: error wrapping,
+          ctx guard, Provider(), dead code removal, LoadConfig tests, edge case test.
+          All applied in commit <code>d0022cc</code>.
+        </div>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-gold"></div>
+          <div class="ve-card-title">Council 2 &mdash; Post-Fix Review</div>
+        </div>
+        <div class="ve-card-body">
+          <strong>CONDITIONAL</strong> &mdash; All 6 fixes verified. One remaining condition:
+          add cancelled-context test for ctx guard. Applied in commit <code>6ea715c</code>.
+        </div>
+      </div>
+      <div class="ve-card">
+        <div class="ve-card-header">
+          <div class="ve-card-dot dot-green"></div>
+          <div class="ve-card-title">Council 3 &mdash; Final Review</div>
+        </div>
+        <div class="ve-card-body">
+          <strong>FOR</strong> (unconditional) &mdash; Prior condition met. 4 informational
+          discoveries resolved as hardening fixes in commit <code>0c6bab0</code>.
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // Zoom controls for Mermaid diagrams
+  const zoomStates = new WeakMap();
+  function zoomDiagram(btn, factor) {
+    const wrap = btn.closest('.diagram-shell').querySelector('.mermaid-wrap');
+    const svg = wrap.querySelector('svg');
+    if (!svg) return;
+    if (factor === 0) {
+      svg.style.transform = 'scale(1)';
+      svg.style.transformOrigin = 'center top';
+      zoomStates.set(svg, 1);
+      return;
+    }
+    const current = zoomStates.get(svg) || 1;
+    const next = Math.max(0.3, Math.min(3, current * factor));
+    svg.style.transform = `scale(${next})`;
+    svg.style.transformOrigin = 'center top';
+    zoomStates.set(svg, next);
+  }
+  function expandDiagram(btn) {
+    const wrap = btn.closest('.diagram-shell').querySelector('.mermaid-wrap');
+    const svg = wrap.querySelector('svg');
+    if (!svg) return;
+    const blob = new Blob([svg.outerHTML], {type: 'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  }
+</script>
+</body>
+</html>
