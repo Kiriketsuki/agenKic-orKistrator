@@ -3,7 +3,23 @@ package gateway
 import (
 	"context"
 	"sync"
+	"time"
 )
+
+// Named model ID constants for standard Claude models.
+const (
+	ModelHaiku  = "claude-haiku-4-5-20251001"
+	ModelSonnet = "claude-sonnet-4-6"
+	ModelOpus   = "claude-opus-4-6"
+)
+
+// DefaultPricing is the fallback pricing table used until config/models.yaml
+// is loaded by the config loader (T5).
+var DefaultPricing = map[string]TokenCost{
+	ModelHaiku:  {Input: 0.80, Output: 4.00},
+	ModelSonnet: {Input: 3.00, Output: 15.00},
+	ModelOpus:   {Input: 15.00, Output: 75.00},
+}
 
 // InMemoryCostTracker is a thread-safe in-memory implementation of CostTracker.
 type InMemoryCostTracker struct {
@@ -73,4 +89,18 @@ func EstimateCost(model string, inputTokens, outputTokens int, pricing map[strin
 		return 0
 	}
 	return (float64(inputTokens)*tc.Input + float64(outputTokens)*tc.Output) / 1_000_000
+}
+
+// NewCostRecordFromResponse constructs a CostRecord from a CompletionResponse,
+// bridging gateway completion output to cost tracking in one call.
+func NewCostRecordFromResponse(resp CompletionResponse, tier ModelTier, pricing map[string]TokenCost) CostRecord {
+	return CostRecord{
+		Timestamp:     time.Now(),
+		Model:         resp.Model,
+		Tier:          tier,
+		Provider:      resp.ProviderName,
+		InputTokens:   resp.InputTokens,
+		OutputTokens:  resp.OutputTokens,
+		EstimatedCost: EstimateCost(resp.Model, resp.InputTokens, resp.OutputTokens, pricing),
+	}
 }

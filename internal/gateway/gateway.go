@@ -177,6 +177,12 @@ func Since(t time.Time) TimePeriod {
 	return TimePeriod{Start: t, End: time.Now().UTC()}
 }
 
+// TokenCost holds per-million-token pricing for a single model.
+type TokenCost struct {
+	Input  float64 // USD per 1,000,000 input tokens
+	Output float64 // USD per 1,000,000 output tokens
+}
+
 // ProviderConfig holds the runtime configuration for a single provider.
 type ProviderConfig struct {
 	Name string

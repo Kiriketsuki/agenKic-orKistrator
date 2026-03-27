@@ -7,11 +7,8 @@ import (
 	"time"
 )
 
-var testPricing = map[string]TokenCost{
-	"claude-haiku-4-5-20251001": {Input: 0.80, Output: 4.00},
-	"claude-sonnet-4-6":         {Input: 3.00, Output: 15.00},
-	"claude-opus-4-6":           {Input: 15.00, Output: 75.00},
-}
+// testPricing reuses DefaultPricing for all cost tests.
+var testPricing = DefaultPricing
 
 func baseTime() time.Time {
 	return time.Date(2026, 3, 22, 12, 0, 0, 0, time.UTC)
@@ -29,9 +26,9 @@ func TestInMemoryCostTracker_RecordAndReport(t *testing.T) {
 
 	now := baseTime()
 	records := []CostRecord{
-		{Timestamp: now, Model: "claude-haiku-4-5-20251001", Tier: TierCheap, Provider: "anthropic", InputTokens: 100, OutputTokens: 50, EstimatedCost: 0.0002},
-		{Timestamp: now, Model: "claude-sonnet-4-6", Tier: TierMid, Provider: "anthropic", InputTokens: 200, OutputTokens: 100, EstimatedCost: 0.002},
-		{Timestamp: now, Model: "claude-opus-4-6", Tier: TierFrontier, Provider: "anthropic", InputTokens: 300, OutputTokens: 150, EstimatedCost: 0.016},
+		{Timestamp: now, Model: ModelHaiku, Tier: TierCheap, Provider: "anthropic", InputTokens: 100, OutputTokens: 50, EstimatedCost: 0.0002},
+		{Timestamp: now, Model: ModelSonnet, Tier: TierMid, Provider: "anthropic", InputTokens: 200, OutputTokens: 100, EstimatedCost: 0.002},
+		{Timestamp: now, Model: ModelOpus, Tier: TierFrontier, Provider: "anthropic", InputTokens: 300, OutputTokens: 150, EstimatedCost: 0.016},
 	}
 
 	for _, r := range records {
@@ -140,22 +137,22 @@ func TestEstimateCost_KnownPricing(t *testing.T) {
 	// claude-haiku-4-5-20251001: input $0.80/M, output $4.00/M
 	// 1000 input + 500 output = (1000*0.80 + 500*4.00) / 1_000_000 = 0.0028
 	tests := []struct {
-		name         string
-		model        string
-		input        int
-		output       int
-		wantCost     float64
+		name     string
+		model    string
+		input    int
+		output   int
+		wantCost float64
 	}{
 		{
 			name:     "haiku 1000 input 500 output",
-			model:    "claude-haiku-4-5-20251001",
+			model:    ModelHaiku,
 			input:    1000,
 			output:   500,
 			wantCost: 0.0028,
 		},
 		{
 			name:     "zero tokens",
-			model:    "claude-haiku-4-5-20251001",
+			model:    ModelHaiku,
 			input:    0,
 			output:   0,
 			wantCost: 0,
@@ -169,7 +166,7 @@ func TestEstimateCost_KnownPricing(t *testing.T) {
 		},
 		{
 			name:     "sonnet 1000 input 1000 output",
-			model:    "claude-sonnet-4-6",
+			model:    ModelSonnet,
 			input:    1000,
 			output:   1000,
 			wantCost: (1000*3.00 + 1000*15.00) / 1_000_000,
@@ -246,11 +243,11 @@ func TestInMemoryCostTracker_PerTierBreakdown(t *testing.T) {
 	}
 
 	tests := []struct {
-		tier          ModelTier
-		wantRequests  int
-		wantInput     int
-		wantOutput    int
-		wantCost      float64
+		tier         ModelTier
+		wantRequests int
+		wantInput    int
+		wantOutput   int
+		wantCost     float64
 	}{
 		{TierCheap, 2, 300, 150, 0.003},
 		{TierMid, 1, 500, 250, 0.005},
@@ -286,5 +283,114 @@ func TestInMemoryCostTracker_PerTierBreakdown(t *testing.T) {
 	}
 	if got := report.Total.InputTokens; got != 1800 {
 		t.Errorf("Total.InputTokens = %d, want 1800", got)
+	}
+}
+
+// TestInMemoryCostTracker_SpecScenario_AggregationByTier implements the exact
+// acceptance scenario from issue #55: 5 records (3 cheap, 2 mid).
+func TestInMemoryCostTracker_SpecScenario_AggregationByTier(t *testing.T) {
+	ctx := context.Background()
+	tracker := NewInMemoryCostTracker()
+
+	now := baseTime()
+	records := []CostRecord{
+		// Three cheap requests
+		{Timestamp: now, Model: ModelHaiku, Tier: TierCheap, Provider: "anthropic", InputTokens: 100, OutputTokens: 50, EstimatedCost: 0.00028},
+		{Timestamp: now, Model: ModelHaiku, Tier: TierCheap, Provider: "anthropic", InputTokens: 200, OutputTokens: 100, EstimatedCost: 0.00056},
+		{Timestamp: now, Model: ModelHaiku, Tier: TierCheap, Provider: "anthropic", InputTokens: 150, OutputTokens: 75, EstimatedCost: 0.00042},
+		// Two mid requests
+		{Timestamp: now, Model: ModelSonnet, Tier: TierMid, Provider: "anthropic", InputTokens: 300, OutputTokens: 150, EstimatedCost: 0.00315},
+		{Timestamp: now, Model: ModelSonnet, Tier: TierMid, Provider: "anthropic", InputTokens: 400, OutputTokens: 200, EstimatedCost: 0.00420},
+	}
+
+	var wantTotalCost float64
+	for _, r := range records {
+		if err := tracker.Record(ctx, r); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+		wantTotalCost += r.EstimatedCost
+	}
+
+	p := period(now.Add(-time.Hour), now.Add(time.Hour))
+	report, err := tracker.Report(ctx, p)
+	if err != nil {
+		t.Fatalf("Report() error = %v", err)
+	}
+
+	// Per-tier counts
+	if got := report.TierCosts[TierCheap].RequestCount; got != 3 {
+		t.Errorf("TierCosts[TierCheap].RequestCount = %d, want 3", got)
+	}
+	if got := report.TierCosts[TierMid].RequestCount; got != 2 {
+		t.Errorf("TierCosts[TierMid].RequestCount = %d, want 2", got)
+	}
+
+	// Total
+	if got := report.Total.RequestCount; got != 5 {
+		t.Errorf("Total.RequestCount = %d, want 5", got)
+	}
+	const epsilon = 1e-10
+	diff := report.Total.EstimatedCost - wantTotalCost
+	if diff < -epsilon || diff > epsilon {
+		t.Errorf("Total.EstimatedCost = %v, want %v", report.Total.EstimatedCost, wantTotalCost)
+	}
+}
+
+// TestNewCostRecordFromResponse verifies the constructor bridges CompletionResponse
+// to CostRecord with correct field mapping and cost calculation.
+func TestNewCostRecordFromResponse(t *testing.T) {
+	resp := CompletionResponse{
+		Content:      "test response",
+		Model:        ModelSonnet,
+		InputTokens:  1000,
+		OutputTokens: 500,
+		ProviderName: "anthropic",
+	}
+
+	record := NewCostRecordFromResponse(resp, TierMid, DefaultPricing)
+
+	if record.Model != ModelSonnet {
+		t.Errorf("Model = %q, want %q", record.Model, ModelSonnet)
+	}
+	if record.Tier != TierMid {
+		t.Errorf("Tier = %q, want %q", record.Tier, TierMid)
+	}
+	if record.Provider != "anthropic" {
+		t.Errorf("Provider = %q, want %q", record.Provider, "anthropic")
+	}
+	if record.InputTokens != 1000 {
+		t.Errorf("InputTokens = %d, want 1000", record.InputTokens)
+	}
+	if record.OutputTokens != 500 {
+		t.Errorf("OutputTokens = %d, want 500", record.OutputTokens)
+	}
+
+	// EstimatedCost = (1000*3.00 + 500*15.00) / 1_000_000 = 0.0105
+	wantCost := (1000*3.00 + 500*15.00) / 1_000_000
+	const epsilon = 1e-10
+	diff := record.EstimatedCost - wantCost
+	if diff < -epsilon || diff > epsilon {
+		t.Errorf("EstimatedCost = %v, want %v", record.EstimatedCost, wantCost)
+	}
+
+	// Timestamp should be approximately now (within 1 second)
+	if time.Since(record.Timestamp) > time.Second {
+		t.Errorf("Timestamp %v is not recent", record.Timestamp)
+	}
+}
+
+// TestNewCostRecordFromResponse_UnknownModel verifies zero cost for unknown models.
+func TestNewCostRecordFromResponse_UnknownModel(t *testing.T) {
+	resp := CompletionResponse{
+		Model:        "unknown-model",
+		InputTokens:  1000,
+		OutputTokens: 500,
+		ProviderName: "test",
+	}
+
+	record := NewCostRecordFromResponse(resp, TierCheap, DefaultPricing)
+
+	if record.EstimatedCost != 0 {
+		t.Errorf("EstimatedCost = %v, want 0 for unknown model", record.EstimatedCost)
 	}
 }

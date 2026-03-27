@@ -19,9 +19,9 @@
 
 | # | Question | Raised By | Resolved |
 |:--|:---------|:----------|:---------|
-| 1 | Should the pricing table live in `models.yaml` (operator-configurable) or as constants in Go code? Loading from config is more flexible but adds startup coupling. | T7 spec | [ ] |
-| 2 | Should `EstimateCost` be a method on `CostTracker` (interface-bound) or a free pure function? Pure function is more composable and testable; method binding ties pricing to the tracker. | T7 spec | [ ] |
-| 3 | Is period filtering inclusive on both boundaries, or half-open `[Start, End)`? Inclusive is more natural for daily reports (midnight-to-midnight), but half-open avoids double-counting records that land on a shared boundary. | T7 spec | [ ] |
+| 1 | Should the pricing table live in `models.yaml` (operator-configurable) or as constants in Go code? Loading from config is more flexible but adds startup coupling. | T7 spec | [x] `config/models.yaml` is authoritative; `DefaultPricing` constant in Go code serves as fallback until config loader (T5) exists. |
+| 2 | Should `EstimateCost` be a method on `CostTracker` (interface-bound) or a free pure function? Pure function is more composable and testable; method binding ties pricing to the tracker. | T7 spec | [x] Free pure function. More composable, testable, and Go-idiomatic; keeps `CostTracker` focused on record/report. |
+| 3 | Is period filtering inclusive on both boundaries, or half-open `[Start, End)`? Inclusive is more natural for daily reports (midnight-to-midnight), but half-open avoids double-counting records that land on a shared boundary. | T7 spec | [x] Inclusive `[Start, End]`. More natural for operator queries; double-counting risk on shared boundaries is negligible for cost reporting. |
 
 ---
 
@@ -37,8 +37,9 @@
 - **Thread safety** under concurrent `Record` calls via `sync.RWMutex` (write lock on Record, read lock on Report/RecordCount)
 
 ### Should-Have
-- Named pricing constants for the standard Claude and GPT-4o model IDs used in tests (to avoid string literals scattered across callsites)
-- A constructor helper that builds a `CostRecord` from a `CompletionResponse` plus a pricing table (bridges gateway completion to cost recording without boilerplate in the caller)
+- Named pricing constants (`ModelHaiku`, `ModelSonnet`, `ModelOpus`) for the standard Claude model IDs — eliminates string literals in tests and callers (delivered in `cost-tracking-t7-additions-spec.md`)
+- `DefaultPricing` fallback variable until config loader (T5) loads from `config/models.yaml` (delivered in `cost-tracking-t7-additions-spec.md`)
+- `NewCostRecordFromResponse` constructor that builds a `CostRecord` from a `CompletionResponse` plus tier and pricing table — bridges gateway completion to cost recording in one call (delivered in `cost-tracking-t7-additions-spec.md`)
 
 ### Nice-to-Have
 - A Redis-backed `CostTracker` implementation for persistence across restarts
