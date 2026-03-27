@@ -18,7 +18,6 @@ import (
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 	grpchealth "google.golang.org/grpc/health"
 )
 
@@ -43,24 +42,12 @@ func main() {
 	store := state.NewMockStore()
 	machine := agent.NewMachine(store)
 	policy := supervisor.NewRestartPolicy()
-
-	registry := supervisor.NewCompletionRegistry()
-
-	var svOpts []supervisor.SupervisorOption
-	svOpts = append(svOpts, supervisor.WithCompletionRegistry(registry))
-	if sub, err := terminal.NewTmuxSubstrate(); err != nil {
-		log.Printf("terminal substrate unavailable, running headless: %v", err)
-	} else {
-		log.Println("terminal substrate: tmux ready")
-		svOpts = append(svOpts, supervisor.WithSubstrate(sub))
-	}
-
-	sv := supervisor.NewSupervisor(machine, store, policy, svOpts...)
+	sv := supervisor.NewSupervisor(machine, store, policy)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	submitter := dag.NewBlockingSubmitter(store, registry)
+	submitter := dag.NewStoreSubmitter(store)
 	executor := dag.NewExecutor(ctx, submitter)
 
 	agg := health.NewAggregator(store, executor, health.WithMinAgents(minAgents))

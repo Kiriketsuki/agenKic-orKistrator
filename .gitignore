@@ -24,13 +24,4 @@ Thumbs.db
 
 # Go
 /vendor/
-*.test
 .gitnexus
-
-# Council reports
-*-council-*.md
-
-# Claude Code internal
-.claude/worktrees/
-.claude/handoffs/
-.observer.lock

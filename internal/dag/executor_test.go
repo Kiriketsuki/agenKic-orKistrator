@@ -1,5 +1,3 @@
-//go:build testenv
-
 package dag_test
 
 import (
