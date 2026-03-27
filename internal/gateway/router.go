@@ -50,7 +50,7 @@ func WithCompleter(c Completer) RouterOption {
 }
 
 // WithClassificationPrompt sets the prompt template used for classification.
-// The template must contain a single %s verb for the task description.
+// The template must contain exactly one %s verb and no other format verbs (e.g., %d, %v).
 func WithClassificationPrompt(prompt string) RouterOption {
 	return func(r *JudgeRouter) { r.classificationPrompt = prompt }
 }
@@ -91,11 +91,12 @@ func (r *JudgeRouter) Classify(ctx context.Context, task TaskSpec) (RoutingDecis
 		}, nil
 	}
 
-	if strings.Count(r.classificationPrompt, "%s") != 1 {
-		slog.WarnContext(ctx, "gateway/router: classification prompt must contain exactly one %s verb", "task_id", task.ID, "tier", r.defaultTier)
+	cleaned := strings.ReplaceAll(r.classificationPrompt, "%%", "")
+	if strings.Count(cleaned, "%s") != 1 || strings.Count(cleaned, "%") != 1 {
+		slog.WarnContext(ctx, "gateway/router: classification prompt must contain exactly one %s verb and no other format verbs", "task_id", task.ID, "tier", r.defaultTier)
 		return RoutingDecision{
 			Tier:        r.defaultTier,
-			Reason:      "classification prompt must contain exactly one %s verb; using default tier",
+			Reason:      "classification prompt must contain exactly one %s verb and no other format verbs; using default tier",
 			RawResponse: "",
 		}, nil
 	}

@@ -253,8 +253,8 @@ func TestJudgeRouter_MissingFormatVerb(t *testing.T) {
 		t.Errorf("completer called %d times, want 0 (should not reach completer)", mc.calls)
 	}
 
-	if !strings.Contains(decision.Reason, "exactly one %s verb") {
-		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb")
+	if !strings.Contains(decision.Reason, "exactly one %s verb and no other format verbs") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb and no other format verbs")
 	}
 
 	if decision.RawResponse != "" {
@@ -284,12 +284,74 @@ func TestJudgeRouter_ExcessFormatVerbs(t *testing.T) {
 		t.Errorf("completer called %d times, want 0 (should not reach completer)", mc.calls)
 	}
 
-	if !strings.Contains(decision.Reason, "exactly one %s verb") {
-		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb")
+	if !strings.Contains(decision.Reason, "exactly one %s verb and no other format verbs") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "exactly one %s verb and no other format verbs")
 	}
 
 	if decision.RawResponse != "" {
 		t.Errorf("RawResponse = %q, want empty on excess-verb fallback", decision.RawResponse)
+	}
+}
+
+func TestJudgeRouter_NonSFormatVerb(t *testing.T) {
+	mc := &mockCompleter{
+		response: CompletionResponse{Content: "cheap", Model: defaultJudgeModel},
+	}
+	router := NewJudgeRouter(
+		WithCompleter(mc),
+		WithClassificationPrompt("Classify task %s. Priority: %d"),
+	)
+
+	decision, err := router.Classify(context.Background(), TaskSpec{ID: "fv1", Description: "format a CSV"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if decision.Tier != TierMid {
+		t.Errorf("tier = %q, want %q (default tier)", decision.Tier, TierMid)
+	}
+
+	if mc.calls != 0 {
+		t.Errorf("completer called %d times, want 0 (should not reach completer)", mc.calls)
+	}
+
+	if !strings.Contains(decision.Reason, "no other format verbs") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "no other format verbs")
+	}
+
+	if decision.RawResponse != "" {
+		t.Errorf("RawResponse = %q, want empty on format-verb fallback", decision.RawResponse)
+	}
+}
+
+func TestJudgeRouter_InvalidOverrideTier(t *testing.T) {
+	mc := &mockCompleter{
+		response: CompletionResponse{Content: "cheap", Model: defaultJudgeModel},
+	}
+	router := NewJudgeRouter(
+		WithCompleter(mc),
+		WithDefaultTier(TierMid),
+	)
+
+	decision, err := router.Classify(context.Background(), TaskSpec{
+		ID:           "iot1",
+		Description:  "format a CSV",
+		OverrideTier: ModelTier("bogus"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if decision.Tier != TierCheap {
+		t.Errorf("tier = %q, want %q (from classification, not override)", decision.Tier, TierCheap)
+	}
+
+	if mc.calls != 1 {
+		t.Errorf("completer called %d times, want 1 (should fall through to classification)", mc.calls)
+	}
+
+	if !strings.Contains(decision.Reason, "classified as cheap") {
+		t.Errorf("reason = %q, want it to contain %q", decision.Reason, "classified as cheap")
 	}
 }
 
