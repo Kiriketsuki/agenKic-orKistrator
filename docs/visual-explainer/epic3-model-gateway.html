@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epic 3 — Model Gateway / Judge-Router</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+    --bg: #f8f6f2;
+    --surface: #ffffff;
+    --surface-2: #f1ede6;
+    --border: rgba(30, 58, 95, 0.10);
+    --text: #1a1a2e;
+    --text-dim: #6b7280;
+
+    --navy: #1e3a5f;
+    --navy-light: #2d5a8e;
+    --gold: #d4a73a;
+    --gold-dim: rgba(212, 167, 58, 0.12);
+    --emerald: #059669;
+    --emerald-dim: rgba(5, 150, 105, 0.10);
+    --rose: #be123c;
+    --rose-dim: rgba(190, 18, 60, 0.08);
+    --teal: #0891b2;
+    --teal-dim: rgba(8, 145, 178, 0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-2: #162033;
+      --border: rgba(212, 167, 58, 0.12);
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --navy: #93c5fd;
+      --navy-light: #60a5fa;
+      --gold: #fbbf24;
+      --gold-dim: rgba(251, 191, 36, 0.14);
+      --emerald: #34d399;
+      --emerald-dim: rgba(52, 211, 153, 0.12);
+      --rose: #fb7185;
+      --rose-dim: rgba(251, 113, 133, 0.10);
+      --teal: #22d3ee;
+      --teal-dim: rgba(34, 211, 238, 0.10);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ===== ANIMATIONS ===== */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideRight {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes countUp {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 var(--gold-dim); }
+    50% { box-shadow: 0 0 20px 4px var(--gold-dim); }
+  }
+  @keyframes drawLine {
+    from { stroke-dashoffset: 100%; }
+    to { stroke-dashoffset: 0%; }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .anim-up {
+    animation: fadeUp 0.6s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.08s);
+  }
+  .anim-right {
+    animation: slideRight 0.5s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.08s);
+  }
+  .anim-fade {
+    animation: fadeIn 0.8s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.1s);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ===== HERO ===== */
+  .hero {
+    background: var(--navy);
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(212,167,58,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(8,145,178,0.06) 0%, transparent 50%);
+    color: #e2e8f0;
+    padding: 64px 40px 56px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .hero { background-color: #0c1929; }
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+
+  .hero-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 12px;
+  }
+
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    color: #fff;
+  }
+
+  .hero-desc {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #94a3b8;
+    max-width: 640px;
+    margin-bottom: 40px;
+  }
+
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 24px;
+    max-width: 720px;
+  }
+
+  .stat {
+    text-align: left;
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 36px;
+    color: #fff;
+    animation: countUp 0.6s ease-out both;
+    animation-delay: calc(var(--i, 0) * 0.12s + 0.4s);
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  /* ===== MAIN CONTENT ===== */
+  .content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 40px;
+  }
+
+  /* ===== SECTION HEADERS ===== */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+    margin-top: 56px;
+  }
+
+  .section-header:first-child { margin-top: 0; }
+
+  .section-num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--gold);
+    background: var(--gold-dim);
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--navy);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .section-title { color: var(--navy); }
+  }
+
+  .section-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    min-width: 40px;
+  }
+
+  /* ===== MERMAID ===== */
+  .diagram-shell { position: relative; }
+
+  .diagram-shell__hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    opacity: 0.7;
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow: auto;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    cursor: grab;
+  }
+
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .zoom-controls button:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+
+  .mermaid-viewport {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    min-height: 300px;
+  }
+
+  .mermaid-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .zoom-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 14px !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 11px !important;
+  }
+
+  .mermaid .node rect,
+  .mermaid .node circle,
+  .mermaid .node polygon {
+    stroke-width: 1.5px !important;
+  }
+
+  .mermaid .edge-pattern-solid {
+    stroke-width: 1.5px !important;
+  }
+
+  /* ===== COMPONENT CARDS ===== */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+
+  .ve-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ve-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(30, 58, 95, 0.08);
+  }
+
+  .ve-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--navy));
+  }
+
+  .card-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--card-accent, var(--navy));
+    margin-bottom: 8px;
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+
+  .card-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+
+  .card-files {
+    list-style: none;
+  }
+
+  .card-files li {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-files li:last-child { border-bottom: none; }
+
+  .card-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-right: 6px;
+  }
+
+  /* ===== COUNCIL TIMELINE ===== */
+  .timeline {
+    position: relative;
+    padding-left: 40px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--gold), var(--emerald));
+  }
+
+  .tl-entry {
+    position: relative;
+    padding-bottom: 32px;
+  }
+
+  .tl-entry:last-child { padding-bottom: 0; }
+
+  .tl-dot {
+    position: absolute;
+    left: -33px;
+    top: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 3px solid var(--tl-color, var(--gold));
+    z-index: 1;
+    transition: transform 0.3s ease;
+  }
+
+  .tl-entry:hover .tl-dot {
+    transform: scale(1.3);
+  }
+
+  .tl-round {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--tl-color, var(--gold));
+    margin-bottom: 4px;
+  }
+
+  .tl-title {
+    font-family: var(--font-display);
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+
+  .tl-body {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .tl-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-top: 8px;
+  }
+
+  /* ===== COVERAGE BAR ===== */
+  .coverage-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-top: 24px;
+  }
+
+  .coverage-track {
+    flex: 1;
+    height: 10px;
+    background: var(--surface-2);
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .coverage-fill {
+    height: 100%;
+    border-radius: 5px;
+    background: linear-gradient(90deg, var(--emerald), var(--teal));
+    width: 0%;
+    transition: width 1.2s ease-out;
+  }
+
+  .coverage-fill.animated { width: var(--pct); }
+
+  .coverage-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    min-width: 60px;
+  }
+
+  .coverage-pct {
+    font-family: var(--font-display);
+    font-size: 28px;
+    color: var(--emerald);
+    min-width: 80px;
+    text-align: right;
+  }
+
+  /* ===== FLOW ANNOTATION ===== */
+  .flow-legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  .flow-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .flow-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  /* ===== CALLOUT ===== */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 10px 10px 0;
+    padding: 16px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-top: 24px;
+  }
+
+  .callout strong { color: var(--text); }
+
+  .callout code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--gold-dim);
+    color: var(--gold);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ===== FOOTER ===== */
+  .footer {
+    text-align: center;
+    padding: 40px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    margin-top: 56px;
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    .hero { padding: 40px 20px 36px; }
+    .content { padding: 32px 20px; }
+    .hero h1 { font-size: 28px; }
+    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .card-grid { grid-template-columns: 1fr; }
+    .mermaid-wrap { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== HERO ===== -->
+<header class="hero">
+  <div class="hero-inner">
+    <p class="hero-label anim-up" style="--i:0">agenKic-orKistrator / Epic 3</p>
+    <h1 class="anim-up" style="--i:1">Model Gateway &amp; Judge-Router</h1>
+    <p class="hero-desc anim-up" style="--i:2">
+      A complete model gateway layer that routes tasks by complexity through a Haiku judge,
+      dispatches to the optimal provider via fallback chains, and tracks every token's cost.
+      Haiku judges. Sonnet works. Opus architects. 60&ndash;90% cost savings.
+    </p>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-value" style="--i:0">7</div>
+        <div class="stat-label">Tasks shipped</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="--i:1">7,080</div>
+        <div class="stat-label">Lines of Go</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="--i:2">99.2%</div>
+        <div class="stat-label">Test coverage</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="--i:3">5</div>
+        <div class="stat-label">Council rounds</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" style="--i:4">11/11</div>
+        <div class="stat-label">Findings resolved</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN ===== -->
+<main class="content">
+
+  <!-- SECTION 1: Architecture Flow -->
+  <div class="section-header anim-up" style="--i:5">
+    <span class="section-num">01</span>
+    <h2 class="section-title">Request Flow</h2>
+    <div class="section-rule"></div>
+  </div>
+
+  <section class="diagram-shell anim-fade" style="--i:6">
+    <p class="diagram-shell__hint">
+      Ctrl/Cmd + wheel to zoom &middot; Scroll to pan &middot; Double-click to fit
+    </p>
+    <div class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+        <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+        <button type="button" data-action="zoom-fit" title="Smart fit">&#8634;</button>
+        <button type="button" data-action="zoom-one" title="1:1 zoom">1:1</button>
+        <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+        <span class="zoom-label">Loading...</span>
+      </div>
+      <div class="mermaid-viewport">
+        <div class="mermaid mermaid-canvas"></div>
+      </div>
+    </div>
+    <script type="text/plain" class="diagram-source">
+      flowchart TD
+        A["TaskSpec\n(ID, Description, Payload)"]
+        B{"JudgeRouter\n(Haiku classifier)"}
+        C["RoutingDecision\n(Tier + Model)"]
+        D["Provider Registry\n(Anthropic, OpenAI, Ollama)"]
+        E["FormatAdapter\n(provider-specific transforms)"]
+        F["FallbackCompleter\n(chain: primary + fallbacks)"]
+        G["LiteLLM Proxy\n(OpenAI-compatible)"]
+        H["CompletionResponse\n(content, tokens, provider)"]
+        I["CostTracker\n(record + estimate)"]
+        J["CostReport\n(per-tier aggregation)"]
+
+        A --> B
+        B -->|"classify"| C
+        C --> D
+        D -->|"resolve adapter"| E
+        E -->|"format request"| F
+        F -->|"try primary"| G
+        F -.->|"fallback on error"| G
+        G --> H
+        H --> I
+        I -->|"period query"| J
+
+        style A fill:#1e3a5f,stroke:#d4a73a,color:#fff
+        style B fill:#d4a73a,stroke:#1e3a5f,color:#1a1a2e
+        style C fill:#1e3a5f,stroke:#93c5fd,color:#fff
+        style D fill:#0891b2,stroke:#1e3a5f,color:#fff
+        style E fill:#0891b2,stroke:#1e3a5f,color:#fff
+        style F fill:#059669,stroke:#1e3a5f,color:#fff
+        style G fill:#6b7280,stroke:#1e3a5f,color:#fff
+        style H fill:#1e3a5f,stroke:#93c5fd,color:#fff
+        style I fill:#be123c,stroke:#1e3a5f,color:#fff
+        style J fill:#be123c,stroke:#d4a73a,color:#fff
+    </script>
+  </section>
+
+  <div class="flow-legend anim-up" style="--i:7">
+    <div class="flow-legend-item"><div class="flow-swatch" style="background:#1e3a5f"></div> Core types (T1)</div>
+    <div class="flow-legend-item"><div class="flow-swatch" style="background:#d4a73a"></div> Judge-Router (T4)</div>
+    <div class="flow-legend-item"><div class="flow-swatch" style="background:#0891b2"></div> Providers (T2/T3)</div>
+    <div class="flow-legend-item"><div class="flow-swatch" style="background:#059669"></div> Fallback Chains (T5/T6)</div>
+    <div class="flow-legend-item"><div class="flow-swatch" style="background:#be123c"></div> Cost Tracking (T7)</div>
+  </div>
+
+  <div class="callout anim-up" style="--i:8">
+    <strong>Tier system.</strong> Tasks are classified into three tiers:
+    <code>cheap</code> (Haiku &mdash; simple lookups, formatting),
+    <code>mid</code> (Sonnet &mdash; code generation, analysis), and
+    <code>frontier</code> (Opus &mdash; complex architecture, novel problems).
+    The judge model itself runs on the cheapest tier, costing fractions of a cent per classification.
+  </div>
+
+  <!-- SECTION 2: Components -->
+  <div class="section-header anim-up" style="--i:9">
+    <span class="section-num">02</span>
+    <h2 class="section-title">Components</h2>
+    <div class="section-rule"></div>
+  </div>
+
+  <div class="card-grid">
+
+    <div class="ve-card anim-up" style="--i:10; --card-accent: #1e3a5f">
+      <div class="card-tag">T1 &mdash; Gateway Interface &amp; Types</div>
+      <div class="card-title">The Contract</div>
+      <p class="card-desc">
+        Core interfaces (<code>Gateway</code>, <code>Router</code>, <code>Completer</code>,
+        <code>CostTracker</code>) and value types (<code>TaskSpec</code>, <code>RoutingDecision</code>,
+        <code>CompletionRequest/Response</code>, <code>CostRecord</code>). All types are immutable by convention.
+      </p>
+      <ul class="card-files">
+        <li>gateway/gateway.go &mdash; 147 lines, 12 types</li>
+        <li>gateway/errors.go &mdash; 93 lines, 7 sentinel errors</li>
+      </ul>
+    </div>
+
+    <div class="ve-card anim-up" style="--i:11; --card-accent: #0891b2">
+      <div class="card-tag">T2/T3 &mdash; LiteLLM Client &amp; Adapters</div>
+      <div class="card-title">Provider Layer</div>
+      <p class="card-desc">
+        OpenAI-compatible HTTP client for the LiteLLM proxy. Per-provider
+        <code>FormatAdapter</code>s handle quirks: Anthropic system prompts,
+        OpenAI model prefixes, Ollama name stripping. Registry resolves
+        model names to adapters at request time.
+      </p>
+      <ul class="card-files">
+        <li>gateway/litellm.go &mdash; LiteLLM HTTP client (210 lines)</li>
+        <li>providers/provider.go &mdash; Registry + FormatAdapter interface</li>
+        <li>providers/anthropic.go, openai.go, ollama.go</li>
+      </ul>
+    </div>
+
+    <div class="ve-card anim-up" style="--i:12; --card-accent: #d4a73a">
+      <div class="card-tag">T4 &mdash; Judge-Router</div>
+      <div class="card-title">Complexity Classifier</div>
+      <p class="card-desc">
+        Haiku classifies task descriptions into <code>cheap</code>/<code>mid</code>/<code>frontier</code>
+        tiers. Single-word response parsing. Falls back to <code>mid</code> on ambiguous output.
+        Override via <code>TaskSpec.OverrideTier</code> bypasses classification entirely.
+      </p>
+      <ul class="card-files">
+        <li>gateway/router.go &mdash; 165 lines</li>
+        <li>Classification prompt: 3-tier, one-word response</li>
+        <li>Functional options: WithJudgeModel, WithDefaultTier</li>
+      </ul>
+    </div>
+
+    <div class="ve-card anim-up" style="--i:13; --card-accent: #059669">
+      <div class="card-tag">T5/T6 &mdash; Config &amp; Fallback Chains</div>
+      <div class="card-title">YAML Config + Resilience</div>
+      <p class="card-desc">
+        Loads <code>config/models.yaml</code> with tier definitions, provider endpoints,
+        model assignments, and pricing tables. <code>FallbackCompleter</code> wraps per-model
+        completers and tries the chain on failure. Multi-error unwrapping via <code>errors.Is</code>.
+      </p>
+      <ul class="card-files">
+        <li>gateway/config.go &mdash; YAML loader + validation (124 lines)</li>
+        <li>gateway/fallback.go &mdash; FallbackCompleter (112 lines)</li>
+        <li>config/models.yaml &mdash; 3 tiers, 3 providers, pricing</li>
+      </ul>
+    </div>
+
+    <div class="ve-card anim-up" style="--i:14; --card-accent: #be123c">
+      <div class="card-tag">T7 &mdash; Cost Tracking</div>
+      <div class="card-title">Token Economics</div>
+      <p class="card-desc">
+        Per-request cost recording with <code>EstimateCost</code> using pricing tables.
+        <code>InMemoryCostTracker</code> (thread-safe, spike-phase) stores records and generates
+        <code>CostReport</code>s with per-tier aggregation over half-open time periods.
+        Production will use Redis-backed storage.
+      </p>
+      <ul class="card-files">
+        <li>gateway/cost.go &mdash; 109 lines, 3 Claude model prices</li>
+        <li>NewCostRecordFromResponse bridges completion &rarr; cost</li>
+        <li>Report: period filtering, tier grouping, totals</li>
+      </ul>
+    </div>
+
+    <div class="ve-card anim-up" style="--i:15; --card-accent: #6b7280">
+      <div class="card-tag">Integration</div>
+      <div class="card-title">Orchestrator Wiring</div>
+      <p class="card-desc">
+        Supervisor exposes gateway via <code>CompletionRegistry</code>.
+        <code>BlockingSubmitter</code> bridges DAG task submission with completion awaiting.
+        gRPC handlers in <code>ipc/handlers.go</code> wrap gateway operations for external callers.
+      </p>
+      <ul class="card-files">
+        <li>supervisor/completion.go &mdash; registry + awaiter</li>
+        <li>dag/blockingsubmitter.go &mdash; DAG &rarr; completion bridge</li>
+        <li>ipc/handlers.go &mdash; gRPC service methods</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- SECTION 3: Council Journey -->
+  <div class="section-header anim-up" style="--i:16">
+    <span class="section-num">03</span>
+    <h2 class="section-title">Adversarial Council Journey</h2>
+    <div class="section-rule"></div>
+  </div>
+
+  <div class="timeline">
+
+    <div class="tl-entry anim-right" style="--i:17; --tl-color: #be123c">
+      <div class="tl-dot"></div>
+      <div class="tl-round">Round 1 &mdash; Code Correctness</div>
+      <div class="tl-title">3 code-level fixes</div>
+      <div class="tl-body">
+        TimePeriod boundary filtering corrected from closed [Start, End] to half-open [Start, End).
+        Stream field doc updated (not yet implemented). Gemini adapter intentional omission documented.
+      </div>
+      <span class="tl-badge" style="background: var(--rose-dim); color: var(--rose);">CONDITIONAL FOR</span>
+    </div>
+
+    <div class="tl-entry anim-right" style="--i:18; --tl-color: #d4a73a">
+      <div class="tl-dot"></div>
+      <div class="tl-round">Round 2 &mdash; Documentation</div>
+      <div class="tl-title">3 doc-level improvements</div>
+      <div class="tl-body">
+        TaskSpec.Payload doc corrected (reserved, not used by judge-router).
+        RequestID propagation documented. Ollama LiteLLM runtime dependency noted.
+        Coverage raised from 92% to 99.2%.
+      </div>
+      <span class="tl-badge" style="background: var(--gold-dim); color: var(--gold);">CONDITIONAL FOR</span>
+    </div>
+
+    <div class="tl-entry anim-right" style="--i:19; --tl-color: #0891b2">
+      <div class="tl-dot"></div>
+      <div class="tl-round">Round 3 &mdash; Idioms &amp; Config</div>
+      <div class="tl-title">4 fixes (errors.Is, SSRF, docs, pricing keys)</div>
+      <div class="tl-body">
+        errors.Is idiom swap. Stale SSRF comment removed. ErrCostTrackerFull doc updated.
+        Ollama pricing keys renamed for namespace consistency. One condition (doc note) deferred.
+      </div>
+      <span class="tl-badge" style="background: var(--teal-dim); color: var(--teal);">CONDITIONAL FOR</span>
+    </div>
+
+    <div class="tl-entry anim-right" style="--i:20; --tl-color: #059669">
+      <div class="tl-dot"></div>
+      <div class="tl-round">Round 4 &mdash; Verification</div>
+      <div class="tl-title">1 remaining gap: pricing namespace doc note</div>
+      <div class="tl-body">
+        All 10 prior fixes confirmed applied. Single condition: document the two-phase naming
+        convention (prefixed in config/routing, bare in runtime/cost) at FormatRequest.
+      </div>
+      <span class="tl-badge" style="background: var(--emerald-dim); color: var(--emerald);">CONDITIONAL FOR</span>
+    </div>
+
+    <div class="tl-entry anim-right" style="--i:21; --tl-color: #059669">
+      <div class="tl-dot" style="border-width: 4px; background: var(--emerald);"></div>
+      <div class="tl-round">Round 5 &mdash; Final Clearance</div>
+      <div class="tl-title">All conditions met. Unanimous FOR.</div>
+      <div class="tl-body">
+        Doc note at ollama.go:25-29 verified. Four findings raised, all conceded as non-blocking
+        after ARBITER cited Round 4's own "CompletionResponse.Model" framing. Three non-blocking
+        follow-ups noted (YAML comment, cost.go cross-ref, LiteLLM dependency note).
+      </div>
+      <span class="tl-badge" style="background: var(--emerald-dim); color: var(--emerald);">FOR (unconditional)</span>
+    </div>
+
+  </div>
+
+  <!-- SECTION 4: Coverage -->
+  <div class="section-header anim-up" style="--i:22">
+    <span class="section-num">04</span>
+    <h2 class="section-title">Test Coverage</h2>
+    <div class="section-rule"></div>
+  </div>
+
+  <div class="coverage-bar anim-up" style="--i:23">
+    <div class="coverage-label">gateway/</div>
+    <div class="coverage-track">
+      <div class="coverage-fill" style="--pct: 99.2%"></div>
+    </div>
+    <div class="coverage-pct">99.2%</div>
+  </div>
+
+  <div class="coverage-bar anim-up" style="--i:24">
+    <div class="coverage-label">providers/</div>
+    <div class="coverage-track">
+      <div class="coverage-fill" style="--pct: 100%"></div>
+    </div>
+    <div class="coverage-pct" style="color: var(--teal)">100%</div>
+  </div>
+
+  <div class="callout anim-up" style="--i:25">
+    <strong>Race-detector clean.</strong> All tests run with <code>go test -race</code>.
+    The <code>InMemoryCostTracker</code> uses <code>sync.RWMutex</code> for concurrent access.
+    Table-driven tests cover edge cases: empty chains, unknown tiers, malformed YAML, zero-token requests.
+  </div>
+
+</main>
+
+<footer class="footer">
+  agenKic-orKistrator &middot; Epic 3: Model Gateway / Judge-Router &middot; PR #26 &middot; 2026-03-29
+</footer>
+
+<!-- ===== MERMAID + ZOOM ===== -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = {
+    fitPadding: 28, minHeight: 360, maxHeightPx: 960,
+    maxHeightVh: 0.84, maxInitialZoom: 1.8, minZoom: 0.08,
+    maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0.58
+  };
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    layout: 'elk',
+    themeVariables: {
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontSize: '14px',
+      primaryColor: isDark ? '#1e293b' : '#e8e2d8',
+      primaryBorderColor: isDark ? '#93c5fd' : '#1e3a5f',
+      primaryTextColor: isDark ? '#e2e8f0' : '#1a1a2e',
+      lineColor: isDark ? '#64748b' : '#6b7280',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0;
+    let sx = 0, sy = 0, spx = 0, spy = 0, touchDist = 0, touchCx = 0, touchCy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad*2 <= vpW) ? (vpW - rW)/2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad*2 <= vpH) ? (vpH - rH)/2 : clamp(panY, vpH - rH - pad, pad);
+    }
+
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% \u2014 ' + fitMode;
+    }
+
+    function canPan() {
+      return svgW * zoom + config.fitPadding*2 > viewport.clientWidth
+          || svgH * zoom + config.fitPadding*2 > viewport.clientHeight;
+    }
+
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding*2);
+      const aH = Math.max(80, vpH - config.fitPadding*2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        const chartR = svgH / svgW, vpR = vpH / Math.max(vpW, 1);
+        if (chartR >= vpR) { z = aW / svgW; mode = 'width-priority'; }
+        else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW*zoom)/2;
+      panY = (viewport.clientHeight - svgH*zoom)/2;
+      applyTransform();
+    }
+
+    function setOneToOne() {
+      zoom = clamp(1, config.minZoom, config.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth - svgW*zoom)/2;
+      panY = (viewport.clientHeight - svgH*zoom)/2;
+      applyTransform();
+    }
+
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom);
+      const ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY);
+      zoom = next; fitMode = 'custom'; applyTransform();
+    }
+
+    function readSvgNaturalSize(svg) {
+      let w = 0, h = 0;
+      if (svg.viewBox?.baseVal?.width > 0) { w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height; }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { const r = svg.getBoundingClientRect(); w = r.width || 1000; h = r.height || 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding*2;
+      const maxVp = Math.floor(innerHeight * config.maxHeightVh);
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true);
+      clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0f172a' : '#f8f6f2';
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:${bg};padding:40px;box-sizing:border-box}
+      svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+
+    async function render() {
+      try {
+        const code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: Empty source'; return; }
+        const id = 'diagram-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        const { svg } = await mermaid.render(id, code);
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        canvas.innerHTML = '';
+        canvas.appendChild(canvas.ownerDocument.importNode(svgDoc.documentElement, true));
+        const svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: No SVG'; return; }
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'Render failed');
+      }
+    }
+
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth/2, viewport.clientHeight/2),
+      'zoom-out': () => zoomAround(1/(1 + config.zoomStep), viewport.clientWidth/2, viewport.clientHeight/2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab
+    };
+    Object.entries(actions).forEach(([action, handler]) => {
+      wrap.querySelector(`[data-action="${action}"]`)?.addEventListener('click', handler);
+    });
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1+config.zoomStep : 1/(1+config.zoomStep), e.clientX-rect.left, e.clientY-rect.top);
+        return;
+      }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning'); sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = {
+        onMove: (ev) => { panX = spx + (ev.clientX-sx); panY = spy + (ev.clientY-sy); applyTransform(); },
+        onEnd: () => { wrap.classList.remove('is-panning'); }
+      };
+    });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+
+  // Animate coverage bars on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.querySelector('.coverage-fill')?.classList.add('animated');
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.coverage-bar').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
