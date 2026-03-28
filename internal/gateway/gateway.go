@@ -78,7 +78,7 @@ type CompletionRequest struct {
 	MaxTokens int
 	// Temperature controls randomness. Negative means provider default.
 	Temperature float64
-	// Stream enables streaming response mode via the provider.
+	// Stream requests streaming response mode. Not yet implemented; reserved for future use.
 	Stream bool
 	// Tier carries the routing decision so cost tracking receives tier context.
 	Tier ModelTier

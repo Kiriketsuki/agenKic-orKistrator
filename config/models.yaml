@@ -12,7 +12,7 @@ tiers:
     primary_model: "claude-sonnet-4-6"
     fallback_chain:
       - "gpt-4o"
-      - "gemini-pro"
+      - "gemini-pro"  # Requires LiteLLM with Gemini configured; no local adapter needed
   frontier:
     primary_model: "claude-opus-4-6"
     fallback_chain:
@@ -29,7 +29,7 @@ providers:
   ollama:
     base_url: "http://localhost:11434"
     models: ["ollama/llama3", "ollama/codellama"]
-  gemini:
+  gemini:  # No local FormatAdapter — LiteLLM handles format translation server-side
     base_url: "https://generativelanguage.googleapis.com"
     models: ["gemini-pro"]
 

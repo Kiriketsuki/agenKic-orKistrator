@@ -92,9 +92,9 @@ func TestInMemoryCostTracker_TimeFiltering(t *testing.T) {
 	}
 }
 
-// TestInMemoryCostTracker_PeriodBoundariesInclusive verifies that records
-// exactly on the Start and End boundaries are included.
-func TestInMemoryCostTracker_PeriodBoundariesInclusive(t *testing.T) {
+// TestInMemoryCostTracker_PeriodBoundariesHalfOpen verifies half-open [Start, End)
+// semantics: a record at Start is included, a record at End is excluded.
+func TestInMemoryCostTracker_PeriodBoundariesHalfOpen(t *testing.T) {
 	ctx := context.Background()
 	tracker := NewInMemoryCostTracker()
 
@@ -109,8 +109,8 @@ func TestInMemoryCostTracker_PeriodBoundariesInclusive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Report() error = %v", err)
 	}
-	if got := report.Total.RequestCount; got != 2 {
-		t.Errorf("Total.RequestCount = %d, want 2 (boundary records must be included)", got)
+	if got := report.Total.RequestCount; got != 1 {
+		t.Errorf("Total.RequestCount = %d, want 1 (Start included, End excluded per half-open [Start, End))", got)
 	}
 }
 

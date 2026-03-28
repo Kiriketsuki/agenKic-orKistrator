@@ -49,7 +49,7 @@ func (t *InMemoryCostTracker) Report(_ context.Context, period TimePeriod) (Cost
 	var total CostSummary
 
 	for _, r := range t.records {
-		if r.Timestamp.Before(period.Start) || r.Timestamp.After(period.End) {
+		if r.Timestamp.Before(period.Start) || !r.Timestamp.Before(period.End) {
 			continue
 		}
 
