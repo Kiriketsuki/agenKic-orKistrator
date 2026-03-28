@@ -51,9 +51,9 @@
 **API Contracts**:
 ```go
 type Gateway interface {
-    Route(task TaskSpec) (ModelTier, error)
-    Complete(req CompletionRequest) (CompletionResponse, error)
-    GetCostReport(period TimePeriod) (CostReport, error)
+    Route(ctx context.Context, task TaskSpec) (RoutingDecision, error)
+    Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
+    GetCostReport(ctx context.Context, period TimePeriod) (CostReport, error)
 }
 ```
 
@@ -138,7 +138,7 @@ Feature: Model Gateway / Router
 |:-----|:-----|:---------|:-------------|:--------|
 | T1   | Define Gateway interface and types (tiers, requests, responses) | High | None | pending |
 | T2   | LiteLLM proxy client: unified completion call | High | T1 | pending |
-| T3   | Provider format adapters (Anthropic, OpenAI, Ollama, Gemini) | High | T2 | pending |
+| T3   | Provider format adapters (Anthropic, OpenAI, Ollama); Gemini omitted — LiteLLM handles natively | High | T2 | pending |
 | T4   | Judge-Router: Haiku classifies task -> routes to tier | High | T2 | pending |
 | T5   | Config: `models.yaml` for tier definitions, fallback chains | High | T1 | pending |
 | T6   | Fallback chain logic: retry with next provider on failure | High | T2, T5 | pending |

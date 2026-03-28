@@ -1,0 +1,70 @@
+## 2026-03-28 Handoff (Round 3 — fresh council)
+
+### Decisions
+- Council Round 3 (new): CONDITIONAL FOR — unanimous, 4 pre-merge fixes
+- Fix 1: errors.go:84 — errors.Is instead of == for context sentinels + wrapped test
+- Fix 2: gateway.go:183-184 — reword stale T5 SSRF deferral comment
+- Fix 3: errors.go:31 — doc note on ErrCostTrackerFull as reserved sentinel
+- Fix 4: models.yaml:43-44 — align Ollama pricing keys to bare model names
+- All 6 prior conditions (Rounds 1+2) verified resolved
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-28-23h30-council-r3-fix-loop.md
+- Branch: epic/3-implement-model-gateway-judge-router
+
+---
+
+## 2026-03-28 Handoff (earlier)
+
+### Decisions
+- Council Round 3 (prior): CONDITIONAL — 1 doc fix (DefaultRegistry godoc), 2 advisory notes
+- Prompt injection at router.go:112 is advisory, not blocking — track for Epic 4
+- All 6 prior conditions (Rounds 1+2) verified resolved
+
+### Failed Approaches
+- None
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-28-22h50-council-r3-fix-loop.md
+- Branch: epic/3-implement-model-gateway-judge-router
+
+---
+
+## 2026-03-22 Handoff
+
+### Decisions
+- T1 (Gateway Interface & Types) squash-merged into epic/3 after 3 adversarial councils
+- ProviderConfig.APIKey kept exported with fmt.Formatter defense-in-depth (not unexported)
+- TokenUsage type deliberately inlined on CompletionResponse and CostRecord
+- CacheHit bool promoted to CostRecord must-have for DeepSeek cached pricing
+- Council report files deleted from repo (session artifacts, not deliverables)
+- Created issue #55 for T7 CostReport aggregation test obligation
+
+### Failed Approaches
+- (none -- all advisory fixes applied cleanly, rebase of feature/33 was clean after skipping redundant T1 commit)
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-22-23h50-t1-merged-t2t3-ready.md
+- Branch: feature/33-feature-litellm-client-provider-adapters-t2-t3
+
+---
+
+## 2026-03-15 Handoff
+
+### Decisions
+- PR #10 (F1) merged into task branch after council4 returned FOR
+- Phantom commit reference in PR body corrected before merge
+- RedisStore.GetAgentFields zero-value semantics: empty-string guards, documented in StateStore godoc
+- EventAgentFailed self-loop from StateIdle is intentional, documented and tested
+
+### Failed Approaches
+- (none this session — all fixes applied cleanly)
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-15-08h00-f1-merged-f2-next.md
+- Branch: task/1-task-implement-go-orchestrator-core
+
+---

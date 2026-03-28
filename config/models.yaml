@@ -1,29 +1,44 @@
+gateway:
+  litellm_base_url: "http://localhost:4000"
+  timeout_seconds: 30
+
 tiers:
-  haiku:
-    models:
-      - claude-haiku-4-5-20251001
-    description: Lightweight agents, frequent invocation, worker agents
-    cost_class: low
+  cheap:
+    primary_model: "claude-haiku-4-5-20251001"
+    fallback_chain:
+      - "gpt-4o-mini"
+      - "ollama/llama3"
+  mid:
+    primary_model: "claude-sonnet-4-6"
+    fallback_chain:
+      - "gpt-4o"
+      - "gemini-pro"  # Requires LiteLLM with Gemini configured; no local adapter needed
+  frontier:
+    primary_model: "claude-opus-4-6"
+    fallback_chain:
+      - "gpt-4o"
+      - "claude-sonnet-4-6"
 
-  sonnet:
-    models:
-      - claude-sonnet-4-6
-    description: Main development work, orchestration, complex coding
-    cost_class: medium
+providers:
+  anthropic:
+    base_url: "https://api.anthropic.com"
+    models: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-6"]
+  openai:
+    base_url: "https://api.openai.com"
+    models: ["gpt-4o", "gpt-4o-mini"]
+  ollama:
+    base_url: "http://localhost:11434"
+    models: ["ollama/llama3", "ollama/codellama"]
+  gemini:  # No local FormatAdapter — LiteLLM handles format translation server-side
+    base_url: "https://generativelanguage.googleapis.com"
+    models: ["gemini-pro"]
 
-  opus:
-    models:
-      - claude-opus-4-6
-    description: Complex architectural decisions, maximum reasoning
-    cost_class: high
-
-fallback_chains:
-  opus:
-    - opus
-    - sonnet
-    - haiku
-  sonnet:
-    - sonnet
-    - haiku
-  haiku:
-    - haiku
+cost_per_million_tokens:
+  claude-haiku-4-5-20251001: { input: 0.80, output: 4.00 }
+  claude-sonnet-4-6: { input: 3.00, output: 15.00 }
+  claude-opus-4-6: { input: 15.00, output: 75.00 }
+  gpt-4o: { input: 2.50, output: 10.00 }
+  gpt-4o-mini: { input: 0.15, output: 0.60 }
+  gemini-pro: { input: 1.25, output: 5.00 }
+  llama3: { input: 0.0, output: 0.0 }
+  codellama: { input: 0.0, output: 0.0 }
