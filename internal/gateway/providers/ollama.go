@@ -7,8 +7,10 @@ import (
 )
 
 // OllamaAdapter handles models whose names start with "ollama/".
-// LiteLLM routes "ollama/<model>" to a local Ollama instance; no format
-// transformation is required beyond model name recognition.
+// FormatRequest strips the "ollama/" prefix so the bare model name
+// (e.g. "llama3") reaches LiteLLM. LiteLLM must be configured with
+// model aliases or an ollama provider entry that maps bare names to
+// the local Ollama instance.
 type OllamaAdapter struct{}
 
 func (a *OllamaAdapter) Name() string { return "ollama" }

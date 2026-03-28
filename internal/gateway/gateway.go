@@ -50,8 +50,8 @@ func (t *ModelTier) UnmarshalText(b []byte) error {
 type TaskSpec struct {
 	ID          string
 	Description string
-	// Payload carries the actual task content for classification.
-	// The judge-router uses this (not just Description) to assess complexity.
+	// Payload carries the raw task content. Reserved for future router
+	// enhancements; the current judge-router classifies on Description only.
 	Payload string
 	// Metadata is arbitrary key-value data passed through to cost tracking.
 	Metadata map[string]string
