@@ -22,6 +22,11 @@ func (a *OllamaAdapter) ParseModelName(model string) bool {
 
 // FormatRequest strips the "ollama/" prefix from the model name before
 // forwarding to LiteLLM. All other fields pass through unchanged.
+//
+// Note: after stripping, CompletionResponse.Model carries the bare name
+// (e.g. "llama3"), so pricing keys in cost_per_million_tokens and cost
+// records also use bare names — not the prefixed "ollama/llama3" form
+// used in config routing and provider model lists.
 func (a *OllamaAdapter) FormatRequest(req gateway.CompletionRequest) gateway.CompletionRequest {
 	out := req
 	out.Model = strings.TrimPrefix(req.Model, "ollama/")
