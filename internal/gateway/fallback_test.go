@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -308,6 +309,23 @@ func TestFallbackError_UnwrapExposesContextCanceled(t *testing.T) {
 	// Should still match ErrAllProvidersFailed
 	if !errors.Is(err, ErrAllProvidersFailed) {
 		t.Error("errors.Is(err, ErrAllProvidersFailed) = false, want true")
+	}
+}
+
+func TestFallbackError_UnwrapExposesWrappedContextCanceled(t *testing.T) {
+	// Verify errors.Is works when context.Canceled is wrapped with extra context,
+	// which requires errors.Is (not ==) in FallbackError.Unwrap.
+	wrappedCancel := fmt.Errorf("provider timeout: %w", context.Canceled)
+	fe := &FallbackError{
+		Errors: []ProviderError{
+			{Op: "Complete", Provider: "p1", Err: wrappedCancel},
+		},
+	}
+	if !errors.Is(fe, context.Canceled) {
+		t.Error("errors.Is(fe, context.Canceled) = false, want true for wrapped context error")
+	}
+	if !errors.Is(fe, ErrAllProvidersFailed) {
+		t.Error("errors.Is(fe, ErrAllProvidersFailed) = false, want true")
 	}
 }
 

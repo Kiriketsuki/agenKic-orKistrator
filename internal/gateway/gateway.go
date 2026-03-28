@@ -180,8 +180,8 @@ func Since(t time.Time) TimePeriod {
 // ProviderConfig holds the runtime configuration for a single provider.
 type ProviderConfig struct {
 	Name string
-	// BaseURL validation: LiteLLMClient.WithBaseURL rejects non-http/https schemes.
-	// Full host allowlist and private CIDR blocking deferred to config loading (T5).
+	// BaseURL validation: WithBaseURL rejects non-http/https schemes.
+	// No host allowlist or private CIDR blocking — BaseURL is operator-controlled config.
 	BaseURL string
 	APIKey  string `json:"-" yaml:"-"`
 	Models  []string

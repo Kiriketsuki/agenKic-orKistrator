@@ -28,6 +28,9 @@ var (
 	ErrConfigInvalid = errors.New("gateway: invalid configuration")
 
 	// ErrCostTrackerFull is returned when the cost tracker's capacity is exceeded.
+	// Reserved sentinel: capacity-limited CostTracker implementations return this
+	// when they cannot record additional costs. InMemoryCostTracker is unbounded
+	// and does not return this error.
 	ErrCostTrackerFull = errors.New("gateway: cost tracker capacity exceeded")
 )
 
@@ -81,7 +84,7 @@ func (e *FallbackError) Error() string {
 func (e *FallbackError) Unwrap() []error {
 	errs := []error{ErrAllProvidersFailed}
 	for _, pe := range e.Errors {
-		if pe.Err != nil && (pe.Err == context.Canceled || pe.Err == context.DeadlineExceeded) {
+		if pe.Err != nil && (errors.Is(pe.Err, context.Canceled) || errors.Is(pe.Err, context.DeadlineExceeded)) {
 			errs = append(errs, pe.Err)
 			break // only one context error is possible per chain
 		}

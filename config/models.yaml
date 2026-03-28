@@ -40,5 +40,5 @@ cost_per_million_tokens:
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }
   gemini-pro: { input: 1.25, output: 5.00 }
-  ollama/llama3: { input: 0.0, output: 0.0 }
-  ollama/codellama: { input: 0.0, output: 0.0 }
+  llama3: { input: 0.0, output: 0.0 }
+  codellama: { input: 0.0, output: 0.0 }

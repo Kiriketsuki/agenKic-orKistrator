@@ -45,7 +45,7 @@ cost_per_million_tokens:
   claude-opus-4-6: { input: 15.00, output: 75.00 }
   gpt-4o: { input: 2.50, output: 10.00 }
   gpt-4o-mini: { input: 0.15, output: 0.60 }
-  ollama/llama3: { input: 0.0, output: 0.0 }
+  llama3: { input: 0.0, output: 0.0 }
 `
 
 func TestParseConfig(t *testing.T) {
