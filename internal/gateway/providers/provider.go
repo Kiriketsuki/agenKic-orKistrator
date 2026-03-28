@@ -33,7 +33,9 @@ func NewRegistry(adapters ...FormatAdapter) *Registry {
 }
 
 // DefaultRegistry returns a Registry pre-populated with the built-in adapters
-// for Anthropic, OpenAI, and Ollama.
+// for Anthropic, OpenAI, and Ollama. Providers handled natively by LiteLLM
+// (e.g., Gemini) should use completers without WithAdapterResolver, since
+// Find returns ErrNoProvider for model prefixes not covered by these adapters.
 func DefaultRegistry() *Registry {
 	return NewRegistry(
 		&AnthropicAdapter{},
