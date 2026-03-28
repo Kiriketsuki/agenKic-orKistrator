@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/gateway"
 )
@@ -115,6 +116,30 @@ func TestLiteLLMClient_Complete(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"choices": [], "model": "gpt-4", "usage": {}}`))
+			},
+			req: gateway.CompletionRequest{
+				Model:    "gpt-4",
+				Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+			},
+			wantNoResp: true,
+		},
+		{
+			name: "client error 400 with error message",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"message":"bad request body"}}`))
+			},
+			req: gateway.CompletionRequest{
+				Model:    "gpt-4",
+				Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+			},
+			wantNoResp: true,
+		},
+		{
+			name: "client error 401 with empty body",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
 			},
 			req: gateway.CompletionRequest{
 				Model:    "gpt-4",
@@ -373,6 +398,65 @@ type testResolver struct {
 
 func (r *testResolver) Resolve(model string, req gateway.CompletionRequest) (gateway.CompletionRequest, error) {
 	return r.fn(model, req)
+}
+
+func TestLiteLLMClient_WithTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"model":"m","usage":{}}`))
+	}))
+	defer srv.Close()
+
+	client := gateway.NewLiteLLMClient(
+		gateway.WithBaseURL(srv.URL),
+		gateway.WithTimeout(5*time.Second),
+	)
+	resp, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:    "m",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("Content = %q, want %q", resp.Content, "ok")
+	}
+}
+
+func TestLiteLLMClient_TransportError(t *testing.T) {
+	transport := &recordingTransport{}
+	client := gateway.NewLiteLLMClient(
+		gateway.WithBaseURL("http://localhost:1"),
+		gateway.WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	_, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:    "m",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("expected transport error, got nil")
+	}
+	if !errors.Is(err, gateway.ErrProviderUnavailable) {
+		t.Errorf("expected ErrProviderUnavailable, got %v", err)
+	}
+}
+
+func TestLiteLLMClient_InvalidURL(t *testing.T) {
+	client := gateway.NewLiteLLMClient(
+		gateway.WithBaseURL("http://[::1]:namedport"),
+	)
+	_, err := client.Complete(context.Background(), gateway.CompletionRequest{
+		Model:    "m",
+		Messages: []gateway.Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid URL, got nil")
+	}
+	var pe *gateway.ProviderError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *ProviderError, got %T: %v", err, err)
+	}
 }
 
 func TestLiteLLMClient_ProviderName(t *testing.T) {

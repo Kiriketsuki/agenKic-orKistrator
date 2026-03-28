@@ -210,6 +210,32 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestParseConfig_NoCostSection(t *testing.T) {
+	yaml := `
+gateway:
+  litellm_base_url: "http://localhost:4000"
+  timeout_seconds: 30
+tiers:
+  cheap:
+    primary_model: "haiku"
+    fallback_chain: ["gpt-mini"]
+providers:
+  anthropic:
+    base_url: "https://api.anthropic.com"
+    models: ["haiku"]
+`
+	cfg, err := parseConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.CostPerMillionTokens == nil {
+		t.Fatal("CostPerMillionTokens should be non-nil empty map, got nil")
+	}
+	if len(cfg.CostPerMillionTokens) != 0 {
+		t.Errorf("CostPerMillionTokens length = %d, want 0", len(cfg.CostPerMillionTokens))
+	}
+}
+
 func TestLoadConfig_FileNotFound(t *testing.T) {
 	_, err := LoadConfig("/nonexistent/path/models.yaml")
 	if err == nil {

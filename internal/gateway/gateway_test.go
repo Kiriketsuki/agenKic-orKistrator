@@ -305,6 +305,54 @@ func TestProviderConfig_FormatV_RedactsAPIKey(t *testing.T) {
 	}
 }
 
+func TestProviderConfig_FormatS(t *testing.T) {
+	cfg := ProviderConfig{
+		Name:    "anthropic",
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "sk-secret",
+		Models:  []string{"claude-sonnet-4-6"},
+	}
+	got := fmt.Sprintf("%s", cfg)
+	if strings.Contains(got, "sk-secret") {
+		t.Fatalf("fmt.Sprintf(\"%%s\") leaked APIKey: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("fmt.Sprintf(\"%%s\") missing [REDACTED]: %q", got)
+	}
+}
+
+func TestProviderConfig_FormatV_Plain(t *testing.T) {
+	cfg := ProviderConfig{
+		Name:    "anthropic",
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "sk-secret",
+		Models:  []string{"claude-sonnet-4-6"},
+	}
+	got := fmt.Sprintf("%v", cfg)
+	if strings.Contains(got, "sk-secret") {
+		t.Fatalf("fmt.Sprintf(\"%%v\") leaked APIKey: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("fmt.Sprintf(\"%%v\") missing [REDACTED]: %q", got)
+	}
+}
+
+func TestProviderConfig_FormatDefaultVerb(t *testing.T) {
+	cfg := ProviderConfig{
+		Name:    "anthropic",
+		BaseURL: "https://api.anthropic.com",
+		APIKey:  "sk-secret",
+		Models:  []string{"claude-sonnet-4-6"},
+	}
+	got := fmt.Sprintf("%d", cfg)
+	if strings.Contains(got, "sk-secret") {
+		t.Fatalf("fmt.Sprintf(\"%%d\") leaked APIKey: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("fmt.Sprintf(\"%%d\") missing [REDACTED]: %q", got)
+	}
+}
+
 // TestInterfaceComposition verifies at compile time that a struct delegating
 // to Router, Completer, and CostTracker can satisfy the Gateway interface.
 func TestInterfaceComposition(t *testing.T) {

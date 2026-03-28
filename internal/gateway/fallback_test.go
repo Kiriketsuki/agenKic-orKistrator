@@ -310,3 +310,61 @@ func TestFallbackError_UnwrapExposesContextCanceled(t *testing.T) {
 		t.Error("errors.Is(err, ErrAllProvidersFailed) = false, want true")
 	}
 }
+
+func TestFallbackCompleter_Provider(t *testing.T) {
+	fc := NewFallbackCompleter(nil, GatewayConfig{})
+	if got := fc.Provider(); got != "fallback" {
+		t.Errorf("Provider() = %q, want %q", got, "fallback")
+	}
+}
+
+func TestFallbackCompleter_CompleteWithTier_MissingTierConfig(t *testing.T) {
+	cfg := testConfig() // has cheap and mid tiers only
+	fc := NewFallbackCompleter(map[string]Completer{}, cfg)
+
+	_, err := fc.CompleteWithTier(context.Background(), TierFrontier, CompletionRequest{})
+	if err == nil {
+		t.Fatal("expected error for missing tier config, got nil")
+	}
+	if !errors.Is(err, ErrInvalidTier) {
+		t.Errorf("error = %v, want wrapping ErrInvalidTier", err)
+	}
+}
+
+func TestFallbackCompleter_PlainErrorWrapped(t *testing.T) {
+	cfg := testConfig()
+	completers := map[string]Completer{
+		"model-primary":    &stubCompleter{provider: "p1", err: errors.New("plain error")},
+		"model-fallback-1": &stubCompleter{provider: "p2", err: errors.New("also plain")},
+		"model-fallback-2": &stubCompleter{provider: "p3", resp: CompletionResponse{Content: "ok"}},
+	}
+	fc := NewFallbackCompleter(completers, cfg)
+	resp, err := fc.Complete(context.Background(), CompletionRequest{Model: "model-primary"})
+	if err != nil {
+		t.Fatalf("expected success after fallback, got error: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Errorf("Content = %q, want %q", resp.Content, "ok")
+	}
+}
+
+func TestFallbackCompleter_ChainSkipsMissingCompleter(t *testing.T) {
+	cfg := testConfig()
+	// Only register primary and fallback-2; fallback-1 is missing from the map.
+	// tryChain should skip fallback-1 (ErrNoProvider) and succeed on fallback-2.
+	completers := map[string]Completer{
+		"model-primary":    &stubCompleter{provider: "p1", err: &ProviderError{Provider: "p1", Err: errors.New("fail")}},
+		"model-fallback-2": &stubCompleter{provider: "p3", resp: CompletionResponse{Content: "recovered"}},
+	}
+	fc := NewFallbackCompleter(completers, cfg)
+	resp, err := fc.Complete(context.Background(), CompletionRequest{Model: "model-primary"})
+	if err != nil {
+		t.Fatalf("expected success after skipping missing completer, got: %v", err)
+	}
+	if resp.Content != "recovered" {
+		t.Errorf("Content = %q, want %q", resp.Content, "recovered")
+	}
+	if !resp.FallbackUsed {
+		t.Error("FallbackUsed = false, want true")
+	}
+}

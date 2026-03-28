@@ -405,3 +405,20 @@ func TestJudgeRouter_CustomClassificationPrompt(t *testing.T) {
 		t.Errorf("prompt = %q, want it to contain %q", prompt, "Rate this: build a spaceship")
 	}
 }
+
+func TestJudgeRouter_WithJudgeModel(t *testing.T) {
+	mc := &mockCompleter{
+		response: CompletionResponse{Content: "mid"},
+	}
+	r := NewJudgeRouter(
+		WithCompleter(mc),
+		WithJudgeModel("custom-judge-model"),
+	)
+	_, err := r.Classify(context.Background(), TaskSpec{Description: "test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mc.lastRequest.Model != "custom-judge-model" {
+		t.Errorf("Model = %q, want %q", mc.lastRequest.Model, "custom-judge-model")
+	}
+}
