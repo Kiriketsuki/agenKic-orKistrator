@@ -4,16 +4,18 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	fieldState         = "state"
-	fieldLastHeartbeat = "last_heartbeat"
-	fieldCurrentTask   = "current_task_id"
-	fieldRegisteredAt  = "registered_at"
+	fieldState           = "state"
+	fieldLastHeartbeat   = "last_heartbeat"
+	fieldCurrentTask     = "current_task_id"
+	fieldCurrentTaskPrio = "current_task_priority"
+	fieldRegisteredAt    = "registered_at"
 
 	streamKey = "events"
 	queueKey  = "task_queue"
@@ -107,6 +109,77 @@ func (r *RedisStore) GetAgentState(ctx context.Context, agentID string) (string,
 	return val, nil
 }
 
+// casScript atomically compares the current state field of an agent hash and
+// sets it to the new value only if it matches the expected value.
+//
+// KEYS[1] = agent hash key
+// ARGV[1] = expected state
+// ARGV[2] = next state
+//
+// Returns:
+//
+//	1  → swap succeeded
+//	0  → current state did not match expected (conflict)
+//	-1 → key does not exist or has no state field (agent not found)
+var casScript = redis.NewScript(`
+local current = redis.call('HGET', KEYS[1], 'state')
+if current == false then
+    return -1
+end
+if current ~= ARGV[1] then
+    return {0, current}
+end
+redis.call('HSET', KEYS[1], 'state', ARGV[2])
+return 1
+`)
+
+// clearTaskScript atomically checks key existence before clearing task fields.
+// KEYS[1] = agent hash key
+//
+// Returns:
+//
+//	1  → cleared successfully
+//	-1 → key does not exist (agent not found)
+//
+// Field names must match fieldCurrentTask / fieldCurrentTaskPrio constants.
+var clearTaskScript = redis.NewScript(`
+local exists = redis.call('EXISTS', KEYS[1])
+if exists == 0 then
+    return -1
+end
+redis.call('HSET', KEYS[1], 'current_task_id', '', 'current_task_priority', '0')
+return 1
+`)
+
+func (r *RedisStore) CompareAndSetAgentState(ctx context.Context, agentID string, expected, next string) error {
+	raw, err := casScript.Run(ctx, r.client, []string{r.agentKey(agentID)}, expected, next).Result()
+	if err != nil {
+		return fmt.Errorf("CompareAndSetAgentState %s: %w", agentID, err)
+	}
+	switch v := raw.(type) {
+	case int64:
+		switch v {
+		case 1:
+			return nil
+		case -1:
+			return ErrAgentNotFound
+		default:
+			return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result %d", agentID, v)
+		}
+	case []interface{}:
+		// Conflict: Lua returned {0, current_state}.
+		actual := "<unknown>"
+		if len(v) >= 2 {
+			if s, ok := v[1].(string); ok {
+				actual = s
+			}
+		}
+		return &StateConflictError{Expected: expected, Actual: actual}
+	default:
+		return fmt.Errorf("CompareAndSetAgentState %s: unexpected Lua result type %T", agentID, raw)
+	}
+}
+
 // ── Agent full record ─────────────────────────────────────────────────────────
 
 func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields AgentFields) error {
@@ -115,6 +188,7 @@ func (r *RedisStore) SetAgentFields(ctx context.Context, agentID string, fields 
 		fieldState, fields.State,
 		fieldLastHeartbeat, strconv.FormatInt(fields.LastHeartbeat, 10),
 		fieldCurrentTask, fields.CurrentTaskID,
+		fieldCurrentTaskPrio, strconv.FormatFloat(fields.CurrentTaskPriority, 'f', -1, 64),
 		fieldRegisteredAt, strconv.FormatInt(fields.RegisteredAt, 10),
 	)
 	pipe.SAdd(ctx, r.key(agentSetKey), agentID)
@@ -148,13 +222,32 @@ func (r *RedisStore) GetAgentFields(ctx context.Context, agentID string) (AgentF
 			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldRegisteredAt, err)
 		}
 	}
+	var ctp float64
+	if v := vals[fieldCurrentTaskPrio]; v != "" {
+		ctp, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			return AgentFields{}, fmt.Errorf("GetAgentFields %s: parse %s: %w", agentID, fieldCurrentTaskPrio, err)
+		}
+	}
 
 	return AgentFields{
-		State:         vals[fieldState],
-		LastHeartbeat: lhb,
-		CurrentTaskID: vals[fieldCurrentTask],
-		RegisteredAt:  ra,
+		State:               vals[fieldState],
+		LastHeartbeat:       lhb,
+		CurrentTaskID:       vals[fieldCurrentTask],
+		CurrentTaskPriority: ctp,
+		RegisteredAt:        ra,
 	}, nil
+}
+
+func (r *RedisStore) ClearCurrentTask(ctx context.Context, agentID string) error {
+	result, err := clearTaskScript.Run(ctx, r.client, []string{r.agentKey(agentID)}).Int64()
+	if err != nil {
+		return fmt.Errorf("ClearCurrentTask %s: %w", agentID, err)
+	}
+	if result == -1 {
+		return ErrAgentNotFound
+	}
+	return nil
 }
 
 func (r *RedisStore) DeleteAgent(ctx context.Context, agentID string) error {
@@ -233,6 +326,88 @@ func (r *RedisStore) PublishEvent(ctx context.Context, event Event) error {
 	return nil
 }
 
+func parseXMessages(msgs []redis.XMessage) []StreamEvent {
+	events := make([]StreamEvent, 0, len(msgs))
+	for _, msg := range msgs {
+		var ts int64
+		if v, ok := msg.Values["timestamp"].(string); ok && v != "" {
+			ts, _ = strconv.ParseInt(v, 10, 64)
+		}
+		events = append(events, StreamEvent{
+			ID: msg.ID,
+			Event: Event{
+				Type:      fmt.Sprintf("%v", msg.Values["type"]),
+				AgentID:   fmt.Sprintf("%v", msg.Values["agent_id"]),
+				TaskID:    fmt.Sprintf("%v", msg.Values["task_id"]),
+				Timestamp: ts,
+				Payload:   fmt.Sprintf("%v", msg.Values["payload"]),
+			},
+		})
+	}
+	return events
+}
+
+func (r *RedisStore) ReadEvents(ctx context.Context, lastID string, count int64) ([]StreamEvent, error) {
+	results, err := r.client.XRead(ctx, &redis.XReadArgs{
+		Streams: []string{r.key(streamKey), lastID},
+		Count:   count,
+		Block:   -1, // negative = non-blocking (omits BLOCK arg); 0 would block forever
+	}).Result()
+	if err == redis.Nil {
+		return []StreamEvent{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ReadEvents: %w", err)
+	}
+	if len(results) == 0 {
+		return []StreamEvent{}, nil
+	}
+	return parseXMessages(results[0].Messages), nil
+}
+
+func (r *RedisStore) CreateConsumerGroup(ctx context.Context, group string, startID string) error {
+	err := r.client.XGroupCreateMkStream(ctx, r.key(streamKey), group, startID).Err()
+	if err != nil && strings.Contains(err.Error(), "BUSYGROUP") {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("CreateConsumerGroup: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisStore) SubscribeEvents(ctx context.Context, group, consumer string, count int64, block time.Duration) ([]StreamEvent, error) {
+	// go-redis: Block 0 = BLOCK 0 (block forever). Use -1 to omit the
+	// BLOCK arg entirely, making the call non-blocking when block <= 0.
+	if block <= 0 {
+		block = -1
+	}
+	results, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group:    group,
+		Consumer: consumer,
+		Streams:  []string{r.key(streamKey), ">"},
+		Count:    count,
+		Block:    block,
+	}).Result()
+	if err == redis.Nil {
+		return []StreamEvent{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("SubscribeEvents: %w", err)
+	}
+	if len(results) == 0 {
+		return []StreamEvent{}, nil
+	}
+	return parseXMessages(results[0].Messages), nil
+}
+
+func (r *RedisStore) AckEvent(ctx context.Context, group string, ids ...string) error {
+	if err := r.client.XAck(ctx, r.key(streamKey), group, ids...).Err(); err != nil {
+		return fmt.Errorf("AckEvent: %w", err)
+	}
+	return nil
+}
+
 // ── Task queue ────────────────────────────────────────────────────────────────
 
 func (r *RedisStore) EnqueueTask(ctx context.Context, taskID string, priority float64) error {
@@ -246,20 +421,20 @@ func (r *RedisStore) EnqueueTask(ctx context.Context, taskID string, priority fl
 	return nil
 }
 
-func (r *RedisStore) DequeueTask(ctx context.Context) (string, error) {
+func (r *RedisStore) DequeueTask(ctx context.Context) (string, float64, error) {
 	// ZPOPMIN atomically removes and returns the member with the lowest score.
 	results, err := r.client.ZPopMin(ctx, r.key(queueKey), 1).Result()
 	if err != nil {
-		return "", fmt.Errorf("DequeueTask: %w", err)
+		return "", 0, fmt.Errorf("DequeueTask: %w", err)
 	}
 	if len(results) == 0 {
-		return "", ErrQueueEmpty
+		return "", 0, ErrQueueEmpty
 	}
 	member, ok := results[0].Member.(string)
 	if !ok {
-		return "", fmt.Errorf("DequeueTask: unexpected member type %T", results[0].Member)
+		return "", 0, fmt.Errorf("DequeueTask: unexpected member type %T", results[0].Member)
 	}
-	return member, nil
+	return member, results[0].Score, nil
 }
 
 func (r *RedisStore) QueueLength(ctx context.Context) (int64, error) {

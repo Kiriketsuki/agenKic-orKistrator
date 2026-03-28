@@ -37,7 +37,7 @@ func TestRestartPolicy_ExponentialBackoff(t *testing.T) {
 	}
 
 	for i, want := range expectedBackoffs {
-		decision := policy.RecordCrash()
+		decision := policy.RecordCrash("test-agent")
 		if !decision.ShouldRestart {
 			t.Fatalf("crash %d: expected ShouldRestart=true, got false", i+1)
 		}
@@ -61,7 +61,7 @@ func TestRestartPolicy_CircuitBreakerOpens(t *testing.T) {
 
 	// 5 crashes within the window
 	for i := 0; i < 5; i++ {
-		d := policy.RecordCrash()
+		d := policy.RecordCrash("test-agent")
 		if !d.ShouldRestart {
 			t.Fatalf("crash %d: expected ShouldRestart=true before threshold", i+1)
 		}
@@ -69,7 +69,7 @@ func TestRestartPolicy_CircuitBreakerOpens(t *testing.T) {
 	}
 
 	// 6th crash should open the circuit
-	d := policy.RecordCrash()
+	d := policy.RecordCrash("test-agent")
 	if d.ShouldRestart {
 		t.Errorf("expected circuit open (ShouldRestart=false), got true")
 	}
@@ -90,15 +90,15 @@ func TestRestartPolicy_SuccessResetsConsecutive(t *testing.T) {
 
 	// Record 3 crashes — backoff should be at 8s.
 	for i := 0; i < 3; i++ {
-		policy.RecordCrash()
+		policy.RecordCrash("test-agent")
 		clock.Advance(100 * time.Millisecond)
 	}
 
 	// Reset via success.
-	policy.RecordSuccess()
+	policy.RecordSuccess("test-agent")
 
 	// Next crash should restart from 1s backoff.
-	d := policy.RecordCrash()
+	d := policy.RecordCrash("test-agent")
 	if !d.ShouldRestart {
 		t.Fatal("expected ShouldRestart=true after reset")
 	}
@@ -119,11 +119,11 @@ func TestRestartPolicy_SuccessKeepsCircuitClosed(t *testing.T) {
 
 	// Alternate crash and success — consecutive never climbs.
 	for i := 0; i < 10; i++ {
-		d := policy.RecordCrash()
+		d := policy.RecordCrash("test-agent")
 		if !d.ShouldRestart {
 			t.Fatalf("iteration %d: circuit opened unexpectedly", i)
 		}
-		policy.RecordSuccess()
+		policy.RecordSuccess("test-agent")
 		clock.Advance(1 * time.Second)
 	}
 }
@@ -140,14 +140,14 @@ func TestRestartPolicy_OldCrashesExpire(t *testing.T) {
 
 	// 5 crashes right at the edge of the window.
 	for i := 0; i < 5; i++ {
-		policy.RecordCrash()
+		policy.RecordCrash("test-agent")
 		clock.Advance(10 * time.Second)
 	}
 	// Advance past window so all old crashes expire.
 	clock.Advance(61 * time.Second)
 
 	// Next crash should succeed (old crashes pruned).
-	d := policy.RecordCrash()
+	d := policy.RecordCrash("test-agent")
 	if !d.ShouldRestart {
 		t.Errorf("expected ShouldRestart=true after old crashes expired, got false; reason=%v", d.Reason)
 	}

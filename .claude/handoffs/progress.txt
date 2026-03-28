@@ -1,3 +1,19 @@
+## 2026-03-28 Handoff
+
+### Decisions
+- Council Round 3: CONDITIONAL — 1 doc fix (DefaultRegistry godoc), 2 advisory notes
+- Prompt injection at router.go:112 is advisory, not blocking — track for Epic 4
+- All 6 prior conditions (Rounds 1+2) verified resolved
+
+### Failed Approaches
+- None
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-28-22h50-council-r3-fix-loop.md
+- Branch: epic/3-implement-model-gateway-judge-router
+
+---
+
 ## 2026-03-22 Handoff
 
 ### Decisions
