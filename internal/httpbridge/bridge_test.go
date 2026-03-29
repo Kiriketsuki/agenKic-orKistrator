@@ -179,3 +179,61 @@ func TestSubmitDAG_NilEngine(t *testing.T) {
 		t.Fatalf("expected 501, got %d", w.Code)
 	}
 }
+
+func TestAuth_RejectsWithoutToken(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithAPIKey("test-secret"))
+
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestAuth_AcceptsValidToken(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithAPIKey("test-secret"))
+
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer test-secret")
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestAuth_RejectsWrongToken(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithAPIKey("test-secret"))
+
+	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer wrong-key")
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestSendInput_EmptyKeys(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Keys: ""})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	// Without substrate, returns 501; with substrate but empty keys, returns 400.
+	// Since no substrate is set, this test verifies the 501 path.
+	// The empty-keys validation fires only when substrate is present.
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501 (no substrate), got %d", w.Code)
+	}
+}

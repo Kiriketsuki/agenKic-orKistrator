@@ -87,6 +87,56 @@ func TestSSE_ReceivesAgentRegisteredEvent(t *testing.T) {
 	}
 }
 
+func TestSSE_SinceCursorSkipsPriorEvents(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	// Publish two events; we will connect with ?since= after the first.
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "agent-old",
+		Timestamp: 1000,
+	})
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "agent-new",
+		Timestamp: 2000,
+	})
+
+	// Read events to get the first event's cursor ID.
+	events, _ := store.ReadEvents(context.Background(), "0", 1)
+	if len(events) == 0 {
+		t.Fatal("expected at least one event in store")
+	}
+	firstCursor := events[0].ID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Connect with ?since= set to the first event's ID — should skip it.
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream?since="+firstCursor, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "agent-old") {
+			t.Fatal("received agent-old event — ?since= cursor should have skipped it")
+		}
+		if strings.Contains(line, "agent-new") {
+			return // success — only the second event was received
+		}
+	}
+	t.Fatal("never received agent-new event")
+}
+
 func TestSSE_ReceivesStateChangedEvent(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil)

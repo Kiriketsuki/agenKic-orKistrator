@@ -197,6 +197,14 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Keys == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "keys is required",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+
 	if err := b.substrate.SendCommand(r.Context(), "agent-"+agentID, req.Keys); err != nil {
 		writeError(w, err)
 		return

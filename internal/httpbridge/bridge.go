@@ -2,6 +2,7 @@ package httpbridge
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -20,8 +21,9 @@ type Bridge struct {
 	substrate terminal.Substrate // optional; nil = PTY endpoints return 501
 	apiKey    string             // optional; empty = no auth required
 
-	mux    *http.ServeMux
-	server *http.Server
+	mux     *http.ServeMux
+	handler http.Handler // authMiddleware(mux) or mux — used by ServeHTTP
+	server  *http.Server
 }
 
 // BridgeOption configures the Bridge.
@@ -60,14 +62,14 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	// SSE stream
 	b.mux.HandleFunc("GET /events/stream", b.handleSSE)
 
-	var handler http.Handler = b.mux
+	b.handler = b.mux
 	if b.apiKey != "" {
-		handler = b.authMiddleware(b.mux)
+		b.handler = b.authMiddleware(b.mux)
 	}
 
 	b.server = &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           b.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		// WriteTimeout intentionally omitted — SSE connections are long-lived.
@@ -77,8 +79,9 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 }
 
 // ServeHTTP implements http.Handler, enabling use with httptest.
+// Routes through the same handler as ListenAndServe (including auth middleware).
 func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	b.mux.ServeHTTP(w, r)
+	b.handler.ServeHTTP(w, r)
 }
 
 // Start begins serving in a blocking call. Returns http.ErrServerClosed on
@@ -96,7 +99,8 @@ func (b *Bridge) Shutdown(ctx context.Context) error {
 func (b *Bridge) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != b.apiKey {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if !strings.HasPrefix(auth, "Bearer ") || subtle.ConstantTimeCompare([]byte(token), []byte(b.apiKey)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":"unauthorized","code":"unauthenticated"}`))
