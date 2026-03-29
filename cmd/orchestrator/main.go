@@ -72,13 +72,19 @@ func main() {
 	httpHealth := ipc.NewHealthHTTPServer(healthAddr, agg)
 
 	// HTTP/SSE bridge for Godot UI.
-	bridgeAddr := ":8081"
+	bridgeAddr := "127.0.0.1:8081"
 	if envBridge := os.Getenv("BRIDGE_ADDR"); envBridge != "" {
 		bridgeAddr = envBridge
 	}
 	var bridgeOpts []httpbridge.BridgeOption
 	if sub, subOK := sv.Substrate(); subOK {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithSubstrate(sub))
+	}
+	if apiKey := os.Getenv("BRIDGE_API_KEY"); apiKey != "" {
+		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))
+		log.Println("HTTP bridge: bearer-token auth enabled")
+	} else {
+		log.Println("HTTP bridge: no BRIDGE_API_KEY set — running without auth (localhost only)")
 	}
 	bridge := httpbridge.NewBridge(bridgeAddr, store, executor, bridgeOpts...)
 

@@ -174,8 +174,8 @@ func TestSubmitDAG_NilEngine(t *testing.T) {
 	w := httptest.NewRecorder()
 	bridge.ServeHTTP(w, req)
 
-	// Should fail gracefully with 500 since dag engine is nil
-	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
-		t.Fatalf("expected error with nil dag engine, got %d", w.Code)
+	// Handler returns 501 Not Implemented when DAG engine is nil.
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", w.Code)
 	}
 }

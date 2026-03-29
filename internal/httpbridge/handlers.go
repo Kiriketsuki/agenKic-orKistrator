@@ -20,10 +20,12 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agents := make([]AgentJSON, 0, len(ids))
+	var warnings []string
 	for _, id := range ids {
 		fields, fErr := b.store.GetAgentFields(ctx, id)
 		if fErr != nil {
 			log.Printf("httpbridge: GetAgentFields %s: %v", id, fErr)
+			warnings = append(warnings, "failed to load agent "+id)
 			continue
 		}
 		agents = append(agents, AgentJSON{
@@ -35,7 +37,12 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{"agents": agents})
+	resp := map[string]interface{}{"agents": agents}
+	if len(warnings) > 0 {
+		resp["warnings"] = warnings
+		resp["partial"] = true
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleAgentOutput returns captured terminal output for an agent.
@@ -95,6 +102,7 @@ func (b *Bridge) handleListFloors(w http.ResponseWriter, r *http.Request) {
 
 // handleSubmitTask enqueues a task via the store.
 func (b *Bridge) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req SubmitTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
@@ -129,6 +137,7 @@ func (b *Bridge) handleSubmitDAG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req SubmitDAGRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
@@ -178,6 +187,7 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentID := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req SendInputRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{

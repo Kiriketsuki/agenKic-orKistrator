@@ -552,11 +552,13 @@ func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
 	if err != nil {
 		return err
 	}
-	_ = sv.store.PublishEvent(ctx, state.Event{
+	if err := sv.store.PublishEvent(ctx, state.Event{
 		Type:      string(agent.EventWorkStarted),
 		AgentID:   snap.AgentID,
 		Timestamp: time.Now().UnixMilli(),
-	})
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventWorkStarted, err)
+	}
 	return nil
 }
 
@@ -578,11 +580,13 @@ func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
 	if err != nil {
 		return err
 	}
-	_ = sv.store.PublishEvent(ctx, state.Event{
+	if err := sv.store.PublishEvent(ctx, state.Event{
 		Type:      string(agent.EventOutputReady),
 		AgentID:   snap.AgentID,
 		Timestamp: time.Now().UnixMilli(),
-	})
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventOutputReady, err)
+	}
 	return nil
 }
 
@@ -611,11 +615,13 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 		return err
 	}
 
-	_ = sv.store.PublishEvent(ctx, state.Event{
+	if err := sv.store.PublishEvent(ctx, state.Event{
 		Type:      string(agent.EventOutputDelivered),
 		AgentID:   snap.AgentID,
 		Timestamp: time.Now().UnixMilli(),
-	})
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventOutputDelivered, err)
+	}
 
 	sv.policy.RecordSuccess(agentID)
 

@@ -36,7 +36,10 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	ctx := r.Context()
-	cursor := "0" // start from beginning; clients can pass ?since= in the future
+	cursor := "0"
+	if since := r.URL.Query().Get("since"); since != "" {
+		cursor = since
+	}
 	lastKeepalive := time.Now()
 
 	for {
@@ -138,6 +141,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 		}
 
 	default:
+		log.Printf("httpbridge: unrecognised event type %q — skipped", e.Type)
 		return "", nil
 	}
 }
