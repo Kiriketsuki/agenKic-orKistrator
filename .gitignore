@@ -30,6 +30,15 @@ Thumbs.db
 # Council reports
 *-council-*.md
 
+# Godot
+godot/.godot/
+*.import
+*.translation
+
+# Brainstorm sessions
+.superpowers/
+.brainstorm/
+
 # Claude Code internal
 .claude/worktrees/
 .claude/handoffs/
