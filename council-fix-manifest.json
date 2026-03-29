@@ -1,57 +1,30 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-28-233000-council-epic3-gateway-merge.md",
-  "motion": "Merge PR #26: Epic 3 — Model Gateway / Judge-Router to main (Round 3 — post-fix verification)",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-29-140000-council-pr-99-t2-http-sse-bridge-v3.md",
+  "motion": "Merge PR #99 — chore: T2 — HTTP/SSE bridge (Go side). Third council review (v3).",
   "arbiter_verdict": "CONDITIONAL",
-  "branch": "epic/3-implement-model-gateway-judge-router",
+  "branch": "task/95-task-t2-http-sse-bridge-go-side",
   "fixes": [
     {
       "id": 1,
-      "description": "Replace equality with errors.Is for context sentinels in FallbackError.Unwrap — pe.Err == context.Canceled should be errors.Is(pe.Err, context.Canceled), same for DeadlineExceeded. Add wrapped-error test case.",
-      "file": "internal/gateway/errors.go",
-      "line": 84,
-      "severity": "Bug",
-      "citations": [
-        "internal/gateway/errors.go L:84",
-        "internal/gateway/errors.go L:78"
-      ]
+      "description": "Add TestSendInput_EmptyKeys_WithSubstrate — construct bridge with a terminal.Substrate stub via WithSubstrate(...), POST /api/agents/{id}/input with {\"keys\": \"\"}, assert HTTP 400 with \"keys is required\". Must exercise handlers.go:200-206.",
+      "file": "internal/httpbridge/bridge_test.go",
+      "line": 224,
+      "severity": "MEDIUM",
+      "citations": ["internal/httpbridge/bridge_test.go L:224-239", "internal/httpbridge/handlers.go L:200-206"]
     },
     {
       "id": 2,
-      "description": "Reword stale T5 SSRF deferral comment — replace 'Full host allowlist and private CIDR blocking deferred to config loading (T5)' with text reflecting current scope (CIDR blocking not implemented, BaseURL is operator-controlled, WithBaseURL rejects non-http/https)",
-      "file": "internal/gateway/gateway.go",
-      "line": 183,
-      "severity": "Improvement",
-      "citations": [
-        "internal/gateway/gateway.go L:183"
-      ]
-    },
-    {
-      "id": 3,
-      "description": "Add doc comment to ErrCostTrackerFull marking it as reserved for capacity-limited CostTracker implementations — InMemoryCostTracker does not return this error",
-      "file": "internal/gateway/errors.go",
-      "line": 31,
-      "severity": "Improvement",
-      "citations": [
-        "internal/gateway/errors.go L:31",
-        "internal/gateway/cost.go L:36"
-      ]
-    },
-    {
-      "id": 4,
-      "description": "Align Ollama pricing keys to bare model names (llama3, codellama) to match what CompletionResponse.Model carries after OllamaAdapter prefix stripping, OR add inline YAML comments and doc note in providers/ollama.go explaining the namespace difference",
-      "file": "config/models.yaml",
-      "line": 43,
-      "severity": "Improvement",
-      "citations": [
-        "config/models.yaml L:43",
-        "internal/gateway/providers/ollama.go L:27",
-        "internal/gateway/cost.go L:101"
-      ]
+      "description": "Fix misleading log at main.go:87 — remove \"(localhost only)\" parenthetical which is inaccurate when BRIDGE_ADDR overrides the default loopback binding. Replace with: \"HTTP bridge: no BRIDGE_API_KEY set — running without auth\"",
+      "file": "cmd/orchestrator/main.go",
+      "line": 87,
+      "severity": "LOW",
+      "citations": ["cmd/orchestrator/main.go L:87"]
     }
   ],
   "pr_amendments": [
-    "Add 'Pre-merge fixes (Round 3 council)' section listing the four corrections applied after the final council review"
+    "Note that TestSendInput_EmptyKeys_WithSubstrate was added per v3 council review",
+    "Note that the log message at main.go:87 was corrected per v3 council review"
   ],
-  "test_command": "make test",
-  "created": "2026-03-28T23:30:00+08:00"
+  "test_command": "go test -race -count=1 ./internal/...",
+  "created": "2026-03-29T14:13:00Z"
 }

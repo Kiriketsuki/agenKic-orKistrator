@@ -1,3 +1,20 @@
+## 2026-03-29 Handoff (PR #99 council v3 fix loop)
+
+### Decisions
+- Council v3 on PR #99 (T2 HTTP/SSE bridge): CONDITIONAL — 2 in-PR fixes
+- Fix 1: bridge_test.go — add TestSendInput_EmptyKeys_WithSubstrate (test gap, code correct)
+- Fix 2: main.go:87 — remove "(localhost only)" from log (inaccurate under BRIDGE_ADDR override)
+- C2 (200ms sleep in SSE loop) withdrawn by critic after rebuttal
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-29-14h13-council-v3-fix-loop.md
+- Branch: task/95-task-t2-http-sse-bridge-go-side
+
+---
+
 ## 2026-03-28 Handoff (Round 3 — fresh council)
 
 ### Decisions
