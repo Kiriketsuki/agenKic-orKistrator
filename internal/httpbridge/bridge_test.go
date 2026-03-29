@@ -10,7 +10,29 @@ import (
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
+
+// stubSubstrate is a minimal terminal.Substrate implementation for testing
+// handlers that require a non-nil substrate.
+type stubSubstrate struct{}
+
+func (s *stubSubstrate) SpawnSession(_ context.Context, _ string, _ string) (terminal.Session, error) {
+	return terminal.Session{}, nil
+}
+func (s *stubSubstrate) DestroySession(_ context.Context, _ string) error { return nil }
+func (s *stubSubstrate) SendCommand(_ context.Context, _ string, _ string) error {
+	return nil
+}
+func (s *stubSubstrate) CaptureOutput(_ context.Context, _ string, _ int) (string, error) {
+	return "", nil
+}
+func (s *stubSubstrate) ListSessions(_ context.Context) ([]terminal.Session, error) {
+	return nil, nil
+}
+func (s *stubSubstrate) SplitPane(_ context.Context, _ string, _ terminal.Direction) (terminal.Pane, error) {
+	return terminal.Pane{}, nil
+}
 
 // newTestBridge creates a Bridge backed by a MockStore with no DAG engine.
 func newTestBridge(t *testing.T) (*httpbridge.Bridge, *state.MockStore) {
@@ -235,5 +257,21 @@ func TestSendInput_EmptyKeys(t *testing.T) {
 	// The empty-keys validation fires only when substrate is present.
 	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("expected 501 (no substrate), got %d", w.Code)
+	}
+}
+
+func TestSendInput_EmptyKeys_WithSubstrate(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithSubstrate(&stubSubstrate{}))
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Keys: ""})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	// With substrate present, empty keys should be rejected with 400.
+	// This exercises the validation at handlers.go:200-206.
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 (empty keys), got %d", w.Code)
 	}
 }

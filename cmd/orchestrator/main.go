@@ -84,7 +84,7 @@ func main() {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))
 		log.Println("HTTP bridge: bearer-token auth enabled")
 	} else {
-		log.Println("HTTP bridge: no BRIDGE_API_KEY set — running without auth (localhost only)")
+		log.Println("HTTP bridge: no BRIDGE_API_KEY set — running without auth")
 	}
 	bridge := httpbridge.NewBridge(bridgeAddr, store, executor, bridgeOpts...)
 
