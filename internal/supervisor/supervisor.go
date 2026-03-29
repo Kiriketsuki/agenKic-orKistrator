@@ -94,6 +94,12 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 	return sv
 }
 
+// Substrate returns the terminal substrate if one was configured, and a boolean
+// indicating whether it is available.
+func (sv *Supervisor) Substrate() (terminal.Substrate, bool) {
+	return sv.substrate, sv.substrate != nil
+}
+
 // RegisterAgent adds an agent to the pool in idle state.
 // Store I/O is performed outside sv.mu to avoid holding the lock during
 // network round-trips (consistent with findIdleAgent's snapshot pattern).
@@ -132,6 +138,12 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 			log.Printf("supervisor: substrate: SpawnSession %q failed (agent %s continues): %v", sessionName, agentID, err)
 		}
 	}
+
+	_ = sv.store.PublishEvent(ctx, state.Event{
+		Type:      "agent_registered",
+		AgentID:   agentID,
+		Timestamp: now,
+	})
 
 	return nil
 }
@@ -276,6 +288,12 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 		sv.mu.Unlock()
 		return
 	}
+
+	_ = sv.store.PublishEvent(ctx, state.Event{
+		Type:      string(agent.EventAgentFailed),
+		AgentID:   agentID,
+		Timestamp: time.Now().UnixMilli(),
+	})
 
 	// Re-enqueue the agent's assigned task using pre-read CurrentTaskID.
 	// SetAgentState (inside ApplyEvent) does not modify CurrentTaskID,
@@ -530,8 +548,18 @@ func (sv *Supervisor) StartWork(ctx context.Context, agentID string) error {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
-	return err
+	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventWorkStarted)
+	if err != nil {
+		return err
+	}
+	if err := sv.store.PublishEvent(ctx, state.Event{
+		Type:      string(agent.EventWorkStarted),
+		AgentID:   snap.AgentID,
+		Timestamp: time.Now().UnixMilli(),
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventWorkStarted, err)
+	}
+	return nil
 }
 
 // ReportOutput signals that an agent has output ready (WORKING → REPORTING).
@@ -548,8 +576,18 @@ func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
-	return err
+	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputReady)
+	if err != nil {
+		return err
+	}
+	if err := sv.store.PublishEvent(ctx, state.Event{
+		Type:      string(agent.EventOutputReady),
+		AgentID:   snap.AgentID,
+		Timestamp: time.Now().UnixMilli(),
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventOutputReady, err)
+	}
+	return nil
 }
 
 // CompleteAgent is the public entry point for signaling agent task completion.
@@ -572,9 +610,17 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	_, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputDelivered)
+	snap, err := sv.machine.ApplyEvent(ctx, agentID, agent.EventOutputDelivered)
 	if err != nil {
 		return err
+	}
+
+	if err := sv.store.PublishEvent(ctx, state.Event{
+		Type:      string(agent.EventOutputDelivered),
+		AgentID:   snap.AgentID,
+		Timestamp: time.Now().UnixMilli(),
+	}); err != nil {
+		log.Printf("supervisor: PublishEvent(%s, %s) failed: %v", agentID, agent.EventOutputDelivered, err)
 	}
 
 	sv.policy.RecordSuccess(agentID)
