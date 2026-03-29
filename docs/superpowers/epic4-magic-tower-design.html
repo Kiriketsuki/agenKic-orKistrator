@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Magic Tower -- Epic 4 Design Document</title>
+<style>
+  /* ============================
+     RESET & BASE
+     ============================ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
+
+    --claude-arcane: #d4a574;
+    --gemini-prismatic: #88c8f7;
+    --openai-infernal: #d06060;
+    --ollama-forge: #f0a070;
+    --deepseek-abyssal: #a088e0;
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-leaf) var(--grove);
+  }
+
+  body {
+    font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    color: var(--text-primary);
+    line-height: 1.7;
+    overflow-x: hidden;
+    /* The page IS the tower gradient */
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      var(--teal) 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
+  }
+
+  /* ============================
+     FLOATING PARTICLES
+     ============================ */
+  .particles {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 0; overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    border-radius: 50%;
+    animation: drift linear infinite;
+    opacity: 0;
+  }
+  @keyframes drift {
+    0%   { transform: translateY(100vh) translateX(0) scale(0.3); opacity: 0; }
+    10%  { opacity: 0.6; }
+    50%  { transform: translateY(50vh) translateX(30px) scale(1); opacity: 0.4; }
+    90%  { opacity: 0.2; }
+    100% { transform: translateY(-10vh) translateX(-20px) scale(0.5); opacity: 0; }
+  }
+
+  /* ============================
+     LAYOUT
+     ============================ */
+  .page-container {
+    position: relative; z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  section {
+    padding: 80px 0 40px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  section:last-child { border-bottom: none; }
+
+  /* ============================
+     TYPOGRAPHY
+     ============================ */
+  h1 {
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    font-size: clamp(2.4rem, 5vw, 3.6rem);
+    font-weight: 700;
+    color: var(--gold-leaf);
+    text-shadow: 0 0 40px rgba(200, 168, 78, 0.3), 0 2px 4px rgba(0,0,0,0.5);
+    letter-spacing: 0.03em;
+  }
+  h2 {
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    color: var(--gold-leaf);
+    margin-bottom: 12px;
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
+    letter-spacing: 0.02em;
+  }
+  h3 {
+    font-size: 1.15rem;
+    color: var(--amber);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  p, li {
+    font-size: 1rem;
+    color: var(--text-primary);
+    max-width: 72ch;
+  }
+  .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 8px;
+  }
+  code, .mono {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.88em;
+    background: rgba(0,0,0,0.3);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--amber);
+  }
+  a { color: var(--gold-leaf); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+  a:hover { border-bottom-color: var(--gold-leaf); }
+
+  /* ============================
+     NAV
+     ============================ */
+  nav {
+    position: fixed; right: 20px; top: 50%; transform: translateY(-50%);
+    z-index: 100; display: flex; flex-direction: column; gap: 6px;
+  }
+  nav a {
+    display: block; width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(200, 168, 78, 0.25); border: 1px solid rgba(200, 168, 78, 0.4);
+    transition: all 0.3s; position: relative;
+  }
+  nav a:hover, nav a.active {
+    background: var(--gold-leaf); box-shadow: 0 0 8px rgba(200, 168, 78, 0.5);
+    transform: scale(1.3);
+  }
+  nav a::after {
+    content: attr(data-label);
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; color: var(--amber); white-space: nowrap;
+    opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  nav a:hover::after { opacity: 1; }
+
+  @media (max-width: 1200px) {
+    nav { display: none; }
+  }
+
+  /* ============================
+     CARDS & SURFACES
+     ============================ */
+  .card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 24px;
+    backdrop-filter: blur(4px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(200, 168, 78, 0.3);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .card-grid {
+    display: grid;
+    gap: 20px;
+  }
+  .card-grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card-grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card-grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+  /* Parchment surface */
+  .parchment {
+    background: var(--parchment-bg);
+    color: var(--ink);
+    border: 2px solid #c4a06a;
+    border-radius: 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4), inset 0 0 30px rgba(0,0,0,0.05);
+    position: relative;
+  }
+  .parchment::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent, transparent 23px,
+      rgba(180,160,120,0.1) 23px, rgba(180,160,120,0.1) 24px
+    );
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  /* Terminal surface */
+  .terminal-surface {
+    background: var(--terminal-dark);
+    border: 1px solid #1a2030;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  .terminal-header {
+    background: #111822;
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #1a2030;
+  }
+  .terminal-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .terminal-body { padding: 16px; }
+
+  /* ============================
+     HERO
+     ============================ */
+  #hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    border-bottom: none;
+    padding: 40px 0;
+    position: relative;
+  }
+  .hero-tower {
+    width: 200px; height: 340px;
+    margin-bottom: 40px;
+    position: relative;
+    animation: tower-breathe 4s ease-in-out infinite;
+  }
+  @keyframes tower-breathe {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.01); filter: brightness(1.05); }
+  }
+  .tower-roof {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 60px solid transparent;
+    border-right: 60px solid transparent;
+    border-bottom: 50px solid var(--arcane);
+    filter: drop-shadow(0 -4px 12px rgba(42, 37, 69, 0.6));
+  }
+  .tower-roof::after {
+    content: '';
+    position: absolute; top: -12px; left: -4px;
+    width: 8px; height: 16px;
+    background: var(--gold-leaf);
+    border-radius: 50% 50% 0 0;
+    box-shadow: 0 0 12px rgba(200, 168, 78, 0.6);
+  }
+  .tower-body {
+    position: absolute; top: 48px; left: 30px; right: 30px; bottom: 0;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .tower-floor {
+    position: relative;
+    border-bottom: 1px solid rgba(200, 168, 78, 0.1);
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 4px;
+  }
+  .tower-floor .agent-dot {
+    width: 6px; height: 10px;
+    border-radius: 2px;
+    animation: agent-pulse 2s ease-in-out infinite;
+  }
+  @keyframes agent-pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+  }
+  .tower-floor .agent-dot:nth-child(2) { animation-delay: 0.3s; }
+  .tower-floor .agent-dot:nth-child(3) { animation-delay: 0.6s; }
+  .tower-floor .agent-dot:nth-child(4) { animation-delay: 0.9s; }
+
+  .hero-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--amber);
+    background: rgba(212, 165, 116, 0.1);
+    border: 1px solid rgba(212, 165, 116, 0.3);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hero-desc {
+    max-width: 600px;
+    margin: 20px auto 0;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    line-height: 1.8;
+  }
+  .scroll-hint {
+    position: absolute; bottom: 40px;
+    font-size: 12px; color: var(--text-muted);
+    animation: hint-bob 2s ease-in-out infinite;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  @keyframes hint-bob {
+    0%, 100% { transform: translateY(0); opacity: 0.5; }
+    50% { transform: translateY(6px); opacity: 0.8; }
+  }
+
+  /* ============================
+     TOWER ARCHITECTURE DIAGRAM
+     ============================ */
+  .tower-diagram {
+    display: flex; gap: 40px; align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .tower-cross-section {
+    flex: 0 0 260px;
+    min-height: 460px;
+    position: relative;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: linear-gradient(to top, var(--grove), var(--teal), var(--twilight), var(--arcane));
+  }
+  .cross-floor {
+    position: relative;
+    border-bottom: 1px solid rgba(200,168,78,0.1);
+    padding: 12px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cross-floor .floor-label {
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    color: var(--gold-leaf); opacity: 0.7; text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .cross-floor .floor-agents {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .cross-floor .mini-agent {
+    width: 8px; height: 12px; border-radius: 2px 2px 0 0;
+  }
+
+  .tower-annotations {
+    flex: 1; min-width: 280px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .annotation {
+    padding: 14px 18px;
+    border-left: 3px solid var(--gold-leaf);
+    background: rgba(200,168,78,0.04);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+  }
+  .annotation strong { color: var(--gold-leaf); }
+
+  /* ============================
+     POLYGON MORPHING
+     ============================ */
+  .polygon-row {
+    display: flex; gap: 24px; justify-content: center; align-items: flex-end;
+    flex-wrap: wrap; padding: 32px 0;
+  }
+  .polygon-stage {
+    text-align: center;
+  }
+  .polygon-shape {
+    width: 80px; height: 80px;
+    margin: 0 auto 12px;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .polygon-shape svg {
+    width: 100%; height: 100%;
+    filter: drop-shadow(0 0 8px rgba(200,168,78,0.2));
+  }
+  .polygon-shape svg polygon {
+    fill: rgba(200,168,78,0.08);
+    stroke: var(--gold-leaf);
+    stroke-width: 1.5;
+    transition: all 0.5s;
+  }
+  .polygon-stage:hover .polygon-shape svg polygon {
+    fill: rgba(200,168,78,0.15);
+    filter: drop-shadow(0 0 6px rgba(200,168,78,0.4));
+  }
+  .polygon-label {
+    font-size: 12px; color: var(--amber);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .polygon-load {
+    font-size: 10px; color: var(--text-muted);
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .polygon-arrow {
+    font-size: 20px; color: var(--gold-leaf); opacity: 0.4;
+    align-self: center; margin-bottom: 40px;
+  }
+
+  /* ============================
+     CHARACTER CARDS
+     ============================ */
+  .char-card {
+    text-align: center;
+    padding: 28px 20px;
+  }
+  .char-icon {
+    width: 64px; height: 64px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    position: relative;
+    animation: char-float 3s ease-in-out infinite;
+  }
+  @keyframes char-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .char-card:nth-child(2) .char-icon { animation-delay: 0.4s; }
+  .char-card:nth-child(3) .char-icon { animation-delay: 0.8s; }
+  .char-card:nth-child(4) .char-icon { animation-delay: 1.2s; }
+  .char-card:nth-child(5) .char-icon { animation-delay: 1.6s; }
+  .char-card:nth-child(6) .char-icon { animation-delay: 2.0s; }
+  .char-card:nth-child(7) .char-icon { animation-delay: 2.4s; }
+
+  .char-name {
+    font-size: 1rem; font-weight: 700;
+    color: var(--gold-leaf);
+    margin-bottom: 2px;
+  }
+  .char-role {
+    font-size: 0.8rem; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .char-desc {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    opacity: 0.8;
+  }
+  .char-workstation {
+    font-size: 0.78rem;
+    color: var(--amber);
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  /* ============================
+     TIER MATRIX
+     ============================ */
+  .tier-matrix {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 4px;
+    font-size: 0.85rem;
+  }
+  .tier-matrix th {
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    text-align: center;
+  }
+  .tier-matrix td {
+    padding: 12px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.8rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: default;
+    position: relative;
+  }
+  .tier-matrix td:hover {
+    transform: scale(1.05);
+    z-index: 2;
+  }
+  .tier-matrix .tier-label {
+    text-align: right; padding-right: 12px;
+    color: var(--amber); font-weight: 600;
+    white-space: nowrap;
+  }
+  .tier-cell {
+    min-width: 80px;
+  }
+  .tier-cell .tier-effect {
+    font-size: 0.7rem; opacity: 0.7;
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ============================
+     OUTPUT LAYERS
+     ============================ */
+  .output-panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .output-panel {
+    min-height: 320px;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .output-panel-header {
+    padding: 10px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* Floating runes mockup */
+  .runes-mockup {
+    background: linear-gradient(to top, #1a2e30, #162228);
+    border: 1px solid var(--border-subtle);
+    position: relative;
+    min-height: 340px;
+  }
+  .rune-line {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    animation: rune-float 5s ease-out infinite;
+    text-shadow: 0 0 8px currentColor;
+  }
+  @keyframes rune-float {
+    0%   { opacity: 0; transform: translateY(20px); }
+    15%  { opacity: 0.9; }
+    70%  { opacity: 0.5; }
+    100% { opacity: 0; transform: translateY(-50px); }
+  }
+
+  /* Pixel character in output mockup */
+  .mock-char {
+    position: absolute;
+    bottom: 60px;
+    width: 20px; height: 30px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .mock-char-head {
+    width: 10px; height: 10px; border-radius: 3px 3px 1px 1px;
+  }
+  .mock-char-body {
+    width: 14px; height: 16px; border-radius: 1px;
+    margin-top: -1px;
+  }
+  .mock-floor-line {
+    position: absolute; bottom: 55px; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(200,168,78,0.2), transparent);
+  }
+
+  /* Scroll mockup */
+  .scroll-mockup {
+    border: 2px solid #c4a06a;
+    position: relative;
+  }
+  .scroll-mockup .output-panel-header {
+    background: #e0cca4;
+    color: var(--ink);
+    border-bottom: 2px solid #c4a06a;
+  }
+  .scroll-body-mock {
+    background: var(--parchment-bg);
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    color: var(--ink);
+    min-height: 240px;
+  }
+  .scroll-line { margin-bottom: 1px; }
+  .scroll-ts { color: #a08060; }
+  .scroll-cmd { color: #2d6a4f; }
+  .scroll-out { color: #5c3d1e; }
+  .scroll-err { color: #9a2020; }
+  .scroll-writing {
+    overflow: hidden; white-space: nowrap;
+    animation: quill-write 2s steps(35) forwards;
+    width: 0;
+  }
+  @keyframes quill-write {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+
+  /* Terminal mockup */
+  .terminal-mock .output-panel-header {
+    background: #111822;
+    color: #6c7086;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .terminal-mock .terminal-body {
+    font-size: 11px; line-height: 1.6;
+    color: #a6adc8;
+    min-height: 240px;
+  }
+  .t-prompt { color: #a6e3a1; }
+  .t-cmd { color: #cdd6f4; }
+  .t-string { color: #f9e2af; }
+  .t-path { color: #89b4fa; }
+  .t-err { color: #f38ba8; }
+  .t-cursor {
+    display: inline-block; width: 7px; height: 12px;
+    background: #cdd6f4;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ============================
+     COLOUR PALETTE SWATCHES
+     ============================ */
+  .swatch-group {
+    margin-bottom: 28px;
+  }
+  .swatch-group-title {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .swatch-row {
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .swatch {
+    width: 72px; text-align: center;
+  }
+  .swatch-color {
+    width: 72px; height: 48px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: default;
+  }
+  .swatch-color:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .swatch-hex {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+  .swatch-name {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    margin-top: 2px;
+  }
+
+  .provider-swatch {
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .provider-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: border-color 0.3s;
+  }
+  .provider-chip:hover {
+    border-color: rgba(255,255,255,0.15);
+  }
+  .provider-dot-lg {
+    width: 20px; height: 20px; border-radius: 50%;
+    position: relative;
+  }
+  .provider-dot-lg::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0.2;
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.15; }
+    50% { transform: scale(1.3); opacity: 0.3; }
+  }
+  .provider-info .provider-name-lg {
+    font-size: 0.85rem; font-weight: 600;
+  }
+  .provider-info .provider-element {
+    font-size: 0.72rem; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ============================
+     NAVIGATION DIAGRAM
+     ============================ */
+  .nav-methods {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .nav-card {
+    text-align: center;
+    padding: 24px 16px;
+  }
+  .nav-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    display: block;
+    animation: nav-glow 3s ease-in-out infinite;
+  }
+  @keyframes nav-glow {
+    0%, 100% { filter: drop-shadow(0 0 4px rgba(200,168,78,0.2)); }
+    50% { filter: drop-shadow(0 0 8px rgba(200,168,78,0.5)); }
+  }
+  .nav-keys {
+    display: flex; gap: 4px; justify-content: center; margin-top: 10px;
+  }
+  .key-cap {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    background: rgba(200,168,78,0.1);
+    border: 1px solid rgba(200,168,78,0.3);
+    border-radius: 4px;
+    color: var(--gold-leaf);
+  }
+
+  /* ============================
+     PANEL SYSTEM
+     ============================ */
+  .panel-demo {
+    position: relative;
+    width: 100%; height: 280px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 20px;
+  }
+  .panel-demo-tower {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 55%;
+    background: linear-gradient(to top, var(--grove), var(--twilight));
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    gap: 8px; padding: 20px;
+  }
+  .panel-demo-floor {
+    width: 80%; height: 40px;
+    border-radius: 4px; padding: 6px 12px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    border: 1px solid rgba(200,168,78,0.15);
+  }
+  .panel-demo-scroll {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 43%;
+    background: var(--parchment-bg);
+    border-left: 2px solid #c4a06a;
+    padding: 16px;
+    display: flex; flex-direction: column;
+  }
+  .panel-demo-scroll-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--ink);
+    padding-bottom: 8px;
+    border-bottom: 1px solid #c4a06a;
+    margin-bottom: 8px;
+    display: flex; justify-content: space-between;
+  }
+  .panel-demo-scroll-body {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; line-height: 1.8;
+    color: #5c3d1e; flex: 1;
+  }
+  .panel-resize-handle {
+    position: absolute; left: 54%; top: 0; bottom: 0; width: 4px;
+    background: rgba(200,168,78,0.3);
+    cursor: col-resize;
+    z-index: 2;
+  }
+  .panel-resize-handle::after {
+    content: '';
+    position: absolute; top: 50%; left: -2px;
+    width: 8px; height: 24px; transform: translateY(-50%);
+    background: rgba(200,168,78,0.15);
+    border-radius: 4px;
+    border: 1px solid rgba(200,168,78,0.3);
+  }
+
+  /* ============================
+     TIMELINE / PHASING
+     ============================ */
+  .timeline {
+    position: relative;
+    padding-left: 40px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute; left: 15px; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--grove), var(--gold-leaf), var(--arcane));
+  }
+  .timeline-phase {
+    position: relative;
+    margin-bottom: 40px;
+    padding-left: 20px;
+  }
+  .timeline-phase::before {
+    content: '';
+    position: absolute; left: -32px; top: 6px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--gold-leaf);
+    background: var(--grove);
+  }
+  .timeline-phase.active::before {
+    background: var(--gold-leaf);
+    box-shadow: 0 0 12px rgba(200,168,78,0.5);
+  }
+  .phase-title {
+    font-size: 1.1rem; font-weight: 700;
+    color: var(--gold-leaf);
+    margin-bottom: 4px;
+  }
+  .phase-subtitle {
+    font-size: 0.85rem; color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 10px;
+  }
+  .phase-tasks {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .phase-task {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    padding: 4px 0;
+  }
+  .phase-task .task-id {
+    color: var(--amber);
+    margin-right: 8px;
+    font-weight: 600;
+  }
+
+  /* ============================
+     PRINCIPLES
+     ============================ */
+  .principle-card {
+    padding: 28px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .principle-num {
+    font-family: 'Palatino Linotype', 'Georgia', serif;
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--gold-leaf);
+    opacity: 0.12;
+    position: absolute;
+    top: 8px; right: 16px;
+    line-height: 1;
+  }
+  .principle-title {
+    font-size: 1rem;
+    color: var(--gold-leaf);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .principle-desc {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    opacity: 0.85;
+    line-height: 1.7;
+  }
+
+  /* ============================
+     FORMULA BOX
+     ============================ */
+  .formula-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    margin: 20px 0;
+    text-align: center;
+  }
+  .formula-box .formula {
+    color: var(--gold-leaf);
+    font-size: 1rem;
+    margin-bottom: 12px;
+  }
+  .formula-box .formula-part {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin: 2px;
+    font-size: 0.85rem;
+  }
+
+  /* ============================
+     FOOTER
+     ============================ */
+  footer {
+    text-align: center;
+    padding: 60px 0 40px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  footer .sigil {
+    font-size: 2rem;
+    color: var(--gold-leaf);
+    opacity: 0.3;
+    margin-bottom: 12px;
+    text-shadow: 0 0 20px rgba(200,168,78,0.2);
+  }
+
+  /* ============================
+     RESPONSIVE
+     ============================ */
+  @media (max-width: 900px) {
+    .tower-diagram { flex-direction: column; align-items: center; }
+    .tower-cross-section { flex: 0 0 auto; width: 100%; max-width: 320px; }
+    .polygon-arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- FLOATING PARTICLES -->
+<div class="particles" aria-hidden="true">
+  <div class="particle" style="left:10%; width:3px; height:3px; background:rgba(200,168,78,0.5); animation-duration:12s; animation-delay:0s;"></div>
+  <div class="particle" style="left:25%; width:2px; height:2px; background:rgba(212,165,116,0.4); animation-duration:16s; animation-delay:2s;"></div>
+  <div class="particle" style="left:45%; width:4px; height:4px; background:rgba(200,168,78,0.3); animation-duration:14s; animation-delay:4s;"></div>
+  <div class="particle" style="left:65%; width:2px; height:2px; background:rgba(136,200,247,0.3); animation-duration:18s; animation-delay:1s;"></div>
+  <div class="particle" style="left:80%; width:3px; height:3px; background:rgba(160,136,224,0.3); animation-duration:15s; animation-delay:3s;"></div>
+  <div class="particle" style="left:35%; width:2px; height:2px; background:rgba(240,160,112,0.3); animation-duration:20s; animation-delay:6s;"></div>
+  <div class="particle" style="left:55%; width:3px; height:3px; background:rgba(200,168,78,0.4); animation-duration:13s; animation-delay:8s;"></div>
+  <div class="particle" style="left:90%; width:2px; height:2px; background:rgba(212,165,116,0.3); animation-duration:17s; animation-delay:5s;"></div>
+  <div class="particle" style="left:5%;  width:3px; height:3px; background:rgba(200,168,78,0.35); animation-duration:19s; animation-delay:7s;"></div>
+  <div class="particle" style="left:72%; width:2px; height:2px; background:rgba(136,200,247,0.25); animation-duration:22s; animation-delay:9s;"></div>
+</div>
+
+<!-- SIDE NAVIGATION -->
+<nav aria-label="Section navigation">
+  <a href="#hero" data-label="Top"></a>
+  <a href="#architecture" data-label="Architecture"></a>
+  <a href="#characters" data-label="Characters"></a>
+  <a href="#tiers" data-label="Tiers"></a>
+  <a href="#output" data-label="Output"></a>
+  <a href="#palette" data-label="Palette"></a>
+  <a href="#navigation" data-label="Navigation"></a>
+  <a href="#panels" data-label="Panels"></a>
+  <a href="#phasing" data-label="Phasing"></a>
+  <a href="#principles" data-label="Principles"></a>
+</nav>
+
+<div class="page-container">
+
+  <!-- ============================================================
+       HERO
+       ============================================================ -->
+  <section id="hero">
+    <!-- Miniature CSS tower -->
+    <div class="hero-tower" aria-hidden="true">
+      <div class="tower-roof"></div>
+      <div class="tower-body" style="background: linear-gradient(to top, var(--grove), var(--canopy), var(--teal), var(--twilight), var(--arcane));">
+        <!-- Summit floor -->
+        <div class="tower-floor" style="height:52px; background:rgba(42,37,69,0.5);">
+          <div class="agent-dot" style="background:var(--deepseek-abyssal); color:var(--deepseek-abyssal);"></div>
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+        </div>
+        <!-- Upper floor -->
+        <div class="tower-floor" style="height:56px; background:rgba(30,26,53,0.4);">
+          <div class="agent-dot" style="background:var(--gemini-prismatic); color:var(--gemini-prismatic);"></div>
+          <div class="agent-dot" style="background:var(--gemini-prismatic); color:var(--gemini-prismatic);"></div>
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+        </div>
+        <!-- Mid floor -->
+        <div class="tower-floor" style="height:60px; background:rgba(22,34,40,0.4);">
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+          <div class="agent-dot" style="background:var(--ollama-forge); color:var(--ollama-forge);"></div>
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+          <div class="agent-dot" style="background:var(--openai-infernal); color:var(--openai-infernal);"></div>
+        </div>
+        <!-- Lower floor -->
+        <div class="tower-floor" style="height:60px; background:rgba(26,46,48,0.4);">
+          <div class="agent-dot" style="background:var(--ollama-forge); color:var(--ollama-forge);"></div>
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+        </div>
+        <!-- Base floor -->
+        <div class="tower-floor" style="height:60px; background:rgba(20,42,32,0.5);">
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+          <div class="agent-dot" style="background:var(--gemini-prismatic); color:var(--gemini-prismatic);"></div>
+          <div class="agent-dot" style="background:var(--claude-arcane); color:var(--claude-arcane);"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-badge">Epic 4 -- Pixel Office UI</div>
+    <h1>The Magic Tower</h1>
+    <p class="subtitle">A living vertical spire where AI agents work as fantasy characters</p>
+    <p class="hero-desc">
+      A pixel-art desktop application built in Godot 4 where each floor is a project,
+      each agent is a fantasy character class, and the tower breathes with real
+      orchestration data. Emerald at the roots, indigo at the summit.
+    </p>
+    <div class="scroll-hint">scroll to explore</div>
+  </section>
+
+  <!-- ============================================================
+       TOWER ARCHITECTURE
+       ============================================================ -->
+  <section id="architecture">
+    <h2>Tower Architecture</h2>
+    <p class="subtitle">Vertical spire with hexagonal floors that morph under load</p>
+
+    <div class="tower-diagram" style="margin-top: 32px;">
+      <!-- Cross-section -->
+      <div class="tower-cross-section">
+        <!-- Ephemeral -->
+        <div class="cross-floor" style="height: 70px; background: rgba(42,37,69,0.3); border-left: 3px dashed rgba(200,168,78,0.3);">
+          <div class="floor-label">ephemeral -- ad-hoc sprint</div>
+          <div class="floor-agents">
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+          </div>
+        </div>
+        <!-- Permanent 3 -->
+        <div class="cross-floor" style="height: 80px; background: rgba(30,26,53,0.3);">
+          <div class="floor-label">permanent -- orchestrator</div>
+          <div class="floor-agents">
+            <div class="mini-agent" style="background:var(--gemini-prismatic);"></div>
+            <div class="mini-agent" style="background:var(--deepseek-abyssal);"></div>
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--ollama-forge);"></div>
+          </div>
+        </div>
+        <!-- Permanent 2 -->
+        <div class="cross-floor" style="height: 86px; background: rgba(22,34,40,0.3);">
+          <div class="floor-label">permanent -- gateway</div>
+          <div class="floor-agents">
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--openai-infernal);"></div>
+            <div class="mini-agent" style="background:var(--ollama-forge);"></div>
+          </div>
+        </div>
+        <!-- Permanent 1 -->
+        <div class="cross-floor" style="height: 80px; background: rgba(26,46,48,0.3);">
+          <div class="floor-label">permanent -- terminal substrate</div>
+          <div class="floor-agents">
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--gemini-prismatic);"></div>
+          </div>
+        </div>
+        <!-- Base -->
+        <div class="cross-floor" style="height: 80px; background: rgba(20,42,32,0.4);">
+          <div class="floor-label">permanent -- supervisor (base)</div>
+          <div class="floor-agents">
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+            <div class="mini-agent" style="background:var(--claude-arcane);"></div>
+          </div>
+        </div>
+        <!-- Ground indicator -->
+        <div style="height: 20px; background: linear-gradient(to top, rgba(10,21,16,0.8), transparent); display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:9px; font-family:'JetBrains Mono',monospace; color:var(--text-muted); opacity:0.5;">ground</span>
+        </div>
+      </div>
+
+      <!-- Annotations -->
+      <div class="tower-annotations">
+        <div class="annotation">
+          <strong>Permanent floors</strong> hold their configured position. Always visible, even when idle
+          (candles dimmed, agents sleeping). Configured via YAML.
+        </div>
+        <div class="annotation">
+          <strong>Ephemeral floors</strong> materialize when the orchestrator registers agents for an unconfigured
+          project. Build animation: bricks assembling + magical shimmer. Dissolve after 60s of inactivity.
+        </div>
+        <div class="annotation">
+          <strong>Side cross-section</strong> shows one edge of each floor at a time.
+          The wall is "cut away" like a dollhouse to reveal interiors. Rotate with Q/E to see other edges.
+        </div>
+        <div class="annotation">
+          <strong>Edge width scales with polygon size.</strong> A dodecagon edge is visually wider than a hexagon edge.
+          Busy floors literally take up more horizontal space.
+        </div>
+        <div class="annotation">
+          <strong>Floor height is fixed</strong> (48px internal). The tower grows vertically
+          (new floors) and horizontally (polygon expansion).
+        </div>
+      </div>
+    </div>
+
+    <!-- Polygon morphing -->
+    <h3 style="margin-top: 48px; margin-bottom: 8px;">Polygon Morphing</h3>
+    <p style="margin-bottom: 8px;">Floors start as hexagons and expand as composite load increases. Vertices lerp outward over ~0.5s. The floor visibly <em>breathes</em>.</p>
+
+    <div class="formula-box">
+      <div class="formula">composite_load =</div>
+      <span class="formula-part" style="background:rgba(200,168,78,0.15); color:var(--gold-leaf);">0.4 x agents</span>
+      +
+      <span class="formula-part" style="background:rgba(136,200,247,0.1); color:var(--gemini-prismatic);">0.3 x throughput</span>
+      +
+      <span class="formula-part" style="background:rgba(240,160,112,0.1); color:var(--ollama-forge);">0.3 x cost</span>
+      <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">each normalized to 0.0 -- 1.0</div>
+    </div>
+
+    <div class="polygon-row">
+      <div class="polygon-stage">
+        <div class="polygon-shape">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,8 93,30 93,70 50,92 7,70 7,30" />
+          </svg>
+        </div>
+        <div class="polygon-label">Hexagon</div>
+        <div class="polygon-load">load 0.0 -- 0.2</div>
+      </div>
+      <div class="polygon-arrow">&#10230;</div>
+      <div class="polygon-stage">
+        <div class="polygon-shape">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,5 81,15 97,45 87,78 57,97 23,90 5,58 15,22" />
+          </svg>
+        </div>
+        <div class="polygon-label">Octagon</div>
+        <div class="polygon-load">load 0.4 -- 0.6</div>
+      </div>
+      <div class="polygon-arrow">&#10230;</div>
+      <div class="polygon-stage">
+        <div class="polygon-shape">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,3 73,10 90,27 97,50 90,73 73,90 50,97 27,90 10,73 3,50 10,27 27,10" />
+          </svg>
+        </div>
+        <div class="polygon-label">Dodecagon</div>
+        <div class="polygon-load">load 0.8 -- 1.0</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       CHARACTER CLASSES
+       ============================================================ -->
+  <section id="characters">
+    <h2>Character Classes</h2>
+    <p class="subtitle">Seven fantasy archetypes mapped to AI agent roles</p>
+    <p style="margin: 8px 0 32px; font-size:0.92rem;">The orchestrator assigns each agent a <strong>role</strong> (what it does) and a <strong>provider</strong> (which model). The UI maps roles to character classes with distinct sprites, animations, and workstations.</p>
+
+    <div class="card-grid cols-3" style="margin-bottom: 20px;">
+      <!-- Alchemist -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(212,165,116,0.2), rgba(200,168,78,0.1)); border: 2px solid rgba(212,165,116,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(166,227,161,0.4));">&#9879;</span>
+        </div>
+        <div class="char-name">Alchemist</div>
+        <div class="char-role">Code Generation</div>
+        <div class="char-desc">Goggles, apron, bubbling flask. Stirs the cauldron when working, holds up a glowing potion when reporting.</div>
+        <div class="char-workstation">Cauldron + ingredient shelves</div>
+      </div>
+      <!-- Scribe -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(136,200,247,0.15), rgba(137,180,250,0.1)); border: 2px solid rgba(136,200,247,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(136,200,247,0.4));">&#9998;</span>
+        </div>
+        <div class="char-name">Scribe</div>
+        <div class="char-role">Code Review</div>
+        <div class="char-desc">Quill, magnifying glass, ink-stained fingers. Writes furiously during review, presents an annotated scroll on completion.</div>
+        <div class="char-workstation">Lectern + scroll rack</div>
+      </div>
+      <!-- Archmage -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(160,136,224,0.2), rgba(203,166,247,0.1)); border: 2px solid rgba(160,136,224,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(160,136,224,0.4));">&#10026;</span>
+        </div>
+        <div class="char-name">Archmage</div>
+        <div class="char-role">Architecture / Planning</div>
+        <div class="char-desc">Tall hat, ornate staff, flowing robes. Gestures at star charts when designing, summons a constellation diagram when reporting.</div>
+        <div class="char-workstation">Star chart table + crystal orb</div>
+      </div>
+      <!-- Wardkeeper -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(166,227,161,0.15), rgba(148,226,213,0.1)); border: 2px solid rgba(166,227,161,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(166,227,161,0.4));">&#9764;</span>
+        </div>
+        <div class="char-name">Wardkeeper</div>
+        <div class="char-role">Testing / QA</div>
+        <div class="char-desc">Shield emblem, rune-etched armour. Maintains warding circles, runes glow green on pass, shatter red on failure.</div>
+        <div class="char-workstation">Warding circle + test runes</div>
+      </div>
+      <!-- Librarian -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(249,226,175,0.15), rgba(250,179,135,0.1)); border: 2px solid rgba(249,226,175,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(249,226,175,0.4));">&#128214;</span>
+        </div>
+        <div class="char-name">Librarian</div>
+        <div class="char-role">Research / Context</div>
+        <div class="char-desc">Spectacles, floating tome, book stack. Pages turn themselves while researching. Presents a compiled codex when done.</div>
+        <div class="char-workstation">Towering bookshelf + reading desk</div>
+      </div>
+      <!-- Enchanter -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(200,168,78,0.2), rgba(212,165,116,0.15)); border: 2px solid rgba(200,168,78,0.3);">
+          <span style="filter: drop-shadow(0 0 4px rgba(200,168,78,0.5));">&#10070;</span>
+        </div>
+        <div class="char-name">Enchanter</div>
+        <div class="char-role">Orchestration / Router</div>
+        <div class="char-desc">Glowing hands, thread and web motifs. Weaves visible connection threads between agents. The orchestrator made visible.</div>
+        <div class="char-workstation">Enchanting table + connected threads</div>
+      </div>
+      <!-- Apprentice -->
+      <div class="card char-card">
+        <div class="char-icon" style="background: linear-gradient(135deg, rgba(180,180,180,0.1), rgba(150,150,150,0.08)); border: 2px solid rgba(180,180,180,0.2);">
+          <span style="filter: drop-shadow(0 0 4px rgba(180,180,180,0.3));">&#9733;</span>
+        </div>
+        <div class="char-name">Apprentice</div>
+        <div class="char-role">General Worker</div>
+        <div class="char-desc">Simple robe, satchel, eager posture. The default class for unspecialized agents. Earnest and adaptable.</div>
+        <div class="char-workstation">Basic desk + candle</div>
+      </div>
+    </div>
+
+    <!-- Animation states -->
+    <h3 style="margin-top: 32px;">Animation States</h3>
+    <div class="card-grid cols-2" style="margin-top: 16px;">
+      <div class="card" style="padding: 16px 20px;">
+        <table style="width:100%; font-size:0.88rem; border-collapse:collapse;">
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:8px 0; color:var(--amber); font-weight:600; width:110px;">IDLE</td>
+            <td style="padding:8px 0;">Breathing animation at workstation. Occasional fidgets: stretch, flip page, look around.</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:8px 0; color:var(--amber); font-weight:600;">ASSIGNED</td>
+            <td style="padding:8px 0;">Walks to workstation. Brief "sit down" or "prepare" transition.</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:8px 0; color:var(--amber); font-weight:600;">WORKING</td>
+            <td style="padding:8px 0;">Class-specific activity loop. Floating runes appear above.</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:8px 0; color:var(--amber); font-weight:600;">REPORTING</td>
+            <td style="padding:8px 0;">Holds up result. Brief "ta-da" pose before returning to idle.</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0; color:#f38ba8; font-weight:600;">CRASHED</td>
+            <td style="padding:8px 0;">Stars/swirls above head. Cauldron overflows, scroll catches fire, ward shatters.</td>
+          </tr>
+        </table>
+      </div>
+      <div class="card" style="padding: 16px 20px;">
+        <h3>Sprite Sheet Strategy</h3>
+        <p style="margin:8px 0; font-size:0.88rem;">
+          <strong>Size:</strong> 16x16 or 24x24 per frame at 320x180 internal resolution.
+        </p>
+        <p style="margin:8px 0; font-size:0.88rem;">
+          <strong>Frames per class:</strong> idle (4f), walking (6f), working (6f), reporting (4f), stunned (4f) = ~24 frames.
+        </p>
+        <p style="margin:8px 0; font-size:0.88rem;">
+          <strong>Palette swap shader</strong> produces tier and provider variants at runtime. One texture per class, swapped via LUT. Zero duplicate art.
+        </p>
+        <p style="margin:8px 0; font-size:0.88rem;">
+          <strong>Phase 1:</strong> Placeholder sprites (coloured rectangles with class icons). Polished pixel art is a parallel workstream.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TIER SYSTEM
+       ============================================================ -->
+  <section id="tiers">
+    <h2>Tier System</h2>
+    <p class="subtitle">Two visual axes: Power Level x Provider Affinity</p>
+    <p style="margin: 8px 0 16px; font-size:0.92rem;">
+      The character class sets the <strong>silhouette</strong>. Power level drives <strong>intensity</strong> of effects.
+      Provider affinity drives <strong>colour and element theme</strong>. They combine freely -- any class, any power, any provider.
+    </p>
+
+    <!-- Power levels table -->
+    <h3 style="margin-top: 28px;">Power Levels</h3>
+    <div style="overflow-x: auto; margin-top: 12px;">
+      <table class="tier-matrix">
+        <thead>
+          <tr>
+            <th style="width:120px;">Level</th>
+            <th>Palette</th>
+            <th>Outline</th>
+            <th>Particles</th>
+            <th>Workstation</th>
+            <th>Models</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tier-label">1 -- Novice</td>
+            <td class="tier-cell" style="background:rgba(120,110,100,0.15);">Muted, desaturated<div class="tier-effect">none</div></td>
+            <td class="tier-cell" style="background:rgba(120,110,100,0.1);">None</td>
+            <td class="tier-cell" style="background:rgba(120,110,100,0.08);">None</td>
+            <td class="tier-cell" style="background:rgba(120,110,100,0.08);">Basic wooden desk</td>
+            <td class="tier-cell" style="background:rgba(120,110,100,0.06); font-size:0.75rem;">Haiku, Flash, local small</td>
+          </tr>
+          <tr>
+            <td class="tier-label">2 -- Adept</td>
+            <td class="tier-cell" style="background:rgba(136,200,247,0.08);">Saturated base<div class="tier-effect">1px subtle</div></td>
+            <td class="tier-cell" style="background:rgba(136,200,247,0.06);">1px glow</td>
+            <td class="tier-cell" style="background:rgba(136,200,247,0.05);">None</td>
+            <td class="tier-cell" style="background:rgba(136,200,247,0.05);">Polished + candle</td>
+            <td class="tier-cell" style="background:rgba(136,200,247,0.04); font-size:0.75rem;">Sonnet, Pro, GPT-4o-mini</td>
+          </tr>
+          <tr>
+            <td class="tier-label">3 -- Master</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.1);">Rich + metallic<div class="tier-effect">2px pulsing</div></td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.08);">2px pulsing</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.06);">Sparse sparkles</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.06);">Enchanted + floating candles</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.04); font-size:0.75rem;">Opus, Ultra, GPT-4o</td>
+          </tr>
+          <tr>
+            <td class="tier-label">4 -- Grandmaster</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.15);">Gold/silver threads<div class="tier-effect">3px animated</div></td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.12);">3px animated</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.1);">Orbiting motes</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.08);">Arcane altar + rune circle</td>
+            <td class="tier-cell" style="background:rgba(200,168,78,0.06); font-size:0.75rem;">Future frontier models</td>
+          </tr>
+          <tr>
+            <td class="tier-label">5 -- Legendary</td>
+            <td class="tier-cell" style="background:linear-gradient(135deg, rgba(200,168,78,0.15), rgba(160,136,224,0.12));">Chromatic / iridescent<div class="tier-effect">full halo</div></td>
+            <td class="tier-cell" style="background:rgba(160,136,224,0.12);">Full aura</td>
+            <td class="tier-cell" style="background:rgba(160,136,224,0.1);">Trail + distortion</td>
+            <td class="tier-cell" style="background:rgba(160,136,224,0.08);">Throne + celestial orrery</td>
+            <td class="tier-cell" style="background:rgba(160,136,224,0.06); font-size:0.75rem;">Reserved -- headroom</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Provider x Power combination examples -->
+    <h3 style="margin-top: 36px;">How They Combine</h3>
+    <p style="margin: 8px 0 16px; font-size:0.88rem;">Power level is a float (0.0--1.0) in config. The shader reads it directly for smooth glow intensity. Only particle systems and prop swaps are discrete breakpoints.</p>
+
+    <div class="card-grid cols-2" style="margin-top:12px;">
+      <!-- Novice + Arcane -->
+      <div class="card" style="padding:16px 20px; border-left: 3px solid var(--claude-arcane);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--claude-arcane); font-weight:600;">Novice + Arcane</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">Haiku Alchemist</span>
+        </div>
+        <p style="font-size:0.85rem;">Muted amber robes, no glow, basic desk. Clean and humble. The workhorse.</p>
+      </div>
+      <!-- Master + Arcane -->
+      <div class="card" style="padding:16px 20px; border-left: 3px solid var(--claude-arcane); box-shadow: 0 0 20px rgba(212,165,116,0.1);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--claude-arcane); font-weight:600;">Master + Arcane</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">Opus Archmage</span>
+        </div>
+        <p style="font-size:0.85rem;">Rich amber with gold threads, pulsing glow, rune circle, orbiting glyphs. Unmistakably powerful.</p>
+      </div>
+      <!-- Novice + Prismatic -->
+      <div class="card" style="padding:16px 20px; border-left: 3px solid var(--gemini-prismatic);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--gemini-prismatic); font-weight:600;">Novice + Prismatic</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">Flash Scribe</span>
+        </div>
+        <p style="font-size:0.85rem;">Pale blue robes, no glow, basic desk. Crystalline but subdued.</p>
+      </div>
+      <!-- Master + Prismatic -->
+      <div class="card" style="padding:16px 20px; border-left: 3px solid var(--gemini-prismatic); box-shadow: 0 0 20px rgba(136,200,247,0.1);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--gemini-prismatic); font-weight:600;">Master + Prismatic</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">Ultra Scribe</span>
+        </div>
+        <p style="font-size:0.85rem;">Deep crystal blue with silver threads, refracting light shards. Geometric brilliance.</p>
+      </div>
+    </div>
+    <p style="margin-top:16px; font-size:0.85rem; color:var(--text-muted);">
+      Sprite count stays at <strong>7</strong> (one per class). Everything else is shader + particle config.
+      Adding a 6th provider or 6th power level needs zero new sprite art.
+    </p>
+  </section>
+
+  <!-- ============================================================
+       OUTPUT LAYERS
+       ============================================================ -->
+  <section id="output">
+    <h2>Output Layers</h2>
+    <p class="subtitle">Three levels of detail -- floating runes, spell scrolls, raw terminal</p>
+    <p style="margin: 8px 0 28px; font-size:0.92rem;">
+      All three layers share one data pipeline (SSE events into OutputBuffer) and just render it differently.
+      Same agent, same data, three presentations.
+    </p>
+
+    <div class="output-panels">
+      <!-- Layer 1: Floating Runes -->
+      <div class="output-panel runes-mockup" style="border-radius:8px;">
+        <div class="output-panel-header" style="background:rgba(0,0,0,0.3); color:var(--amber); border-bottom:1px solid var(--border-subtle);">
+          Layer 1: Floating Runes (Ambient)
+        </div>
+        <!-- Mock floor -->
+        <div class="mock-floor-line"></div>
+        <!-- Mock characters -->
+        <div class="mock-char" style="left: 40px;">
+          <div class="mock-char-head" style="background: var(--claude-arcane);"></div>
+          <div class="mock-char-body" style="background: #7c5c3a;"></div>
+        </div>
+        <div class="mock-char" style="left: 120px;">
+          <div class="mock-char-head" style="background: var(--gemini-prismatic);"></div>
+          <div class="mock-char-body" style="background: #4a7a9a;"></div>
+        </div>
+        <!-- Floating runes -->
+        <div class="rune-line" style="color:var(--claude-arcane); background:rgba(212,165,116,0.08); left:20px; bottom:140px; animation-delay:0s;">
+          created main.go
+        </div>
+        <div class="rune-line" style="color:var(--claude-arcane); background:rgba(212,165,116,0.08); left:28px; bottom:170px; animation-delay:1.5s;">
+          go build ./...
+        </div>
+        <div class="rune-line" style="color:var(--claude-arcane); background:rgba(212,165,116,0.08); left:15px; bottom:200px; animation-delay:3s;">
+          PASS ok 0.42s
+        </div>
+        <div class="rune-line" style="color:var(--gemini-prismatic); background:rgba(136,200,247,0.08); left:105px; bottom:150px; animation-delay:0.8s;">
+          reviewing PR #42
+        </div>
+        <div class="rune-line" style="color:var(--gemini-prismatic); background:rgba(136,200,247,0.08); left:95px; bottom:180px; animation-delay:2.2s;">
+          2 issues found
+        </div>
+        <div style="position:absolute; bottom:12px; left:0; right:0; text-align:center; font-size:10px; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">
+          runes drift up and fade -- 3-5 lines max
+        </div>
+      </div>
+
+      <!-- Layer 2: Spell Scroll -->
+      <div class="output-panel scroll-mockup" style="border-radius:8px;">
+        <div class="output-panel-header" style="background:#e0cca4; color:var(--ink); border-bottom:2px solid #c4a06a;">
+          Layer 2: Spell Scroll (Click Agent)
+        </div>
+        <div class="scroll-body-mock">
+          <div class="scroll-line"><span class="scroll-ts">14:22</span> <span class="scroll-cmd">$ go build ./cmd/...</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;compiling orchestrator</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;linking binary</span></div>
+          <div class="scroll-line"><span class="scroll-ts">14:22</span> <span class="scroll-cmd">$ go test ./internal/...</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;ok internal/agent 0.42s</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;ok internal/dag 0.18s</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;ok internal/state 0.31s</span></div>
+          <div class="scroll-line"><span class="scroll-ts">14:23</span> <span class="scroll-cmd">$ created main.go</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;package main</span></div>
+          <div class="scroll-line"><span class="scroll-out">&nbsp;&nbsp;import "fmt"</span></div>
+          <div class="scroll-line"><span class="scroll-ts">14:24</span> <span class="scroll-out scroll-writing">&nbsp;&nbsp;PASS all checks</span></div>
+        </div>
+        <div style="padding:8px 16px; background:#e8d4a8; border-top:1px solid #c4a06a; font-size:10px; color:#7c5c3a; font-family:'JetBrains Mono',monospace; text-align:center;">
+          parchment panel -- sepia monospace -- quill writing animation
+        </div>
+      </div>
+
+      <!-- Layer 3: Raw Terminal -->
+      <div class="output-panel terminal-surface terminal-mock" style="border-radius:8px;">
+        <div class="output-panel-header">
+          <div style="display:flex; gap:4px;">
+            <div class="terminal-dot" style="background:#f38ba8;"></div>
+            <div class="terminal-dot" style="background:#f9e2af;"></div>
+            <div class="terminal-dot" style="background:#a6e3a1;"></div>
+          </div>
+          <span style="margin-left:8px;">agent-03 (tmux)</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="t-prompt">~/project $</span> <span class="t-cmd">go build ./cmd/...</span></div>
+          <div>compiling orchestrator</div>
+          <div>linking binary</div>
+          <div><span class="t-prompt">~/project $</span> <span class="t-cmd">go test ./internal/...</span></div>
+          <div>--- PASS: TestAgent (0.42s)</div>
+          <div>--- PASS: TestDAG (0.18s)</div>
+          <div>--- PASS: TestState (0.31s)</div>
+          <div>PASS</div>
+          <div><span class="t-prompt">~/project $</span> <span class="t-cmd">cat main.go</span></div>
+          <div><span class="t-string">package</span> <span class="t-path">main</span></div>
+          <div><span class="t-string">func</span> <span class="t-cmd">main</span>() {</div>
+          <div>&nbsp;&nbsp;fmt.<span class="t-cmd">Println</span>(<span class="t-path">"hello"</span>)</div>
+          <div>}</div>
+          <div><span class="t-prompt">~/project $</span> <span class="t-cursor"></span></div>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:16px; text-align:center; font-size:0.85rem; color:var(--text-muted);">
+      Same data, three presentations -- runes (glance) / scroll (read) / terminal (debug)
+    </p>
+  </section>
+
+  <!-- ============================================================
+       COLOUR PALETTE
+       ============================================================ -->
+  <section id="palette">
+    <h2>Canopy Spire Colour Palette</h2>
+    <p class="subtitle">Emerald at the roots, indigo at the summit, gold throughout</p>
+
+    <!-- Tower gradient -->
+    <div class="swatch-group" style="margin-top:28px;">
+      <div class="swatch-group-title">Tower Gradient (bottom to top)</div>
+      <div class="swatch-row">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#142a20;"></div>
+          <div class="swatch-hex">#142a20</div>
+          <div class="swatch-name">Grove</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#1a2e30;"></div>
+          <div class="swatch-hex">#1a2e30</div>
+          <div class="swatch-name">Canopy</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#162228;"></div>
+          <div class="swatch-hex">#162228</div>
+          <div class="swatch-name">Teal</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#1e1a35;"></div>
+          <div class="swatch-hex">#1e1a35</div>
+          <div class="swatch-name">Twilight</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#2a2545;"></div>
+          <div class="swatch-hex">#2a2545</div>
+          <div class="swatch-name">Arcane</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#0c0c1a;"></div>
+          <div class="swatch-hex">#0c0c1a</div>
+          <div class="swatch-name">Summit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accents -->
+    <div class="swatch-group">
+      <div class="swatch-group-title">Accents</div>
+      <div class="swatch-row">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#c8a84e; box-shadow: 0 0 12px rgba(200,168,78,0.3);"></div>
+          <div class="swatch-hex">#c8a84e</div>
+          <div class="swatch-name">Gold Leaf</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#d4a574; box-shadow: 0 0 10px rgba(212,165,116,0.2);"></div>
+          <div class="swatch-hex">#d4a574</div>
+          <div class="swatch-name">Amber</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider elements -->
+    <div class="swatch-group">
+      <div class="swatch-group-title">Provider Elemental Themes</div>
+      <div class="provider-swatch">
+        <div class="provider-chip">
+          <div class="provider-dot-lg" style="background:var(--claude-arcane); box-shadow: 0 0 8px rgba(212,165,116,0.4);"></div>
+          <div class="provider-info">
+            <div class="provider-name-lg" style="color:var(--claude-arcane);">Claude -- Arcane</div>
+            <div class="provider-element">#d4a574 -- warm amber</div>
+          </div>
+        </div>
+        <div class="provider-chip">
+          <div class="provider-dot-lg" style="background:var(--gemini-prismatic); box-shadow: 0 0 8px rgba(136,200,247,0.4);"></div>
+          <div class="provider-info">
+            <div class="provider-name-lg" style="color:var(--gemini-prismatic);">Gemini -- Prismatic</div>
+            <div class="provider-element">#88c8f7 -- cool crystal</div>
+          </div>
+        </div>
+        <div class="provider-chip">
+          <div class="provider-dot-lg" style="background:var(--openai-infernal); box-shadow: 0 0 8px rgba(208,96,96,0.4);"></div>
+          <div class="provider-info">
+            <div class="provider-name-lg" style="color:var(--openai-infernal);">OpenAI -- Infernal</div>
+            <div class="provider-element">#d06060 -- crimson</div>
+          </div>
+        </div>
+        <div class="provider-chip">
+          <div class="provider-dot-lg" style="background:var(--ollama-forge); box-shadow: 0 0 8px rgba(240,160,112,0.4);"></div>
+          <div class="provider-info">
+            <div class="provider-name-lg" style="color:var(--ollama-forge);">Ollama -- Forge</div>
+            <div class="provider-element">#f0a070 -- ember</div>
+          </div>
+        </div>
+        <div class="provider-chip">
+          <div class="provider-dot-lg" style="background:var(--deepseek-abyssal); box-shadow: 0 0 8px rgba(160,136,224,0.4);"></div>
+          <div class="provider-info">
+            <div class="provider-name-lg" style="color:var(--deepseek-abyssal);">DeepSeek -- Abyssal</div>
+            <div class="provider-element">#a088e0 -- violet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- UI Surfaces -->
+    <div class="swatch-group">
+      <div class="swatch-group-title">UI Surfaces</div>
+      <div class="swatch-row">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#ede0c4; border-color:rgba(0,0,0,0.2);"></div>
+          <div class="swatch-hex">#ede0c4</div>
+          <div class="swatch-name">Parchment</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#2e2a18;"></div>
+          <div class="swatch-hex">#2e2a18</div>
+          <div class="swatch-name">Ink</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#0a0e14;"></div>
+          <div class="swatch-hex">#0a0e14</div>
+          <div class="swatch-name">Terminal Dark</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#111822;"></div>
+          <div class="swatch-hex">#111822</div>
+          <div class="swatch-name">Terminal Header</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       NAVIGATION
+       ============================================================ -->
+  <section id="navigation">
+    <h2>Navigation</h2>
+    <p class="subtitle">Four methods to move through the tower -- all toggleable</p>
+
+    <div class="nav-methods" style="margin-top:28px;">
+      <div class="card nav-card">
+        <span class="nav-icon">&#8597;</span>
+        <h3>Scroll / Keys</h3>
+        <p style="font-size:0.85rem;">Smooth vertical pan with Camera2D easing. Clamps to tower bounds.</p>
+        <div class="nav-keys">
+          <span class="key-cap">W</span>
+          <span class="key-cap">S</span>
+          <span class="key-cap">Scroll</span>
+        </div>
+      </div>
+      <div class="card nav-card">
+        <span class="nav-icon">&#8634;</span>
+        <h3>Edge Rotation</h3>
+        <p style="font-size:0.85rem;">Rotate all floors to next/previous edge. Walls slide, interior swaps over ~0.3s.</p>
+        <div class="nav-keys">
+          <span class="key-cap">Q</span>
+          <span class="key-cap">E</span>
+        </div>
+      </div>
+      <div class="card nav-card">
+        <span class="nav-icon">&#9635;</span>
+        <h3>Minimap</h3>
+        <p style="font-size:0.85rem;">Small vertical tower outline in corner. Floors coloured by activity. Click to jump.</p>
+        <div class="nav-keys">
+          <span class="key-cap">M</span>
+        </div>
+      </div>
+      <div class="card nav-card">
+        <span class="nav-icon">&#9776;</span>
+        <h3>Floor Tabs</h3>
+        <p style="font-size:0.85rem;">Vertical tab strip on left edge. Project name + agent count badge. Click or press number.</p>
+        <div class="nav-keys">
+          <span class="key-cap">Tab</span>
+          <span class="key-cap">1-9</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PANEL SYSTEM
+       ============================================================ -->
+  <section id="panels">
+    <h2>Panel System</h2>
+    <p class="subtitle">Move, resize, dock, fullscreen -- layout persists across sessions</p>
+
+    <div class="card-grid cols-2" style="margin-top:24px;">
+      <div class="card" style="padding:16px 20px;">
+        <h3>Capabilities</h3>
+        <table style="width:100%; font-size:0.85rem; border-collapse:collapse;">
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0; color:var(--amber); font-weight:600; width:100px;">Resize</td>
+            <td style="padding:6px 0;">Drag edges/corners. Snaps to 25%/50%/75%/100% thresholds.</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0; color:var(--amber); font-weight:600;">Fullscreen</td>
+            <td style="padding:6px 0;">Double-click title bar or press <code>F</code>. Tower dims behind.</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0; color:var(--amber); font-weight:600;">Dock</td>
+            <td style="padding:6px 0;">Drag to viewport edge. Two docked panels stack vertically.</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0; color:var(--amber); font-weight:600;">Persist</td>
+            <td style="padding:6px 0;">Saved to <code>user://layout.json</code>. Restored on launch.</td>
+          </tr>
+        </table>
+      </div>
+      <div class="card" style="padding:16px 20px;">
+        <h3>Hotkeys</h3>
+        <table style="width:100%; font-size:0.85rem; border-collapse:collapse;">
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0;"><code>F</code></td>
+            <td style="padding:6px 0;">Toggle focused panel fullscreen</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0;"><code>Esc</code></td>
+            <td style="padding:6px 0;">Exit fullscreen / close panel</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0;"><code>Ctrl+T</code></td>
+            <td style="padding:6px 0;">Toggle scroll / terminal on active panel</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-subtle);">
+            <td style="padding:6px 0;"><code>Ctrl+\</code></td>
+            <td style="padding:6px 0;">Hide all panels (tower-only view)</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;"><code>Ctrl+Shift+R</code></td>
+            <td style="padding:6px 0;">Reset layout to default</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel layout mockup -->
+    <div class="panel-demo">
+      <div class="panel-demo-tower">
+        <div class="panel-demo-floor" style="background:rgba(42,37,69,0.4);">
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--claude-arcane);"></div>
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--deepseek-abyssal);"></div>
+          <span style="color:var(--text-muted); font-size:9px; margin-left:auto;">orchestrator</span>
+        </div>
+        <div class="panel-demo-floor" style="background:rgba(22,34,40,0.4);">
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--claude-arcane);"></div>
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--ollama-forge);"></div>
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--gemini-prismatic);"></div>
+          <span style="color:var(--text-muted); font-size:9px; margin-left:auto;">gateway</span>
+        </div>
+        <div class="panel-demo-floor" style="background:rgba(20,42,32,0.4);">
+          <div style="width:6px;height:8px;border-radius:1px;background:var(--claude-arcane);"></div>
+          <span style="color:var(--text-muted); font-size:9px; margin-left:auto;">supervisor</span>
+        </div>
+      </div>
+      <div class="panel-resize-handle"></div>
+      <div class="panel-demo-scroll">
+        <div class="panel-demo-scroll-header">
+          <span>Alchemist-03 -- WORKING</span>
+          <span style="color:#a08060;">&#10006;</span>
+        </div>
+        <div class="panel-demo-scroll-body">
+          <div><span style="color:#a08060;">14:22</span> <span style="color:#2d6a4f;">$ go build</span></div>
+          <div>&nbsp;&nbsp;compiling...</div>
+          <div><span style="color:#a08060;">14:23</span> <span style="color:#2d6a4f;">$ go test</span></div>
+          <div>&nbsp;&nbsp;PASS (0.42s)</div>
+          <div><span style="color:#a08060;">14:24</span> <span style="color:#2d6a4f;">$ go vet</span></div>
+          <div>&nbsp;&nbsp;all checks pass</div>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:8px; text-align:center; font-size:0.78rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">
+      tower viewport + docked spell scroll -- drag the handle to resize
+    </p>
+  </section>
+
+  <!-- ============================================================
+       PHASING
+       ============================================================ -->
+  <section id="phasing">
+    <h2>Phasing</h2>
+    <p class="subtitle">27 tasks across 4 phases -- from skeleton to sorcery</p>
+
+    <div class="timeline" style="margin-top:32px;">
+      <!-- Phase 1 -->
+      <div class="timeline-phase active">
+        <div class="phase-title">Phase 1 -- Skeleton Tower</div>
+        <div class="phase-subtitle">Tower renders, floors work, agents move, output flows</div>
+        <div class="phase-tasks">
+          <div class="phase-task"><span class="task-id">T1</span>Godot project scaffold (viewport, pixel-perfect, folder structure)</div>
+          <div class="phase-task"><span class="task-id">T2</span>HTTP/SSE bridge -- Go side (REST + SSE alongside gRPC)</div>
+          <div class="phase-task"><span class="task-id">T3</span>BridgeManager -- Godot side (HTTPClient + SSE parser + event dispatch)</div>
+          <div class="phase-task"><span class="task-id">T4</span>Floor scene + tower layout (Polygon2D, TileMap, stack, spawn/despawn)</div>
+          <div class="phase-task"><span class="task-id">T5</span>Agent character scene (placeholder sprites, 5 animation states)</div>
+          <div class="phase-task"><span class="task-id">T6</span>Floating runes (filtered output, float+fade, provider colour)</div>
+          <div class="phase-task"><span class="task-id">T7</span>Basic navigation (scroll/keys, Camera2D, Q/E rotation)</div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="timeline-phase">
+        <div class="phase-title">Phase 2 -- Interaction Layer</div>
+        <div class="phase-subtitle">Panels, output detail, PTY, task submission, full nav</div>
+        <div class="phase-tasks">
+          <div class="phase-task"><span class="task-id">T8</span>Panel framework (move, resize, dock, snap, fullscreen, persistence)</div>
+          <div class="phase-task"><span class="task-id">T9</span>Spell scroll panel (parchment theme, output history, quill animation)</div>
+          <div class="phase-task"><span class="task-id">T10</span>Raw terminal + PTY (godot-xterm on Linux/macOS, ANSI fallback on Windows)</div>
+          <div class="phase-task"><span class="task-id">T11</span>Status overlay (agent nameplate on hover/click)</div>
+          <div class="phase-task"><span class="task-id">T12</span>Full navigation (minimap + floor tabs)</div>
+          <div class="phase-task"><span class="task-id">T13</span>Task submission UI ("commissioning a quest")</div>
+          <div class="phase-task"><span class="task-id">T14</span>Agent interaction menu (right-click: reassign, cancel, view, open terminal)</div>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="timeline-phase">
+        <div class="phase-title">Phase 3 -- Magic Polish</div>
+        <div class="phase-subtitle">Polygon morphing, shaders, particles, sound, real art</div>
+        <div class="phase-tasks">
+          <div class="phase-task"><span class="task-id">T15</span>Polygon morphing (composite load, vertex lerp, width scaling)</div>
+          <div class="phase-task"><span class="task-id">T16</span>Palette swap shader (power_level float + provider_lut texture)</div>
+          <div class="phase-task"><span class="task-id">T17</span>Tier particle effects (glow, sparkles, orbiting motes, trails)</div>
+          <div class="phase-task"><span class="task-id">T18</span>Panel floaty animations (hover bob, parchment flutter, particle trail)</div>
+          <div class="phase-task"><span class="task-id">T19</span>Ambient floor effects (candles, dust motes, cauldron bubbles, dormant dimming)</div>
+          <div class="phase-task"><span class="task-id">T20</span>Floor build/dissolve animations (brick assembly, shimmer, fade-out)</div>
+          <div class="phase-task"><span class="task-id">T21</span>Sound design (ambient hum, per-class work sounds, state transition SFX)</div>
+          <div class="phase-task"><span class="task-id">T22</span>Pixel art sprites (7 classes x ~24 frames, workstation props, tilesets)</div>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="timeline-phase">
+        <div class="phase-title">Phase 4 -- Stretch Goals</div>
+        <div class="phase-subtitle">Beyond MVP -- the tower reaches higher</div>
+        <div class="phase-tasks">
+          <div class="phase-task"><span class="task-id">T23</span>Isometric view -- alternative 2.5D camera mode</div>
+          <div class="phase-task"><span class="task-id">T24</span>Agent pathfinding -- A* to workstation, library, stairs between floors</div>
+          <div class="phase-task"><span class="task-id">T25</span>Day/night cycle -- exterior changes, candles brighten at night</div>
+          <div class="phase-task"><span class="task-id">T26</span>Keyboard command palette -- fuzzy-find agents, floors, tasks (Ctrl+K)</div>
+          <div class="phase-task"><span class="task-id">T27</span>Remote orchestrator streaming -- SSH tunnel or network transport</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       DESIGN PRINCIPLES
+       ============================================================ -->
+  <section id="principles">
+    <h2>Design Principles</h2>
+    <p class="subtitle">Five tenets that guide every pixel</p>
+
+    <div class="card-grid cols-2" style="margin-top:28px;">
+      <div class="card principle-card">
+        <div class="principle-num">1</div>
+        <div class="principle-title">The Tower is Alive</div>
+        <div class="principle-desc">
+          Everything breathes, pulses, and responds to real data. Idle floors dim.
+          Busy floors swell. Agents animate contextually. Nothing is static decoration.
+        </div>
+      </div>
+      <div class="card principle-card">
+        <div class="principle-num">2</div>
+        <div class="principle-title">Showcase First, Dashboard Second</div>
+        <div class="principle-desc">
+          Visual storytelling takes priority over information density. If something can
+          be communicated through animation, colour, or spatial metaphor instead of a
+          label, prefer the metaphor.
+        </div>
+      </div>
+      <div class="card principle-card">
+        <div class="principle-num">3</div>
+        <div class="principle-title">Layers of Detail</div>
+        <div class="principle-desc">
+          Three levels everywhere: glance (floating runes, floor size), focus (spell scroll,
+          status overlay), and power-user (raw terminal, keyboard shortcuts). Don't force
+          detail on people who want ambiance.
+        </div>
+      </div>
+      <div class="card principle-card">
+        <div class="principle-num">4</div>
+        <div class="principle-title">Fantasy Vocabulary, Real Data</div>
+        <div class="principle-desc">
+          Every UI element has a fantasy name and aesthetic -- spell scrolls, quest boards,
+          enchanted nameplates -- but the data underneath is real and accurate. The theme
+          enhances comprehension, never obscures it.
+        </div>
+      </div>
+      <div class="card principle-card" style="grid-column: 1 / -1; max-width: 560px;">
+        <div class="principle-num">5</div>
+        <div class="principle-title">Texture Over Flatness</div>
+        <div class="principle-desc">
+          Parchment has grain. Stone has moss. Panels float and flutter. Every surface
+          has material presence. The pixel art style is a medium, not a limitation.
+        </div>
+      </div>
+    </div>
+
+    <!-- Emotional targets -->
+    <div class="card" style="margin-top:28px; padding:20px 24px; text-align:center; border-color:rgba(200,168,78,0.25);">
+      <h3 style="margin-bottom:16px;">Emotional Targets</h3>
+      <div style="display:flex; justify-content:center; gap:40px; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:1.5rem; margin-bottom:4px;">&#10024;</div>
+          <div style="color:var(--gold-leaf); font-weight:600; font-size:0.9rem;">Wonder / Awe</div>
+          <div style="color:var(--text-muted); font-size:0.8rem;">first impression</div>
+        </div>
+        <div>
+          <div style="font-size:1.5rem; margin-bottom:4px;">&#9749;</div>
+          <div style="color:var(--gold-leaf); font-weight:600; font-size:0.9rem;">Cozy Mastery</div>
+          <div style="color:var(--text-muted); font-size:0.8rem;">daily use</div>
+        </div>
+        <div>
+          <div style="font-size:1.5rem; margin-bottom:4px;">&#9883;</div>
+          <div style="color:var(--gold-leaf); font-weight:600; font-size:0.9rem;">Playful Delight</div>
+          <div style="color:var(--text-muted); font-size:0.8rem;">ongoing discovery</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer>
+    <div class="sigil">&#10038;</div>
+    <p>agenKic-orKistrator -- Epic 4: Pixel Office UI</p>
+    <p style="margin-top:6px; font-size:0.78rem; font-family:'JetBrains Mono',monospace;">
+      Canopy Spire palette -- Godot 4 + HTTP/SSE -- 27 tasks, 4 phases
+    </p>
+    <p style="margin-top:12px; font-size:0.72rem; color:rgba(200,168,78,0.3);">
+      Crafted with care by the tower's own enchanters
+    </p>
+  </footer>
+
+</div><!-- /.page-container -->
+
+</body>
+</html>
