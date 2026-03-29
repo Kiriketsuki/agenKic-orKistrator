@@ -8,81 +8,93 @@
 <meta name="doc-desc" content="Manifest-driven index, GitHub Actions publish workflow, scroll-triggered animations">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --bg-alt: #f3ede4;
-    --surface: #ffffff;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
+    --bg: var(--grove);
+    --bg-alt: var(--canopy);
+    --surface: var(--surface-card);
+    --surface-alt: rgba(26, 46, 48, 0.8);
+    --surface-recessed: rgba(10, 14, 20, 0.4);
+    --border: var(--border-subtle);
+    --border-strong: rgba(200, 168, 78, 0.3);
+    --text: var(--text-primary);
+    --text-dim: var(--text-muted);
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --lavender: var(--gold-leaf);
+    --lavender-dim: rgba(200, 168, 78, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: var(--amber);
+    --peach-dim: rgba(212, 165, 116, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: var(--gold-leaf);
+    --lemon-dim: rgba(200, 168, 78, 0.12);
+
+    /* semantic aliases */
+    --primary: var(--gold-leaf);
+    --primary-dim: rgba(200, 168, 78, 0.12);
+    --accent: var(--amber);
+    --accent-dim: rgba(212, 165, 116, 0.12);
+    --success: #6bc9a6;
+    --success-dim: rgba(107, 201, 166, 0.12);
+    --danger: #d06060;
+    --danger-dim: rgba(208, 96, 96, 0.12);
+    --info: #88c8f7;
+    --info-dim: rgba(136, 200, 247, 0.12);
+    --teal-mid: rgba(107, 201, 166, 0.25);
+    --slate: #88c8f7;
+    --slate-dim: rgba(136, 200, 247, 0.12);
+    --rose: #d06060;
+    --rose-dim: rgba(208, 96, 96, 0.12);
+    --sage: #6bc9a6;
+    --sage-dim: rgba(107, 201, 166, 0.12);
+
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --bg-alt: #1e1830;
-      --surface: #1e1830;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-    }
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: var(--bg);
-    background-image:
-      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
     font-family: var(--font-body);
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-    padding: 48px 24px 80px;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(90,74,112,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(90,74,112,0.06) 1px, transparent 1px);
-    }
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      #162228 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   .page { max-width: 860px; margin: 0 auto; }
@@ -186,9 +198,10 @@
   }
 
   .overview-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 22px 20px;
     border-top: 4px solid var(--border);
   }
@@ -211,9 +224,10 @@
 
   /* ============ SCHEMA VISUAL ============ */
   .schema-wrap {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 28px 24px;
     margin-bottom: 20px;
   }
@@ -286,9 +300,10 @@
 
   /* ============ INDEX MOCK ============ */
   .index-mock {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 24px;
     margin-bottom: 20px;
   }
@@ -342,7 +357,7 @@
     padding: 3px 8px;
     border: 1px solid;
     text-decoration: none;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
 
   .pill--spec {
@@ -362,7 +377,7 @@
     margin-left: 0;
     padding: 12px 14px;
     border-left: 2px solid var(--lavender);
-    background: var(--surface);
+    background: var(--surface-card); backdrop-filter: blur(4px);
   }
 
   .mock-feature__title {
@@ -379,10 +394,11 @@
 
   /* ============ MERMAID ============ */
   .mermaid-wrap {
+    border-radius: 8px;
     position: relative;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 32px 24px;
     overflow: auto;
     margin-bottom: 20px;
@@ -399,9 +415,9 @@
     display: flex;
     gap: 2px;
     z-index: 10;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     padding: 2px;
   }
 
@@ -425,7 +441,8 @@
     color: var(--text);
   }
 
-  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap {
+    border-radius: 8px; cursor: grab; }
   .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
 
   .diagram-shell { position: relative; }
@@ -489,9 +506,10 @@
   }
 
   .anim-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 18px 20px;
   }
 
@@ -538,9 +556,9 @@
   }
 
   .workflow-phase {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 20px;
     border-top: 4px solid var(--border);
   }
@@ -592,9 +610,9 @@
 
   /* ============ MIGRATION TABLE ============ */
   .migration-table-wrap {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     overflow: hidden;
     margin-bottom: 20px;
   }
@@ -645,7 +663,7 @@
     text-transform: uppercase;
     padding: 2px 6px;
     border: 1px solid;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
 
   .type-badge--spec        { background: var(--mint-dim);    color: var(--mint);    border-color: var(--mint); }
@@ -655,9 +673,10 @@
 
   /* ============ CALLOUT ============ */
   .callout {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     border-left: 4px solid var(--mint);
     padding: 16px 20px;
     font-size: 13px;
@@ -688,7 +707,7 @@
     justify-content: space-between;
   }
 
-  .footer a { color: var(--lavender); text-decoration: none; }
+  .footer a { color: var(--gold-leaf); text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
 
   /* ============ RESPONSIVE ============ */
@@ -912,7 +931,7 @@ delay: var(--i) * 0.1s</div>
       <div class="anim-card__title"><span class="anim-dot" style="background:var(--peach)"></span> Card Hover</div>
       <div class="anim-card__desc">translateY(-3px), border highlight, box-shadow expansion, arrow slides right. All 200ms ease-out-quart.</div>
       <div class="anim-card__code">transform: translateY(-3px);
-box-shadow: 6px 6px 0 var(--border-strong);
+box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 transition: 200ms var(--ease-out-quart);</div>
     </div>
     <div class="anim-card a" style="--i:4">
@@ -1035,7 +1054,7 @@ transition: 200ms var(--ease-out-quart);</div>
   const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs');
   const elkLayouts = (await import('https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.5/dist/mermaid-layout-elk.esm.min.mjs')).default;
 
-  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = true; // Canopy Spire is always dark
 
   mermaid.registerLayoutLoaders(elkLayouts);
   mermaid.initialize({
@@ -1044,21 +1063,21 @@ transition: 200ms var(--ease-out-quart);</div>
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontFamily: "'Georgia', 'Palatino Linotype', serif",
       fontSize: '14px',
-      primaryColor:       isDark ? '#261e3a' : '#f3ede4',
-      primaryBorderColor: isDark ? '#bea0f0' : '#a78bdb',
-      primaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
-      secondaryColor:       isDark ? '#1a2e28' : '#edf7f3',
-      secondaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
-      secondaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
-      tertiaryColor:       isDark ? '#2e2218' : '#fef4e8',
-      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
-      tertiaryTextColor:   isDark ? '#e8e0f0' : '#2d2520',
-      lineColor:     isDark ? '#9a8eb0' : '#7a6e62',
-      noteBkgColor:  isDark ? '#261e3a' : '#faf5ef',
-      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      noteBorderColor: isDark ? '#f0e068' : '#e8d44d',
+      primaryColor:       '#1a2e30',
+      primaryBorderColor: '#c8a84e',
+      primaryTextColor:   '#e8e0d4',
+      secondaryColor:       '#1a2e28',
+      secondaryBorderColor: '#6bc9a6',
+      secondaryTextColor:   '#e8e0d4',
+      tertiaryColor:       '#2e2218',
+      tertiaryBorderColor: '#d4a574',
+      tertiaryTextColor:   '#e8e0d4',
+      lineColor:     '#8a8070',
+      noteBkgColor:  '#1a2e30',
+      noteTextColor: '#e8e0d4',
+      noteBorderColor: '#c8a84e',
     }
   });
 
@@ -1165,7 +1184,7 @@ transition: 200ms var(--ease-out-quart);</div>
       if (!svg) return;
       const clone = svg.cloneNode(true);
       clone.style.width = ''; clone.style.height = '';
-      const bg = isDark ? '#151020' : '#faf5ef';
+      const bg = '#0a1510';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
       open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
     }

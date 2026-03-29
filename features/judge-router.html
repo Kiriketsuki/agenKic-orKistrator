@@ -13,76 +13,92 @@ mermaid.initialize({
   startOnLoad: true,
   theme: 'base',
   themeVariables: {
-    primaryColor: '#164e63',
-    primaryTextColor: '#e2e8f0',
-    primaryBorderColor: '#0891b2',
-    lineColor: '#475569',
-    secondaryColor: '#1e293b',
-    tertiaryColor: '#0f172a',
-    fontFamily: 'JetBrains Mono, monospace',
+    primaryColor: '#142a20',
+    primaryTextColor: '#e8e0d4',
+    primaryBorderColor: '#c8a84e',
+    lineColor: '#8a8070',
+    secondaryColor: '#1a2e30',
+    tertiaryColor: '#1e1a35',
+    fontFamily: 'Georgia, Palatino, serif',
     fontSize: '13px',
-    nodeBorder: '#0891b2',
-    mainBkg: '#164e63',
-    clusterBkg: '#1e293b',
-    clusterBorder: '#334155',
-    titleColor: '#e2e8f0',
-    edgeLabelBackground: '#1e293b',
-    noteTextColor: '#e2e8f0',
-    noteBkgColor: '#164e63',
-    noteBorderColor: '#0891b2',
-    stateBkg: '#164e63',
-    stateBorder: '#0891b2',
-    labelColor: '#e2e8f0',
-    sequenceNumberColor: '#e2e8f0',
-    actorBkg: '#164e63',
-    actorBorder: '#0891b2',
-    actorTextColor: '#e2e8f0',
-    actorLineColor: '#475569',
-    signalColor: '#94a3b8',
-    signalTextColor: '#e2e8f0',
-    activationBorderColor: '#0891b2',
-    activationBkgColor: '#1e293b'
+    nodeBorder: '#c8a84e',
+    mainBkg: '#142a20',
+    clusterBkg: '#1a2e30',
+    clusterBorder: 'rgba(200, 168, 78, 0.3)',
+    titleColor: '#c8a84e',
+    edgeLabelBackground: '#1a2e30',
+    noteTextColor: '#e8e0d4',
+    noteBkgColor: '#142a20',
+    noteBorderColor: '#c8a84e',
+    stateBkg: '#142a20',
+    stateBorder: '#c8a84e',
+    labelColor: '#e8e0d4',
+    sequenceNumberColor: '#e8e0d4',
+    actorBkg: '#142a20',
+    actorBorder: '#c8a84e',
+    actorTextColor: '#e8e0d4',
+    actorLineColor: '#8a8070',
+    signalColor: '#b0a898',
+    signalTextColor: '#e8e0d4',
+    activationBorderColor: '#c8a84e',
+    activationBkgColor: '#1a2e30'
   }
 });
 </script>
 <style>
   :root {
-    --bg-deep: #0f172a;
-    --bg-mid: #1e293b;
-    --bg-card: #1e293b;
-    --border: rgba(255,255,255,0.08);
-    --border-accent: rgba(8,145,178,0.4);
-    --teal: #0891b2;
-    --teal-dim: #164e63;
-    --amber: #d97706;
-    --amber-dim: #92400e;
-    --emerald: #059669;
-    --emerald-dim: #065f46;
-    --red: #dc2626;
-    --red-dim: #991b1b;
-    --violet: #7c3aed;
-    --violet-dim: #4c1d95;
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
-    --text-muted: #64748b;
-    --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --bg-deep: #0a1510;
+    --bg-mid: var(--grove);
+    --bg-card: var(--surface-card);
+    --border: var(--border-subtle);
+    --border-accent: rgba(200, 168, 78, 0.35);
+    --teal-color: var(--gold-leaf);
+    --teal-dim: rgba(200, 168, 78, 0.15);
+    --amber-color: var(--amber);
+    --amber-dim: rgba(212, 165, 116, 0.15);
+    --emerald: #6aad6f;
+    --emerald-dim: rgba(106, 173, 111, 0.15);
+    --red: #d06060;
+    --red-dim: rgba(208, 96, 96, 0.15);
+    --violet: #a088e0;
+    --violet-dim: rgba(160, 136, 224, 0.15);
+    --text: var(--text-primary);
+    --text-dim: #b0a898;
+    --text-muted-color: var(--text-muted);
+    --font-display: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-leaf) var(--grove);
+  }
 
   body {
-    font-family: var(--font-mono);
-    background: var(--bg-deep);
-    color: var(--text);
-    line-height: 1.6;
+    font-family: Georgia, 'Palatino Linotype', 'Book Antiqua', serif;
+    background: linear-gradient(to top, #0a1510, var(--grove) 8%, var(--canopy) 20%, var(--teal) 40%, var(--twilight) 65%, var(--arcane) 80%, #0c0c1a);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-    background-image:
-      linear-gradient(rgba(8,145,178,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(8,145,178,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
   }
 
   /* Fade-in animation */
@@ -106,7 +122,7 @@ mermaid.initialize({
   .hero {
     padding: 80px 0 48px;
     text-align: center;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-subtle);
     position: relative;
   }
   .hero::before {
@@ -114,24 +130,23 @@ mermaid.initialize({
     position: absolute;
     top: 0; left: 50%; transform: translateX(-50%);
     width: 200px; height: 2px;
-    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    background: linear-gradient(90deg, transparent, var(--gold-leaf), transparent);
   }
   .hero h1 {
     font-family: var(--font-display);
     font-size: clamp(1.8rem, 4vw, 2.8rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     margin-bottom: 8px;
-    background: linear-gradient(135deg, var(--text), var(--teal));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--gold-leaf);
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
   }
   .hero .subtitle {
     font-family: var(--font-display);
     font-size: 1rem;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-bottom: 32px;
+    font-style: italic;
   }
   .hero-stats {
     display: flex;
@@ -147,21 +162,22 @@ mermaid.initialize({
     border-radius: 20px;
     font-size: 0.78rem;
     font-weight: 500;
-    border: 1px solid var(--border);
-    background: var(--bg-mid);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-card);
+    backdrop-filter: blur(4px);
   }
   .stat-pill .num {
-    color: var(--teal);
+    color: var(--gold-leaf);
     font-weight: 600;
   }
   .stat-pill.green .num { color: var(--emerald); }
   .stat-pill.amber .num { color: var(--amber); }
-  .stat-pill.violet .num { color: #a78bfa; }
+  .stat-pill.violet .num { color: #a088e0; }
 
   /* Section */
   section {
     padding: 56px 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-subtle);
   }
   section:last-of-type { border-bottom: none; }
 
@@ -170,7 +186,8 @@ mermaid.initialize({
     font-size: clamp(1.2rem, 3vw, 1.6rem);
     font-weight: 700;
     margin-bottom: 8px;
-    color: var(--text);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -179,14 +196,14 @@ mermaid.initialize({
     font-family: var(--font-mono);
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--teal);
-    background: var(--teal-dim);
+    color: var(--gold-leaf);
+    background: rgba(200, 168, 78, 0.12);
     padding: 2px 8px;
     border-radius: 4px;
     letter-spacing: 0.05em;
   }
   .section-desc {
-    color: var(--text-dim);
+    color: var(--text-muted);
     font-size: 0.85rem;
     margin-bottom: 28px;
     max-width: 700px;
@@ -195,12 +212,13 @@ mermaid.initialize({
   /* Mermaid container */
   .mermaid-wrap {
     position: relative;
-    background: var(--bg-mid);
-    border: 1px solid var(--border-accent);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 24px 16px;
     margin-bottom: 28px;
     overflow-x: auto;
+    backdrop-filter: blur(4px);
   }
   .mermaid-wrap .mermaid {
     display: flex;
@@ -222,9 +240,9 @@ mermaid.initialize({
     width: 28px;
     height: 28px;
     border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--bg-deep);
-    color: var(--text-dim);
+    border: 1px solid var(--border-subtle);
+    background: rgba(10, 21, 16, 0.8);
+    color: var(--text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -234,8 +252,8 @@ mermaid.initialize({
     transition: border-color 0.2s;
   }
   .zoom-btn:hover {
-    border-color: var(--teal);
-    color: var(--teal);
+    border-color: var(--gold-leaf);
+    color: var(--gold-leaf);
   }
 
   /* Cards grid */
@@ -245,39 +263,44 @@ mermaid.initialize({
     gap: 16px;
   }
   .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 20px;
-    transition: border-color 0.2s;
+    backdrop-filter: blur(4px);
+    transition: border-color 0.3s, box-shadow 0.3s;
   }
-  .card:hover { border-color: var(--border-accent); }
+  .card:hover {
+    border-color: rgba(200, 168, 78, 0.3);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
   .card h3 {
     font-family: var(--font-display);
     font-size: 0.95rem;
     font-weight: 600;
     margin-bottom: 4px;
-    color: var(--text);
+    color: var(--amber);
   }
   .card .card-path {
     font-size: 0.7rem;
     color: var(--text-muted);
     margin-bottom: 10px;
     word-break: break-all;
+    font-family: var(--font-mono);
   }
   .card p, .card ul {
     font-size: 0.8rem;
-    color: var(--text-dim);
+    color: var(--text-primary);
     line-height: 1.5;
   }
   .card ul { padding-left: 16px; }
   .card li { margin-bottom: 3px; }
 
-  .card-accent-teal { border-left: 3px solid var(--teal); }
+  .card-accent-teal { border-left: 3px solid var(--gold-leaf); }
   .card-accent-amber { border-left: 3px solid var(--amber); }
   .card-accent-emerald { border-left: 3px solid var(--emerald); }
   .card-accent-red { border-left: 3px solid var(--red); }
-  .card-accent-violet { border-left: 3px solid #7c3aed; }
+  .card-accent-violet { border-left: 3px solid var(--violet); }
 
   /* Table */
   .table-wrap {
@@ -292,19 +315,19 @@ mermaid.initialize({
   thead th {
     text-align: left;
     padding: 10px 14px;
-    background: var(--bg-mid);
-    border-bottom: 2px solid var(--teal-dim);
-    color: var(--teal);
+    background: var(--surface-card);
+    border-bottom: 2px solid rgba(200, 168, 78, 0.3);
+    color: var(--gold-leaf);
     font-weight: 600;
     white-space: nowrap;
   }
   tbody td {
     padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-primary);
     vertical-align: top;
   }
-  tbody tr:hover td { background: rgba(8,145,178,0.04); }
+  tbody tr:hover td { background: rgba(200, 168, 78, 0.04); }
 
   .tag {
     display: inline-block;
@@ -314,18 +337,18 @@ mermaid.initialize({
     font-weight: 600;
     letter-spacing: 0.03em;
   }
-  .tag-teal { background: var(--teal-dim); color: var(--teal); }
-  .tag-amber { background: var(--amber-dim); color: var(--amber); }
-  .tag-emerald { background: var(--emerald-dim); color: var(--emerald); }
-  .tag-red { background: var(--red-dim); color: #fca5a5; }
-  .tag-violet { background: var(--violet-dim); color: #a78bfa; }
+  .tag-teal { background: rgba(200, 168, 78, 0.12); color: var(--gold-leaf); }
+  .tag-amber { background: rgba(212, 165, 116, 0.15); color: var(--amber); }
+  .tag-emerald { background: rgba(106, 173, 111, 0.15); color: var(--emerald); }
+  .tag-red { background: rgba(208, 96, 96, 0.15); color: #f0a0a0; }
+  .tag-violet { background: rgba(160, 136, 224, 0.15); color: #a088e0; }
 
   /* Code inline */
   code {
     font-family: var(--font-mono);
     font-size: 0.78em;
-    background: rgba(8,145,178,0.1);
-    color: var(--teal);
+    background: rgba(0,0,0,0.3);
+    color: var(--amber);
     padding: 1px 5px;
     border-radius: 3px;
   }
@@ -342,7 +365,7 @@ mermaid.initialize({
     top: 8px;
     bottom: 8px;
     width: 2px;
-    background: linear-gradient(to bottom, var(--teal-dim), var(--emerald-dim));
+    background: linear-gradient(to bottom, rgba(200, 168, 78, 0.3), rgba(106, 173, 111, 0.3));
   }
   .timeline-item {
     position: relative;
@@ -356,15 +379,15 @@ mermaid.initialize({
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--teal-dim);
-    border: 2px solid var(--teal);
+    background: rgba(200, 168, 78, 0.15);
+    border: 2px solid var(--gold-leaf);
   }
   .timeline-item.verdict-for::before {
-    background: var(--emerald-dim);
+    background: rgba(106, 173, 111, 0.15);
     border-color: var(--emerald);
   }
   .timeline-item.verdict-conditional::before {
-    background: var(--amber-dim);
+    background: rgba(212, 165, 116, 0.15);
     border-color: var(--amber);
   }
   .timeline-header {
@@ -378,17 +401,18 @@ mermaid.initialize({
     font-family: var(--font-display);
     font-size: 0.9rem;
     font-weight: 600;
-    color: var(--text);
+    color: var(--text-primary);
   }
   .timeline-body {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     padding: 14px 16px;
+    backdrop-filter: blur(4px);
   }
   .timeline-body p {
     font-size: 0.8rem;
-    color: var(--text-dim);
+    color: var(--text-primary);
     margin-bottom: 8px;
   }
   .timeline-body ul {
@@ -397,16 +421,17 @@ mermaid.initialize({
   }
   .timeline-body li {
     font-size: 0.78rem;
-    color: var(--text-dim);
+    color: var(--text-primary);
     padding: 3px 0;
     padding-left: 16px;
     position: relative;
   }
   .timeline-body li::before {
-    content: '→';
+    content: '>';
     position: absolute;
     left: 0;
-    color: var(--teal);
+    color: var(--gold-leaf);
+    font-family: var(--font-mono);
   }
 
   /* Option detail row */
@@ -422,32 +447,33 @@ mermaid.initialize({
 
   /* Data flow code block */
   .code-block {
-    background: var(--bg-mid);
-    border: 1px solid var(--border-accent);
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(200, 168, 78, 0.2);
     border-radius: 6px;
     padding: 16px 20px;
     font-size: 0.78rem;
-    color: var(--text-dim);
+    color: var(--text-primary);
     overflow-x: auto;
     line-height: 1.7;
     white-space: pre;
     font-family: var(--font-mono);
   }
-  .code-block .kw { color: var(--teal); }
+  .code-block .kw { color: var(--gold-leaf); }
   .code-block .cmt { color: var(--text-muted); }
   .code-block .ok { color: var(--emerald); }
   .code-block .warn { color: var(--amber); }
-  .code-block .err { color: #fca5a5; }
+  .code-block .err { color: #f0a0a0; }
 
   /* Footer */
   footer {
     padding: 32px 0;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-subtle);
     text-align: center;
     font-size: 0.75rem;
     color: var(--text-muted);
   }
-  footer a { color: var(--teal); text-decoration: none; }
+  footer a { color: var(--gold-leaf); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+  footer a:hover { border-bottom-color: var(--gold-leaf); }
 
   /* Tier badge */
   .tier-badge {
@@ -461,24 +487,24 @@ mermaid.initialize({
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .tier-cheap { background: var(--emerald-dim); color: #6ee7b7; }
-  .tier-mid { background: var(--teal-dim); color: #67e8f9; }
-  .tier-frontier { background: var(--violet-dim); color: #c4b5fd; }
+  .tier-cheap { background: rgba(106, 173, 111, 0.15); color: #6aad6f; }
+  .tier-mid { background: rgba(200, 168, 78, 0.12); color: var(--gold-leaf); }
+  .tier-frontier { background: rgba(160, 136, 224, 0.15); color: #a088e0; }
 
   /* Prompt block */
   .prompt-block {
-    background: rgba(8,145,178,0.06);
-    border: 1px solid var(--border-accent);
+    background: rgba(200, 168, 78, 0.06);
+    border: 1px solid rgba(200, 168, 78, 0.2);
     border-radius: 6px;
     padding: 16px 20px;
     font-size: 0.78rem;
-    color: var(--text-dim);
+    color: var(--text-primary);
     line-height: 1.7;
     font-family: var(--font-mono);
     white-space: pre-wrap;
     word-break: break-word;
   }
-  .prompt-block .highlight { color: var(--amber); font-weight: 600; }
+  .prompt-block .highlight { color: var(--gold-leaf); font-weight: 600; }
 
   /* Two-col layout helper */
   .two-col {
@@ -495,9 +521,9 @@ mermaid.initialize({
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(15,23,42,0.92);
+    background: rgba(10, 21, 16, 0.92);
     backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-subtle);
     padding: 10px 0;
   }
   .nav-inner {
@@ -519,9 +545,15 @@ mermaid.initialize({
     white-space: nowrap;
   }
   .nav-link:hover {
-    color: var(--teal);
-    background: var(--teal-dim);
+    color: var(--gold-leaf);
+    background: rgba(200, 168, 78, 0.1);
   }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0a1510; }
+  ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold-leaf); }
 </style>
 </head>
 <body>

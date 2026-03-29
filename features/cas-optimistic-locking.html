@@ -10,106 +10,93 @@
 <title>CompareAndSetAgentState — CAS Optimistic Locking Implementation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-recessed: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
+    --bg: var(--grove);
+    --bg-alt: var(--canopy);
+    --surface: var(--surface-card);
+    --surface-alt: rgba(26, 46, 48, 0.8);
+    --surface-recessed: rgba(10, 14, 20, 0.4);
+    --border: var(--border-subtle);
+    --border-strong: rgba(200, 168, 78, 0.3);
+    --text: var(--text-primary);
+    --text-dim: var(--text-muted);
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --lavender: var(--gold-leaf);
+    --lavender-dim: rgba(200, 168, 78, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: var(--amber);
+    --peach-dim: rgba(212, 165, 116, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: var(--gold-leaf);
+    --lemon-dim: rgba(200, 168, 78, 0.12);
 
-    /* semantic aliases matching the old variable names */
-    --primary: var(--lavender);
-    --primary-dim: var(--lavender-dim);
-    --accent: var(--peach);
-    --accent-dim: var(--peach-dim);
-    --success: var(--mint);
-    --success-dim: var(--mint-dim);
-    --danger: var(--pink);
-    --danger-dim: var(--pink-dim);
-    --info: var(--sky);
-    --info-dim: var(--sky-dim);
+    /* semantic aliases */
+    --primary: var(--gold-leaf);
+    --primary-dim: rgba(200, 168, 78, 0.12);
+    --accent: var(--amber);
+    --accent-dim: rgba(212, 165, 116, 0.12);
+    --success: #6bc9a6;
+    --success-dim: rgba(107, 201, 166, 0.12);
+    --danger: #d06060;
+    --danger-dim: rgba(208, 96, 96, 0.12);
+    --info: #88c8f7;
+    --info-dim: rgba(136, 200, 247, 0.12);
+    --teal-mid: rgba(107, 201, 166, 0.25);
+    --slate: #88c8f7;
+    --slate-dim: rgba(136, 200, 247, 0.12);
+    --rose: #d06060;
+    --rose-dim: rgba(208, 96, 96, 0.12);
+    --sage: #6bc9a6;
+    --sage-dim: rgba(107, 201, 166, 0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-recessed: #1a1428;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-
-      --primary: var(--lavender);
-      --primary-dim: var(--lavender-dim);
-      --accent: var(--peach);
-      --accent-dim: var(--peach-dim);
-      --success: var(--mint);
-      --success-dim: var(--mint-dim);
-      --danger: var(--pink);
-      --danger-dim: var(--pink-dim);
-      --info: var(--sky);
-      --info-dim: var(--sky-dim);
-    }
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: var(--bg);
-    background-image:
-      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
     font-family: var(--font-body);
-    padding: 48px 40px;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-    line-height: 1.55;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(58,48,80,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(58,48,80,0.04) 1px, transparent 1px);
-    }
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      #162228 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   @keyframes fadeUp {
@@ -169,7 +156,8 @@
     font-size: 20px;
     font-weight: 400;
     line-height: 1.6;
-    color: var(--lavender);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 40px rgba(200, 168, 78, 0.3), 0 2px 4px rgba(0,0,0,0.5);
     margin-bottom: 12px;
     text-wrap: balance;
   }
@@ -222,14 +210,15 @@
     font-size: 9px;
     font-weight: 400;
     border: 2px solid var(--lavender);
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
   h2 {
     font-family: var(--font-display);
     font-size: 14px;
     font-weight: 400;
     line-height: 1.7;
-    color: var(--text);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
     margin-bottom: 16px;
   }
 
@@ -242,18 +231,20 @@
   .card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 
   .ve-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     padding: 20px;
     position: relative;
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
   .ve-card {
+    border-radius: 8px;
     transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
   }
   .ve-card:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
   .ve-card::before {
     content: '';
@@ -279,7 +270,7 @@
   .ve-card code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--surface-recessed);
+    background: rgba(0,0,0,0.3);
     padding: 1px 5px;
     border: 1px solid var(--border);
   }
@@ -295,9 +286,10 @@
 
   /* ---- CODE BLOCKS ---- */
   .code-block {
-    background: var(--surface-recessed);
-    border: 2px solid var(--border);
-    box-shadow: inset 2px 2px 0 var(--border-strong);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-subtle);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
     padding: 16px 20px;
     overflow-x: auto;
     margin: 12px 0;
@@ -316,10 +308,11 @@
 
   /* ---- MERMAID ---- */
   .mermaid-wrap {
+    border-radius: 8px;
     position: relative;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 24px;
     overflow: auto;
     margin: 12px 0;
@@ -332,9 +325,9 @@
     position: absolute;
     top: 8px; right: 8px;
     display: flex; gap: 2px; z-index: 10;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     padding: 2px;
   }
   .zoom-controls button {
@@ -347,7 +340,8 @@
   }
   .zoom-controls button:hover { background: var(--border); color: var(--text); }
   .zoom-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); padding: 0 6px; white-space: nowrap; }
-  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap {
+    border-radius: 8px; cursor: grab; }
   .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
 
   .diagram-shell { position: relative; }
@@ -379,6 +373,7 @@
 
   /* ---- LAYER STRIP ---- */
   .layer-strip {
+    border-radius: 8px;
     display: grid;
     grid-template-columns: 120px 1fr;
     gap: 0;
@@ -392,14 +387,14 @@
     display: flex;
     align-items: center;
     padding: 14px 16px;
-    background: var(--surface);
-    border: 2px solid var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     border-right: none;
     transition: color 0.2s ease;
   }
   .layer-content {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     padding: 14px 20px;
     font-size: 13px;
     color: var(--text);
@@ -416,7 +411,8 @@
     padding: 2px 7px;
     border: 1px solid var(--lavender);
   }
-  .layer-strip { transition: transform 0.2s var(--ease-out-quart); }
+  .layer-strip {
+    border-radius: 8px; transition: transform 0.2s var(--ease-out-quart); }
   .layer-strip:hover { transform: translateX(4px); }
   .layer-strip:hover .layer-label { color: var(--lavender); }
 
@@ -430,7 +426,7 @@
     font-weight: 500;
     padding: 3px 8px;
     border: 2px solid currentColor;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
   .badge-success { background: var(--mint-dim); color: var(--mint); }
   .badge-danger { background: var(--pink-dim); color: var(--pink); }
@@ -438,14 +434,15 @@
   .badge-accent { background: var(--peach-dim); color: var(--peach); }
 
   /* ---- TABLE ---- */
-  .data-table-wrap { overflow-x: auto; border: 2px solid var(--border); box-shadow: 4px 4px 0 var(--border); margin: 12px 0; }
+  .data-table-wrap {
+    border-radius: 8px; overflow-x: auto; border: 1px solid var(--border-subtle); box-shadow: 0 4px 24px rgba(0,0,0,0.3); margin: 12px 0; }
   .data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
   }
   .data-table th {
-    background: var(--surface-recessed);
+    background: rgba(0,0,0,0.3);
     font-family: var(--font-display);
     font-weight: 400;
     font-size: 9px;
@@ -471,17 +468,18 @@
   .data-table td code {
     font-family: var(--font-mono);
     font-size: 11px;
-    background: var(--surface-recessed);
+    background: rgba(0,0,0,0.3);
     padding: 1px 5px;
     border: 1px solid var(--border);
   }
 
   /* ---- CALLOUT ---- */
   .callout {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     border-left: 4px solid var(--peach);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 16px 20px;
     font-size: 13px;
     line-height: 1.6;
@@ -503,7 +501,8 @@
     body { padding: 20px 16px; }
     h1 { font-size: 16px; }
     .card-grid.cols-3, .card-grid.cols-2 { grid-template-columns: 1fr; }
-    .layer-strip { grid-template-columns: 1fr; }
+    .layer-strip {
+    border-radius: 8px; grid-template-columns: 1fr; }
     .layer-label { border-right: 2px solid var(--border); border-bottom: none; }
     .layer-content { }
   }
@@ -883,7 +882,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
   addEventListener('mousemove', (e) => activeDrag?.onMove(e));
   addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
 
-  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = true; // Canopy Spire is always dark
 
   mermaid.registerLayoutLoaders(elkLayouts);
   mermaid.initialize({
@@ -892,21 +891,21 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontFamily: "'Georgia', 'Palatino Linotype', serif",
       fontSize: '16px',
-      primaryColor: isDark ? '#1e1830' : '#f0ecfa',
-      primaryBorderColor: isDark ? '#bea0f0' : '#a78bdb',
-      primaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      secondaryColor: isDark ? '#1a2010' : '#e8f5ef',
-      secondaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
-      secondaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      tertiaryColor: isDark ? '#2a1e10' : '#fef0e0',
-      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
-      tertiaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      lineColor: isDark ? '#9a8eb0' : '#7a6e62',
-      noteBkgColor: isDark ? '#1e1a10' : '#fefbe8',
-      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      noteBorderColor: isDark ? '#f0b878' : '#f0a868',
+      primaryColor: '#142a20',
+      primaryBorderColor: '#c8a84e',
+      primaryTextColor: '#e8e0d4',
+      secondaryColor: '#1a2010',
+      secondaryBorderColor: '#6bc9a6',
+      secondaryTextColor: '#e8e0d4',
+      tertiaryColor: '#2a1e10',
+      tertiaryBorderColor: '#d4a574',
+      tertiaryTextColor: '#e8e0d4',
+      lineColor: '#8a8070',
+      noteBkgColor: '#1e1a10',
+      noteTextColor: '#e8e0d4',
+      noteBorderColor: '#d4a574',
     }
   });
 
@@ -994,7 +993,7 @@ redis.call(<span class="string">'HSET'</span>, KEYS[<span class="number">1</span
       const svg = canvas.querySelector('svg');
       if (!svg) return;
       const clone = svg.cloneNode(true); clone.style.width=''; clone.style.height='';
-      const bg = isDark ? '#151020' : '#faf5ef';
+      const bg = '#0a1510';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
       open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
     }

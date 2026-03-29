@@ -6,109 +6,93 @@
 <title>Epic 3 — Model Gateway / Judge-Router</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-alt: #f3ede4;
-    --surface-recessed: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
+    --bg: var(--grove);
+    --bg-alt: var(--canopy);
+    --surface: var(--surface-card);
+    --surface-alt: rgba(26, 46, 48, 0.8);
+    --surface-recessed: rgba(10, 14, 20, 0.4);
+    --border: var(--border-subtle);
+    --border-strong: rgba(200, 168, 78, 0.3);
+    --text: var(--text-primary);
+    --text-dim: var(--text-muted);
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --lavender: var(--gold-leaf);
+    --lavender-dim: rgba(200, 168, 78, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: var(--amber);
+    --peach-dim: rgba(212, 165, 116, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: var(--gold-leaf);
+    --lemon-dim: rgba(200, 168, 78, 0.12);
 
-    /* semantic aliases for existing class names */
-    --teal: var(--mint);
-    --teal-dim: var(--mint-dim);
-    --teal-mid: rgba(107,201,166,0.25);
-    --slate: var(--sky);
-    --slate-dim: var(--sky-dim);
-    --amber: var(--peach);
-    --amber-dim: var(--peach-dim);
-    --rose: var(--pink);
-    --rose-dim: var(--pink-dim);
-    --sage: var(--mint);
-    --sage-dim: var(--mint-dim);
+    /* semantic aliases */
+    --primary: var(--gold-leaf);
+    --primary-dim: rgba(200, 168, 78, 0.12);
+    --accent: var(--amber);
+    --accent-dim: rgba(212, 165, 116, 0.12);
+    --success: #6bc9a6;
+    --success-dim: rgba(107, 201, 166, 0.12);
+    --danger: #d06060;
+    --danger-dim: rgba(208, 96, 96, 0.12);
+    --info: #88c8f7;
+    --info-dim: rgba(136, 200, 247, 0.12);
+    --teal-mid: rgba(107, 201, 166, 0.25);
+    --slate: #88c8f7;
+    --slate-dim: rgba(136, 200, 247, 0.12);
+    --rose: #d06060;
+    --rose-dim: rgba(208, 96, 96, 0.12);
+    --sage: #6bc9a6;
+    --sage-dim: rgba(107, 201, 166, 0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-alt: #261e3a;
-      --surface-recessed: #1a1428;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-
-      --teal: var(--mint);
-      --teal-dim: var(--mint-dim);
-      --teal-mid: rgba(128,224,184,0.25);
-      --slate: var(--sky);
-      --slate-dim: var(--sky-dim);
-      --amber: var(--peach);
-      --amber-dim: var(--peach-dim);
-      --rose: var(--pink);
-      --rose-dim: var(--pink-dim);
-      --sage: var(--mint);
-      --sage-dim: var(--mint-dim);
-    }
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background-color: var(--bg);
-    background-image:
-      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
     font-family: var(--font-body);
-    padding: 48px 24px;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(58,48,80,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(58,48,80,0.04) 1px, transparent 1px);
-    }
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      #162228 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   /* =========== ANIMATIONS =========== */
@@ -169,13 +153,13 @@
     border: 2px solid var(--mint);
     padding: 4px 10px;
     margin-bottom: 12px;
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transition: transform 0.15s var(--ease-out-quart);
   }
 
   .epic-tag:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
 
   h1 {
@@ -212,16 +196,17 @@
   }
 
   .stat-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     padding: 16px 18px;
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transition: transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
 
   .stat-card:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
 
   .stat-card__label {
@@ -284,10 +269,11 @@
 
   /* =========== MERMAID =========== */
   .mermaid-wrap {
+    border-radius: 8px;
     position: relative;
-    background: var(--surface);
-    border: 2px solid var(--border-strong);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid rgba(200, 168, 78, 0.3);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     overflow: auto;
     margin-bottom: 16px;
     display: flex;
@@ -303,9 +289,9 @@
     display: flex;
     gap: 2px;
     z-index: 10;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     padding: 2px;
   }
 
@@ -329,7 +315,8 @@
     color: var(--text);
   }
 
-  .mermaid-wrap { cursor: grab; }
+  .mermaid-wrap {
+    border-radius: 8px; cursor: grab; }
   .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
 
   .diagram-shell { position: relative; }
@@ -415,16 +402,17 @@
   }
 
   .ve-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     padding: 24px;
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transition: transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
 
   .ve-card:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
 
   .ve-card--wide {
@@ -441,13 +429,13 @@
     padding: 3px 8px;
     margin-bottom: 10px;
     border: 2px solid currentColor;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     transition: transform 0.15s var(--ease-out-quart);
   }
 
   .ve-card__tag:hover {
     transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 var(--border);
+    box-shadow: 0 3px 16px rgba(0,0,0,0.25);
   }
 
   .ve-card__tag--teal { color: var(--mint); background: var(--mint-dim); }
@@ -505,10 +493,10 @@
     font-family: var(--font-mono);
     font-size: 10px;
     padding: 2px 8px;
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     color: var(--text-dim);
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0 var(--border);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     transition: transform 0.15s var(--ease-out-quart), background 0.15s;
   }
 
@@ -521,8 +509,8 @@
   .interface-table-wrap {
     overflow-x: auto;
     margin-bottom: 40px;
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
 
   table {
@@ -538,7 +526,7 @@
   }
 
   thead th {
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 600;
@@ -566,7 +554,7 @@
   }
 
   tbody tr:nth-child(even) td {
-    background: var(--surface-recessed);
+    background: rgba(0,0,0,0.3);
   }
 
   tbody tr:nth-child(even):hover td {
@@ -597,14 +585,14 @@
   .tier-box {
     padding: 20px;
     text-align: center;
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transition: transform 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
 
   .tier-box:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
 
   .tier-box--cheap {
@@ -667,8 +655,8 @@
   }
 
   .lifecycle-step {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     padding: 18px 16px;
     position: relative;
     text-align: center;
@@ -718,15 +706,15 @@
 
   /* =========== CONFIG BLOCK =========== */
   .config-block {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     overflow: hidden;
     margin-bottom: 40px;
   }
 
   .config-block__header {
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     padding: 10px 18px;
     font-family: var(--font-mono);
     font-size: 11px;
@@ -808,8 +796,8 @@
     justify-content: center;
     width: 20px;
     height: 20px;
-    border: 2px solid var(--border-strong);
-    box-shadow: 2px 2px 0 var(--border);
+    border: 1px solid rgba(200, 168, 78, 0.3);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     flex-shrink: 0;
     font-size: 11px;
     margin-top: 1px;
@@ -1384,7 +1372,7 @@ flowchart LR
   addEventListener('mousemove', (e) => activeDrag?.onMove(e));
   addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
 
-  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = true; // Canopy Spire is always dark
 
   mermaid.registerLayoutLoaders(elkLayouts);
   mermaid.initialize({
@@ -1393,21 +1381,21 @@ flowchart LR
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontFamily: "'Georgia', 'Palatino Linotype', serif",
       fontSize: '14px',
-      primaryColor: isDark ? '#1e1830' : '#e8f5ef',
-      primaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
-      primaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      secondaryColor: isDark ? '#1a1a30' : '#e8f0fa',
-      secondaryBorderColor: isDark ? '#90c8f0' : '#7ab8e0',
-      secondaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      tertiaryColor: isDark ? '#2a1e1a' : '#fef0e0',
-      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
-      tertiaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      lineColor: isDark ? '#9a8eb0' : '#7a6e62',
-      noteBkgColor: isDark ? '#1e1830' : '#faf5ef',
-      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      noteBorderColor: isDark ? '#f0b878' : '#f0a868',
+      primaryColor: '#142a20',
+      primaryBorderColor: '#6bc9a6',
+      primaryTextColor: '#e8e0d4',
+      secondaryColor: '#1a1a30',
+      secondaryBorderColor: '#88c8f7',
+      secondaryTextColor: '#e8e0d4',
+      tertiaryColor: '#2a1e1a',
+      tertiaryBorderColor: '#d4a574',
+      tertiaryTextColor: '#e8e0d4',
+      lineColor: '#8a8070',
+      noteBkgColor: '#1a2e30',
+      noteTextColor: '#e8e0d4',
+      noteBorderColor: '#d4a574',
     }
   });
 
@@ -1507,7 +1495,7 @@ flowchart LR
       if (!svg) return;
       const clone = svg.cloneNode(true);
       clone.style.width = ''; clone.style.height = '';
-      const bg = isDark ? '#151020' : '#faf5ef';
+      const bg = '#0a1510';
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Diagram</title><style>

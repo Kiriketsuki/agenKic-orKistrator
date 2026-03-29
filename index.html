@@ -4,89 +4,90 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>agenKic-orKistrator</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* ============================
+     CANOPY SPIRE DESIGN SYSTEM
+     ============================ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
+
+    --claude-arcane: #d4a574;
+    --gemini-prismatic: #88c8f7;
+    --openai-infernal: #d06060;
+    --ollama-forge: #f0a070;
+    --deepseek-abyssal: #a088e0;
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
-
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-alt: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
-
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167, 139, 219, 0.12);
-    --mint: #6bc9a6;
-    --mint-dim: rgba(107, 201, 166, 0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240, 168, 104, 0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122, 184, 224, 0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232, 135, 155, 0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232, 212, 77, 0.12);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-alt: #261e3a;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190, 160, 240, 0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128, 224, 184, 0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240, 184, 120, 0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144, 200, 240, 0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240, 160, 180, 0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240, 224, 104, 0.12);
-    }
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-leaf) var(--grove);
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: var(--bg);
-    background-image:
-      linear-gradient(rgba(196, 184, 168, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196, 184, 168, 0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
-    font-family: var(--font-body);
+    font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
     display: flex;
     justify-content: center;
     padding: 60px 24px;
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      var(--teal) 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-color: var(--bg);
-      background-image:
-        linear-gradient(rgba(58, 48, 80, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(58, 48, 80, 0.06) 1px, transparent 1px);
-      background-size: 16px 16px;
-    }
+  /* ============================
+     FLOATING PARTICLES
+     ============================ */
+  .particles {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 0; overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    border-radius: 50%;
+    animation: drift linear infinite;
+    opacity: 0;
+  }
+  @keyframes drift {
+    0%   { transform: translateY(100vh) translateX(0) scale(0.3); opacity: 0; }
+    10%  { opacity: 0.6; }
+    50%  { transform: translateY(50vh) translateX(30px) scale(1); opacity: 0.4; }
+    90%  { opacity: 0.2; }
+    100% { transform: translateY(-10vh) translateX(-20px) scale(0.5); opacity: 0; }
   }
 
+  /* ============================
+     ANIMATIONS
+     ============================ */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
@@ -129,45 +130,60 @@
       animation-delay: 0ms !important;
       transition-duration: 0.01ms !important;
     }
+    .particles { display: none; }
   }
 
-  .page { max-width: 720px; width: 100%; }
+  /* ============================
+     LAYOUT
+     ============================ */
+  .page {
+    max-width: 720px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+  }
 
   .mono-tag {
     display: inline-block;
-    font-family: var(--font-mono);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 10px;
     font-weight: 500;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-bottom: 12px;
   }
 
   h1 {
-    font-family: var(--font-display);
-    font-size: 20px;
-    font-weight: 400;
-    letter-spacing: 0;
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    font-size: clamp(1.4rem, 3vw, 1.8rem);
+    font-weight: 700;
+    color: var(--gold-leaf);
+    text-shadow: 0 0 40px rgba(200, 168, 78, 0.3), 0 2px 4px rgba(0,0,0,0.5);
+    letter-spacing: 0.03em;
     line-height: 1.5;
     margin-bottom: 16px;
   }
 
   .subtitle {
     font-size: 15px;
-    line-height: 1.6;
-    color: var(--text-dim);
+    line-height: 1.7;
+    color: var(--text-muted);
+    font-style: italic;
     max-width: 560px;
     margin-bottom: 40px;
   }
 
+  /* ============================
+     SECTION LABELS
+     ============================ */
   .section-label {
-    font-family: var(--font-display);
-    font-size: 9px;
-    font-weight: 400;
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    font-size: 11px;
+    font-weight: 600;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--amber);
     margin-bottom: 14px;
     display: flex;
     align-items: center;
@@ -178,10 +194,15 @@
     content: '';
     width: 6px;
     height: 6px;
-    background: var(--lavender);
+    background: var(--gold-leaf);
     flex-shrink: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(200, 168, 78, 0.4);
   }
 
+  /* ============================
+     CARDS
+     ============================ */
   .card-list { display: flex; flex-direction: column; gap: 12px; }
 
   a.card {
@@ -189,29 +210,30 @@
     grid-template-columns: 56px 1fr auto;
     align-items: center;
     gap: 16px;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    border-radius: 0;
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
     padding: 20px 22px;
     text-decoration: none;
     color: inherit;
-    box-shadow: 4px 4px 0 var(--border);
-    transition: border-color 0.15s var(--ease-out-quart), box-shadow 0.15s var(--ease-out-quart), transform 0.15s var(--ease-out-quart);
+    backdrop-filter: blur(4px);
+    transition: border-color 0.3s var(--ease-out-quart), box-shadow 0.3s var(--ease-out-quart), transform 0.15s var(--ease-out-quart);
   }
 
   a.card:hover {
-    border-color: var(--border-strong);
-    box-shadow: 4px 4px 0 var(--border-strong);
+    border-color: rgba(200, 168, 78, 0.3);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     transform: translateY(-2px);
   }
 
   .card__num {
-    font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 400;
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    font-size: 22px;
+    font-weight: 700;
     text-align: center;
     line-height: 1;
     transition: transform 0.15s var(--ease-out-quart);
+    text-shadow: 0 0 12px currentColor;
   }
 
   a.card:hover .card__num {
@@ -224,26 +246,31 @@
     font-size: 15px;
     font-weight: 600;
     margin-bottom: 3px;
+    color: var(--text-primary);
   }
 
   .card__desc {
     font-size: 13px;
-    color: var(--text-dim);
+    color: var(--text-muted);
     line-height: 1.5;
   }
 
   .card__arrow {
     font-size: 18px;
-    color: var(--text-dim);
-    transition: transform 0.15s var(--ease-out-quart);
+    color: var(--text-muted);
+    transition: transform 0.15s var(--ease-out-quart), color 0.3s;
   }
 
-  a.card:hover .card__arrow { transform: translateX(4px); }
+  a.card:hover .card__arrow {
+    transform: translateX(4px);
+    color: var(--gold-leaf);
+  }
 
-  .card--epic1 .card__num { color: var(--lavender); }
-  .card--epic2 .card__num { color: var(--sky); }
-  .card--epic3 .card__num { color: var(--mint); }
-  .card--epic4 .card__num { color: var(--peach); }
+  /* Epic number colours — elemental mapping */
+  .card--epic1 .card__num { color: var(--deepseek-abyssal); }
+  .card--epic2 .card__num { color: var(--gemini-prismatic); }
+  .card--epic3 .card__num { color: var(--ollama-forge); }
+  .card--epic4 .card__num { color: var(--claude-arcane); }
 
   /* Decision cards — no number column */
   a.card--decision {
@@ -251,60 +278,90 @@
   }
   a.card--decision .card__title { font-size: 14px; }
   .card__tag {
-    font-family: var(--font-mono);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: var(--text-muted);
     margin-bottom: 2px;
   }
 
-  /* Roadmap card — accent stripe */
+  /* Roadmap card — gold accent stripe */
   a.card--roadmap {
     grid-template-columns: 1fr auto;
-    border-left: 4px solid var(--mint);
+    border-left: 3px solid var(--gold-leaf);
   }
 
   .section-label + .section-label { margin-top: 36px; }
 
+  /* ============================
+     FOOTER
+     ============================ */
   .footer {
     margin-top: 48px;
     padding-top: 16px;
-    border-top: 2px solid var(--border);
-    font-family: var(--font-mono);
+    border-top: 1px solid var(--border-subtle);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 11px;
-    color: var(--text-dim);
+    color: var(--text-muted);
     display: flex;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  .footer a { color: var(--lavender); text-decoration: none; }
-  .footer a:hover { text-decoration: underline; }
+  .footer a {
+    color: var(--gold-leaf);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .footer a:hover { border-bottom-color: var(--gold-leaf); }
 
+  /* ============================
+     RESPONSIVE
+     ============================ */
   @media (max-width: 520px) {
     a.card { grid-template-columns: 40px 1fr auto; padding: 16px; gap: 12px; }
-    .card__num { font-size: 14px; }
-    h1 { font-size: 14px; }
+    .card__num { font-size: 18px; }
+    h1 { font-size: 1.2rem; }
+  }
+
+  @media (min-width: 900px) {
+    .page { max-width: 780px; }
+    a.card { padding: 22px 28px; }
   }
 </style>
 </head>
 <body>
 
+<!-- Floating particles -->
+<div class="particles" aria-hidden="true">
+  <div class="particle" style="left:12%;width:3px;height:3px;background:rgba(200,168,78,0.5);animation-duration:18s;animation-delay:0s"></div>
+  <div class="particle" style="left:28%;width:2px;height:2px;background:rgba(212,165,116,0.4);animation-duration:22s;animation-delay:3s"></div>
+  <div class="particle" style="left:45%;width:4px;height:4px;background:rgba(200,168,78,0.3);animation-duration:25s;animation-delay:7s"></div>
+  <div class="particle" style="left:62%;width:2px;height:2px;background:rgba(160,136,224,0.4);animation-duration:20s;animation-delay:2s"></div>
+  <div class="particle" style="left:78%;width:3px;height:3px;background:rgba(200,168,78,0.4);animation-duration:24s;animation-delay:5s"></div>
+  <div class="particle" style="left:90%;width:2px;height:2px;background:rgba(136,200,247,0.3);animation-duration:19s;animation-delay:9s"></div>
+  <div class="particle" style="left:35%;width:2px;height:2px;background:rgba(240,160,112,0.3);animation-duration:26s;animation-delay:12s"></div>
+  <div class="particle" style="left:55%;width:3px;height:3px;background:rgba(200,168,78,0.35);animation-duration:21s;animation-delay:4s"></div>
+  <div class="particle" style="left:5%;width:2px;height:2px;background:rgba(212,165,116,0.3);animation-duration:23s;animation-delay:8s"></div>
+  <div class="particle" style="left:70%;width:2px;height:2px;background:rgba(200,168,78,0.4);animation-duration:17s;animation-delay:1s"></div>
+</div>
+
 <div class="page">
   <div class="mono-tag a" style="--i:0">documentation</div>
   <h1 class="a--hero-title" style="--i:1">agenKic-orKistrator</h1>
   <p class="subtitle a--subtitle" style="--i:2">
-    Visual architecture explainers for each epic. Pixelated AI office orchestrator &mdash;
-    pixel-art agents, multi-model routing, real-time coordination.
+    A magic tower AI orchestrator. Fantasy character classes working inside a vertical tower.
+    Each floor is a project workspace &mdash; multi-model routing, real-time coordination.
   </p>
 
-  <div class="section-label a" style="--i:3">Visual Explainers</div>
+  <div class="section-label a" style="--i:3">Epics</div>
 
   <div class="card-list">
-    <a class="card card--epic1 a" style="--i:4" href="visual-explainer/epic-1-go-orchestrator-core.html">
+    <a class="card card--epic1 a" style="--i:4" href="epics/go-orchestrator-core.html">
       <div class="card__num">1</div>
       <div class="card__body">
         <div class="card__title">Go Orchestrator Core</div>
@@ -313,7 +370,7 @@
       <div class="card__arrow">&rarr;</div>
     </a>
 
-    <a class="card card--epic2 a" style="--i:5" href="visual-explainer/epic-2-terminal-substrate.html">
+    <a class="card card--epic2 a" style="--i:5" href="epics/terminal-substrate.html">
       <div class="card__num">2</div>
       <div class="card__body">
         <div class="card__title">Terminal Substrate Layer</div>
@@ -322,7 +379,7 @@
       <div class="card__arrow">&rarr;</div>
     </a>
 
-    <a class="card card--epic3 a" style="--i:6" href="visual-explainer/epic-3-model-gateway.html">
+    <a class="card card--epic3 a" style="--i:6" href="epics/model-gateway.html">
       <div class="card__num">3</div>
       <div class="card__body">
         <div class="card__title">Model Gateway / Judge-Router</div>
@@ -331,20 +388,65 @@
       <div class="card__arrow">&rarr;</div>
     </a>
 
-    <a class="card card--epic4 a" style="--i:7" href="visual-explainer/epic-4-pixel-office-ui.html">
+    <a class="card card--epic4 a" style="--i:7" href="epics/magic-tower-ui.html">
       <div class="card__num">4</div>
       <div class="card__body">
-        <div class="card__title">Pixel Office UI</div>
-        <div class="card__desc">Godot 4 pixel-art office, godot-xterm, agent sprites, panel layout</div>
+        <div class="card__title">Magic Tower UI</div>
+        <div class="card__desc">Godot 4 magic tower, fantasy character agents, floor-based workspaces, HTTP/SSE bridge</div>
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
   </div>
 
-  <div class="section-label a" style="--i:8">Architecture Decisions</div>
+  <div class="section-label a" style="--i:8">Features</div>
 
   <div class="card-list">
-    <a class="card card--decision a" style="--i:9" href="decisions/orchestration-pattern.html">
+    <a class="card card--decision a" style="--i:9" href="features/cas-optimistic-locking.html">
+      <div class="card__body">
+        <div class="card__tag">Epic 1</div>
+        <div class="card__title">CAS Optimistic Locking</div>
+        <div class="card__desc">Compare-and-swap state transitions for agent lifecycle without distributed locks</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:9" href="features/judge-router.html">
+      <div class="card__body">
+        <div class="card__tag">Epic 3</div>
+        <div class="card__title">Judge-Router</div>
+        <div class="card__desc">Haiku classifies task complexity, routes to appropriate model tier</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:9" href="features/config-loader-fallback.html">
+      <div class="card__body">
+        <div class="card__tag">Epic 3</div>
+        <div class="card__title">Config Loader &amp; Fallback Chains</div>
+        <div class="card__desc">YAML-driven tier definitions with automatic provider failover</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:10" href="features/cost-tracking.html">
+      <div class="card__body">
+        <div class="card__tag">Epic 3</div>
+        <div class="card__title">Cost Tracking</div>
+        <div class="card__desc">Per-request token logging, daily and period cost reports</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+    <a class="card card--decision a" style="--i:10" href="features/docs-index-workflow.html">
+      <div class="card__body">
+        <div class="card__tag">CI/CD</div>
+        <div class="card__title">Dynamic Docs Index &amp; Publish Workflow</div>
+        <div class="card__desc">Manifest-driven index, GitHub Actions auto-publish, nested hierarchy</div>
+      </div>
+      <div class="card__arrow">&rarr;</div>
+    </a>
+  </div>
+
+  <div class="section-label a" style="--i:11">Architecture Decisions</div>
+
+  <div class="card-list">
+    <a class="card card--decision a" style="--i:12" href="decisions/orchestration-pattern.html">
       <div class="card__body">
         <div class="card__tag">#1</div>
         <div class="card__title">Orchestration Pattern</div>
@@ -352,7 +454,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:9" href="decisions/ipc-communication.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/ipc-communication.html">
       <div class="card__body">
         <div class="card__tag">#2</div>
         <div class="card__title">Inter-Process Communication</div>
@@ -360,7 +462,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:9" href="decisions/state-management.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/state-management.html">
       <div class="card__body">
         <div class="card__tag">#3</div>
         <div class="card__title">State Management</div>
@@ -368,7 +470,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:10" href="decisions/process-supervision.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/process-supervision.html">
       <div class="card__body">
         <div class="card__tag">#4</div>
         <div class="card__title">Process Supervision</div>
@@ -376,7 +478,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:10" href="decisions/terminal-substrate.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/terminal-substrate.html">
       <div class="card__body">
         <div class="card__tag">#5</div>
         <div class="card__title">Terminal Substrate</div>
@@ -384,7 +486,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:10" href="decisions/desktop-rendering.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/desktop-rendering.html">
       <div class="card__body">
         <div class="card__tag">#6</div>
         <div class="card__title">Desktop Rendering</div>
@@ -392,7 +494,7 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:11" href="decisions/model-gateway.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/model-gateway.html">
       <div class="card__body">
         <div class="card__tag">#7</div>
         <div class="card__title">Model Gateway</div>
@@ -400,30 +502,23 @@
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
-    <a class="card card--decision a" style="--i:11" href="decisions/tui-alternative.html">
+    <a class="card card--decision a" style="--i:12" href="decisions/tui-alternative.html">
       <div class="card__body">
         <div class="card__tag">#8</div>
         <div class="card__title">TUI Alternative</div>
-        <div class="card__desc">Bubbletea + Lip Gloss as the headless fallback to the pixel office</div>
+        <div class="card__desc">Bubbletea + Lip Gloss as the headless fallback to the magic tower</div>
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
   </div>
 
-  <div class="section-label a" style="--i:12">Roadmap &amp; Infrastructure</div>
+  <div class="section-label a" style="--i:13">Roadmap</div>
 
   <div class="card-list">
-    <a class="card card--roadmap a" style="--i:13" href="visual-explainer/roadmap.html">
+    <a class="card card--roadmap a" style="--i:14" href="roadmap.html">
       <div class="card__body">
         <div class="card__title">Project Roadmap</div>
-        <div class="card__desc">Interactive timeline &mdash; from orchestrator core to pixel office, four epics building a visual AI agent coordination platform</div>
-      </div>
-      <div class="card__arrow">&rarr;</div>
-    </a>
-    <a class="card card--roadmap a" style="--i:14" href="visual-explainer/dynamic-docs-index-publish-workflow.html">
-      <div class="card__body">
-        <div class="card__title">Dynamic Docs Index &amp; Publish Workflow</div>
-        <div class="card__desc">Manifest-driven index, GitHub Actions auto-publish, nested epic/feature hierarchy with spec/impl tag pills</div>
+        <div class="card__desc">Interactive timeline &mdash; from orchestrator core to magic tower, four epics building a visual AI agent coordination platform</div>
       </div>
       <div class="card__arrow">&rarr;</div>
     </a>
@@ -431,7 +526,7 @@
 
   <div class="footer a" style="--i:15">
     <span><a href="https://github.com/Kiriketsuki/agenKic-orKistrator">GitHub</a> &middot; v26.03.1.0</span>
-    <span>Generated 2026-03-24</span>
+    <span>Generated 2026-03-29</span>
   </div>
 </div>
 

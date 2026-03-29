@@ -6,82 +6,72 @@
 <title>Decision #8 — TUI Alternative</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-alt: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
+    --bg: var(--grove);
+    --surface: rgba(20, 42, 32, 0.6);
+    --surface-alt: rgba(26, 46, 48, 0.5);
+    --border: rgba(200, 168, 78, 0.15);
+    --border-strong: rgba(200, 168, 78, 0.35);
+    --text: #e8e0d4;
+    --text-dim: #8a8070;
+
+    --lavender: var(--amber);
+    --lavender-dim: rgba(212, 165, 116, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.10);
+    --peach: var(--gold-leaf);
+    --peach-dim: rgba(200, 168, 78, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: #f0e068;
+    --lemon-dim: rgba(240, 224, 104, 0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-alt: #261e3a;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-    }
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gold-leaf) var(--grove);
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
 
   body {
-    background-color: var(--bg);
-    background-image:
-      linear-gradient(rgba(100,80,60,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(100,80,60,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
     color: var(--text);
     font-family: var(--font-body);
-    line-height: 1.6;
+    line-height: 1.7;
     min-height: 100vh;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(180,160,220,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(180,160,220,0.06) 1px, transparent 1px);
-    }
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      var(--teal) 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   /* ── ANIMATIONS ── */
@@ -154,14 +144,16 @@
     font-weight: 600;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--peach);
+    color: var(--amber);
     margin-bottom: 12px;
   }
   .hero h1 {
     font-family: var(--font-display);
-    font-size: clamp(16px, 2.5vw, 20px);
-    line-height: 1.6;
-    color: var(--text);
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    line-height: 1.5;
+    color: var(--gold-leaf);
+    text-shadow: 0 0 30px rgba(200, 168, 78, 0.2), 0 2px 4px rgba(0,0,0,0.4);
+    letter-spacing: 0.02em;
     margin-bottom: 20px;
   }
   .hero-desc {
@@ -186,9 +178,11 @@
   }
   .section-head h2 {
     font-family: var(--font-display);
-    font-size: 14px;
-    color: var(--text);
+    font-size: clamp(1.1rem, 2vw, 1.4rem);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
     line-height: 1.5;
+    letter-spacing: 0.02em;
   }
 
   /* ── PROSE ── */
@@ -210,8 +204,10 @@
 
   .option-card {
     background: var(--surface);
+    backdrop-filter: blur(4px);
+    border-radius: 8px;
     border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     padding: 24px;
     display: flex;
     flex-direction: column;
@@ -221,16 +217,16 @@
                 transform 0.15s;
   }
   .option-card:hover {
-    box-shadow: 6px 6px 0 var(--border-strong);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
     transform: translate(-1px, -1px);
   }
   .option-card.chosen {
     border-color: var(--mint);
     background: var(--mint-dim);
-    box-shadow: 4px 4px 0 var(--mint);
+    box-shadow: 0 4px 16px rgba(107, 201, 166, 0.2);
   }
   .option-card.chosen:hover {
-    box-shadow: 6px 6px 0 var(--mint);
+    box-shadow: 0 6px 24px rgba(107, 201, 166, 0.25);
   }
 
   .option-header {
@@ -260,7 +256,7 @@
     font-weight: 600;
     padding: 3px 8px;
     border: 2px solid;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
@@ -317,7 +313,7 @@
   .comparison-panel {
     background: var(--surface);
     border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -345,7 +341,7 @@
     border: 2px solid;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   }
   .badge-navy { background: var(--lavender-dim); color: var(--lavender); border-color: var(--lavender); }
   .badge-teal { background: var(--mint-dim);     color: var(--mint);     border-color: var(--mint); }
@@ -438,16 +434,16 @@
 
   /* terminal mockup */
   .terminal-screen {
-    background: #0d1117;
+    background: var(--terminal-dark);
     overflow: hidden;
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.55;
     position: relative;
-    border: 2px solid #3a3050;
+    border: 1px solid #1a2030;
   }
   .terminal-bar {
-    background: #1c2128;
+    background: #111822;
     padding: 8px 12px;
     display: flex;
     align-items: center;
@@ -550,7 +546,7 @@
     padding: 10px 14px;
     background: var(--peach-dim);
     border: 2px solid var(--peach);
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 600;
@@ -573,7 +569,7 @@
   .rationale-item {
     background: var(--surface);
     border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     padding: 18px 20px;
     display: flex;
     flex-direction: column;
@@ -581,7 +577,7 @@
     transition: box-shadow 0.15s, transform 0.15s;
   }
   .rationale-item:hover {
-    box-shadow: 6px 6px 0 var(--border-strong);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
     transform: translate(-1px, -1px);
   }
   .rationale-icon {
@@ -608,14 +604,14 @@
     background: var(--surface);
     border: 2px solid var(--border);
     border-left: 4px solid var(--mint);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     padding: 20px 24px;
     margin-top: 4px;
   }
   .callout-text {
     font-family: var(--font-display);
     font-size: clamp(10px, 1.5vw, 12px);
-    color: var(--text);
+    color: var(--gold-leaf);
     line-height: 1.9;
   }
 
@@ -623,7 +619,7 @@
   .tradeoff-table-wrap {
     background: var(--surface);
     border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     overflow: hidden;
   }
   .tradeoff-table {
@@ -675,7 +671,7 @@
     font-weight: 600;
     padding: 2px 7px;
     border: 2px solid;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     text-transform: uppercase;
     letter-spacing: 0.4px;
     margin-left: 6px;
@@ -693,7 +689,7 @@
     gap: 12px;
     margin-top: 72px;
     padding-top: 24px;
-    border-top: 2px solid var(--border);
+    border-top: 1px solid var(--border);
   }
   .footer-left {
     font-family: var(--font-mono);

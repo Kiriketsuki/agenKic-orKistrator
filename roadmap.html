@@ -6,82 +6,93 @@
 <title>Roadmap — agenKic-orKistrator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-alt: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
+    --bg: var(--grove);
+    --bg-alt: var(--canopy);
+    --surface: var(--surface-card);
+    --surface-alt: rgba(26, 46, 48, 0.8);
+    --surface-recessed: rgba(10, 14, 20, 0.4);
+    --border: var(--border-subtle);
+    --border-strong: rgba(200, 168, 78, 0.3);
+    --text: var(--text-primary);
+    --text-dim: var(--text-muted);
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --lavender: var(--gold-leaf);
+    --lavender-dim: rgba(200, 168, 78, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: var(--amber);
+    --peach-dim: rgba(212, 165, 116, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: var(--gold-leaf);
+    --lemon-dim: rgba(200, 168, 78, 0.12);
+
+    /* semantic aliases */
+    --primary: var(--gold-leaf);
+    --primary-dim: rgba(200, 168, 78, 0.12);
+    --accent: var(--amber);
+    --accent-dim: rgba(212, 165, 116, 0.12);
+    --success: #6bc9a6;
+    --success-dim: rgba(107, 201, 166, 0.12);
+    --danger: #d06060;
+    --danger-dim: rgba(208, 96, 96, 0.12);
+    --info: #88c8f7;
+    --info-dim: rgba(136, 200, 247, 0.12);
+    --teal-mid: rgba(107, 201, 166, 0.25);
+    --slate: #88c8f7;
+    --slate-dim: rgba(136, 200, 247, 0.12);
+    --rose: #d06060;
+    --rose-dim: rgba(208, 96, 96, 0.12);
+    --sage: #6bc9a6;
+    --sage-dim: rgba(107, 201, 166, 0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-alt: #261e3a;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-    }
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background-color: var(--bg);
-    background-image:
-      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
     font-family: var(--font-body);
-    line-height: 1.6;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(90,74,112,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(90,74,112,0.06) 1px, transparent 1px);
-    }
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      #162228 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   /* ── ANIMATIONS ── */
@@ -145,7 +156,8 @@
     font-family: var(--font-display);
     font-size: clamp(16px, 2.5vw, 20px);
     line-height: 1.6;
-    color: var(--text);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 40px rgba(200, 168, 78, 0.3), 0 2px 4px rgba(0,0,0,0.5);
     margin-bottom: 20px;
   }
   .hero-desc {
@@ -159,9 +171,9 @@
   .progress-strip {
     margin-top: 28px;
     padding: 20px 24px;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
   .progress-strip-head {
     display: flex;
@@ -184,7 +196,7 @@
   }
   .progress-track {
     height: 8px;
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     border: 1px solid var(--border);
     overflow: hidden;
   }
@@ -258,7 +270,7 @@
     top: 14px;
     width: 18px;
     height: 18px;
-    background: var(--surface);
+    background: var(--surface-card); backdrop-filter: blur(4px);
     border: 2px solid currentColor;
     z-index: 2;
     transition: transform 0.2s var(--ease-out-quart);
@@ -268,9 +280,10 @@
   }
 
   .milestone-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 20px 24px;
     cursor: pointer;
     transition:
@@ -282,7 +295,7 @@
   .milestone-card:hover {
     border-color: var(--border-strong);
     transform: translateY(-2px) translateX(2px);
-    box-shadow: 6px 6px 0 var(--border-strong);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     opacity: 1 !important;
   }
   .milestone-card:focus-visible {
@@ -331,7 +344,7 @@
     flex-shrink: 0;
     margin-top: 2px;
     border: 2px solid;
-    box-shadow: 2px 2px 0 var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
   .badge-in-progress {
     background: var(--lemon-dim);
@@ -392,7 +405,7 @@
   .feature-tag {
     font-family: var(--font-mono);
     font-size: 10px;
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     color: var(--text-dim);
     padding: 3px 8px;
     border: 1px solid var(--border);
@@ -418,7 +431,7 @@
     margin-top: 16px;
     padding: 12px 16px;
     border: 2px solid currentColor;
-    box-shadow: 3px 3px 0 var(--border);
+    box-shadow: 0 3px 16px rgba(0,0,0,0.25);
   }
   .stat-callout-num {
     font-family: var(--font-display);

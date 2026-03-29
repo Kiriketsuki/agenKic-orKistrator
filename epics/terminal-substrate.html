@@ -6,83 +6,93 @@
 <title>Epic 2 — Terminal Substrate Layer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --font-display: 'Press Start 2P', cursive;
-    --font-body: 'DM Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --font-display: 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    --font-body: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 
-    --bg: #faf5ef;
-    --surface: #ffffff;
-    --surface-alt: #f3ede4;
-    --border: #c4b8a8;
-    --border-strong: #9e8e7a;
-    --text: #2d2520;
-    --text-dim: #7a6e62;
+    --grove: #142a20;
+    --canopy: #1a2e30;
+    --teal: #162228;
+    --twilight: #1e1a35;
+    --arcane: #2a2545;
+    --gold-leaf: #c8a84e;
+    --amber: #d4a574;
+    --parchment-bg: #ede0c4;
+    --ink: #2e2a18;
+    --terminal-dark: #0a0e14;
 
-    --lavender: #a78bdb;
-    --lavender-dim: rgba(167,139,219,0.12);
+    --bg: var(--grove);
+    --bg-alt: var(--canopy);
+    --surface: var(--surface-card);
+    --surface-alt: rgba(26, 46, 48, 0.8);
+    --surface-recessed: rgba(10, 14, 20, 0.4);
+    --border: var(--border-subtle);
+    --border-strong: rgba(200, 168, 78, 0.3);
+    --text: var(--text-primary);
+    --text-dim: var(--text-muted);
+
+    --text-primary: #e8e0d4;
+    --text-muted: #8a8070;
+    --border-subtle: rgba(200, 168, 78, 0.15);
+    --surface-card: rgba(20, 42, 32, 0.6);
+
+    --lavender: var(--gold-leaf);
+    --lavender-dim: rgba(200, 168, 78, 0.12);
     --mint: #6bc9a6;
-    --mint-dim: rgba(107,201,166,0.12);
-    --peach: #f0a868;
-    --peach-dim: rgba(240,168,104,0.12);
-    --sky: #7ab8e0;
-    --sky-dim: rgba(122,184,224,0.12);
-    --pink: #e8879b;
-    --pink-dim: rgba(232,135,155,0.12);
-    --lemon: #e8d44d;
-    --lemon-dim: rgba(232,212,77,0.12);
+    --mint-dim: rgba(107, 201, 166, 0.12);
+    --peach: var(--amber);
+    --peach-dim: rgba(212, 165, 116, 0.12);
+    --sky: #88c8f7;
+    --sky-dim: rgba(136, 200, 247, 0.12);
+    --pink: #d06060;
+    --pink-dim: rgba(208, 96, 96, 0.12);
+    --lemon: var(--gold-leaf);
+    --lemon-dim: rgba(200, 168, 78, 0.12);
+
+    /* semantic aliases */
+    --primary: var(--gold-leaf);
+    --primary-dim: rgba(200, 168, 78, 0.12);
+    --accent: var(--amber);
+    --accent-dim: rgba(212, 165, 116, 0.12);
+    --success: #6bc9a6;
+    --success-dim: rgba(107, 201, 166, 0.12);
+    --danger: #d06060;
+    --danger-dim: rgba(208, 96, 96, 0.12);
+    --info: #88c8f7;
+    --info-dim: rgba(136, 200, 247, 0.12);
+    --teal-mid: rgba(107, 201, 166, 0.25);
+    --slate: #88c8f7;
+    --slate-dim: rgba(136, 200, 247, 0.12);
+    --rose: #d06060;
+    --rose-dim: rgba(208, 96, 96, 0.12);
+    --sage: #6bc9a6;
+    --sage-dim: rgba(107, 201, 166, 0.12);
 
     --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #151020;
-      --surface: #1e1830;
-      --surface-alt: #261e3a;
-      --border: #3a3050;
-      --border-strong: #5a4a70;
-      --text: #e8e0f0;
-      --text-dim: #9a8eb0;
-
-      --lavender: #bea0f0;
-      --lavender-dim: rgba(190,160,240,0.12);
-      --mint: #80e0b8;
-      --mint-dim: rgba(128,224,184,0.12);
-      --peach: #f0b878;
-      --peach-dim: rgba(240,184,120,0.12);
-      --sky: #90c8f0;
-      --sky-dim: rgba(144,200,240,0.12);
-      --pink: #f0a0b4;
-      --pink-dim: rgba(240,160,180,0.12);
-      --lemon: #f0e068;
-      --lemon-dim: rgba(240,224,104,0.12);
-    }
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background-color: var(--bg);
-    background-image:
-      linear-gradient(rgba(196,184,168,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(196,184,168,0.04) 1px, transparent 1px);
-    background-size: 16px 16px;
-    color: var(--text);
     font-family: var(--font-body);
-    line-height: 1.6;
+    color: var(--text-primary);
+    line-height: 1.7;
     min-height: 100vh;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-image:
-        linear-gradient(rgba(58,48,80,0.07) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(58,48,80,0.07) 1px, transparent 1px);
-      background-size: 16px 16px;
-    }
+    overflow-x: hidden;
+    background: linear-gradient(
+      to top,
+      #0a1510 0%,
+      var(--grove) 8%,
+      var(--canopy) 20%,
+      #162228 40%,
+      var(--twilight) 65%,
+      var(--arcane) 80%,
+      #0c0c1a 100%
+    );
+    background-attachment: fixed;
   }
 
   /* ANIMATIONS */
@@ -161,7 +171,8 @@
     font-size: clamp(14px, 2vw, 20px);
     font-weight: 400;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 40px rgba(200, 168, 78, 0.3), 0 2px 4px rgba(0,0,0,0.5);
     margin-bottom: 20px;
   }
   .hero-desc {
@@ -178,9 +189,9 @@
     flex-wrap: wrap;
     margin-top: 28px;
     padding: 16px;
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
-    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    background: var(--surface-card); backdrop-filter: blur(4px);
   }
   .status-item {
     display: flex;
@@ -218,7 +229,8 @@
     font-family: var(--font-display);
     font-size: 14px;
     font-weight: 400;
-    color: var(--text);
+    color: var(--gold-leaf);
+    text-shadow: 0 0 20px rgba(200, 168, 78, 0.15);
     line-height: 1.5;
   }
   .section-hint {
@@ -232,10 +244,11 @@
 
   /* MERMAID */
   .mermaid-wrap {
+    border-radius: 8px;
     position: relative;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     overflow: hidden;
     margin-bottom: 16px;
     display: flex;
@@ -256,9 +269,9 @@
     display: flex;
     gap: 2px;
     z-index: 10;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
     padding: 2px;
   }
   .zoom-controls button {
@@ -298,15 +311,16 @@
     gap: 16px;
   }
   .mod-card {
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 20px;
     transition: border-color 0.2s var(--ease-out-quart), box-shadow 0.2s var(--ease-out-quart);
   }
   .mod-card:hover {
     border-color: var(--border-strong);
-    box-shadow: 4px 4px 0 var(--border-strong);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
   .mod-card-head {
     display: flex;
@@ -347,7 +361,7 @@
   .mod-exports li {
     font-family: var(--font-mono);
     font-size: 10px;
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     color: var(--text-dim);
     padding: 2px 8px;
     border: 1px solid var(--border);
@@ -361,9 +375,9 @@
     gap: 0;
     flex-wrap: wrap;
     padding: 32px 16px;
-    background: var(--surface);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     margin-bottom: 16px;
     overflow-x: auto;
   }
@@ -404,14 +418,14 @@
   .lf-cmd { background: var(--lavender-dim); color: var(--lavender); border-color: var(--lavender); }
   .lf-capture { background: var(--peach-dim); color: var(--peach); border-color: var(--peach); }
   .lf-layout { background: var(--sky-dim); color: var(--sky); border-color: var(--sky); }
-  .lf-destroy { background: var(--surface-alt); color: var(--text-dim); border-color: var(--border); }
+  .lf-destroy { background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px); color: var(--text-dim); border-color: var(--border); }
 
   /* API TABLE */
   .api-table-wrap {
     overflow-x: auto;
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 var(--border);
-    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    background: var(--surface-card); backdrop-filter: blur(4px);
   }
   .api-table {
     width: 100%;
@@ -430,7 +444,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-dim);
-    background: var(--surface-alt);
+    background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);
     padding: 10px 14px;
     text-align: left;
     border-bottom: 2px solid var(--border);
@@ -444,9 +458,6 @@
   .api-table tr:last-child td { border-bottom: none; }
   .api-table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
   .api-table tbody tr:hover td { background: var(--lavender-dim); }
-  @media (prefers-color-scheme: dark) {
-    .api-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
-  }
   .api-table code {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -465,10 +476,10 @@
     border: 2px solid currentColor;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    box-shadow: 2px 2px 0 currentColor;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   }
   .badge-open { background: var(--peach-dim); color: var(--peach); }
-  .badge-pending { background: var(--surface-alt); color: var(--text-dim); border-color: var(--border); box-shadow: 2px 2px 0 var(--border); }
+  .badge-pending { background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px); color: var(--text-dim); border-color: var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
 
   /* ERROR MAPPING */
   .err-row {
@@ -518,10 +529,11 @@
 
   /* CALLOUT */
   .callout {
-    background: var(--surface);
-    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-card); backdrop-filter: blur(4px);
+    border: 1px solid var(--border-subtle);
     border-left: 4px solid var(--peach);
-    box-shadow: 4px 4px 0 var(--border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     padding: 14px 18px;
     font-size: 13px;
     line-height: 1.6;
@@ -624,12 +636,12 @@
 
         INTEG -->|"exercises"| TMUX
 
-        classDef iface fill:#1a2e26,stroke:#80e0b8,color:#e8e0f0
-        classDef impl fill:#1e1830,stroke:#bea0f0,color:#e8e0f0
-        classDef util fill:#2a200e,stroke:#f0b878,color:#e8e0f0
-        classDef ext fill:#261e3a,stroke:#5a4a70,color:#9a8eb0
-        classDef future fill:#261e3a,stroke:#5a4a70,color:#9a8eb0,stroke-dasharray:5 5
-        classDef test fill:#2a1822,stroke:#f0a0b4,color:#e8e0f0
+        classDef iface fill:#1a2e26,stroke:#6bc9a6,color:#e8e0d4
+        classDef impl fill:#142a20,stroke:#c8a84e,color:#e8e0d4
+        classDef util fill:#2a200e,stroke:#d4a574,color:#e8e0d4
+        classDef ext fill:#1a2e30,stroke:rgba(200,168,78,0.3),color:#8a8070
+        classDef future fill:#1a2e30,stroke:rgba(200,168,78,0.3),color:#8a8070,stroke-dasharray:5 5
+        classDef test fill:#2a1822,stroke:#d06060,color:#e8e0d4
 
         class IFACE,TYPES iface
         class TMUX,CMD,CAP,LAY impl
@@ -872,8 +884,8 @@
   </div>
 
   <div class="scroll-reveal" style="--i:1; margin-bottom:16px">
-    <div style="background:var(--surface);border:2px solid var(--border);box-shadow:4px 4px 0 var(--border);overflow:hidden;">
-      <div style="padding:10px 16px;background:var(--surface-alt);border-bottom:2px solid var(--border);display:grid;grid-template-columns:1fr auto 1fr;gap:12px;">
+    <div style="background: var(--surface-card); backdrop-filter: blur(4px);border: 1px solid var(--border-subtle);box-shadow: 0 4px 24px rgba(0,0,0,0.3);overflow:hidden;">
+      <div style="padding:10px 16px;background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px);border-bottom:2px solid var(--border);display:grid;grid-template-columns:1fr auto 1fr;gap:12px;">
         <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">tmux stderr pattern</span>
         <span></span>
         <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">sentinel error</span>
@@ -952,9 +964,9 @@
         F3 --> F4
         F4 --> T6
 
-        classDef core fill:#1e1830,stroke:#bea0f0,color:#e8e0f0
-        classDef test fill:#2a1822,stroke:#f0a0b4,color:#e8e0f0
-        classDef future fill:#261e3a,stroke:#5a4a70,color:#9a8eb0,stroke-dasharray:5 5
+        classDef core fill:#142a20,stroke:#c8a84e,color:#e8e0d4
+        classDef test fill:#2a1822,stroke:#d06060,color:#e8e0d4
+        classDef future fill:#1a2e30,stroke:rgba(200,168,78,0.3),color:#8a8070,stroke-dasharray:5 5
 
         class F1,F2,F3 core
         class F4 test
@@ -1027,22 +1039,22 @@
 
   <div class="scroll-reveal" style="--i:1">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-      <div style="background:var(--surface);border:2px solid var(--border);box-shadow:4px 4px 0 var(--border);padding:16px;">
+      <div style="background: var(--surface-card); backdrop-filter: blur(4px);border: 1px solid var(--border-subtle);box-shadow: 0 4px 24px rgba(0,0,0,0.3);padding:16px;">
         <div style="font-family:var(--font-display);font-size:16px;color:var(--mint);line-height:1;margin-bottom:8px;">1</div>
         <h4 style="font-family:var(--font-mono);font-size:12px;font-weight:600;margin-bottom:4px;">Build Tag Isolation</h4>
         <p style="font-size:12px;color:var(--text-dim);line-height:1.5;"><code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">//go:build integration</code> &mdash; tests skip in default <code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">go test</code>, run only with <code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">-tags=integration</code></p>
       </div>
-      <div style="background:var(--surface);border:2px solid var(--border);box-shadow:4px 4px 0 var(--border);padding:16px;">
+      <div style="background: var(--surface-card); backdrop-filter: blur(4px);border: 1px solid var(--border-subtle);box-shadow: 0 4px 24px rgba(0,0,0,0.3);padding:16px;">
         <div style="font-family:var(--font-display);font-size:16px;color:var(--mint);line-height:1;margin-bottom:8px;">2</div>
         <h4 style="font-family:var(--font-mono);font-size:12px;font-weight:600;margin-bottom:4px;">Marker Verification</h4>
         <p style="font-size:12px;color:var(--text-dim);line-height:1.5;">Echo a unique marker string, sleep 200ms for tmux processing, capture output, assert marker is present. No mocks &mdash; real tmux end-to-end.</p>
       </div>
-      <div style="background:var(--surface);border:2px solid var(--border);box-shadow:4px 4px 0 var(--border);padding:16px;">
+      <div style="background: var(--surface-card); backdrop-filter: blur(4px);border: 1px solid var(--border-subtle);box-shadow: 0 4px 24px rgba(0,0,0,0.3);padding:16px;">
         <div style="font-family:var(--font-display);font-size:16px;color:var(--mint);line-height:1;margin-bottom:8px;">3</div>
         <h4 style="font-family:var(--font-mono);font-size:12px;font-weight:600;margin-bottom:4px;">Cleanup Discipline</h4>
         <p style="font-size:12px;color:var(--text-dim);line-height:1.5;"><code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">t.Cleanup(DestroySession)</code> + pre-clean stale sessions from failed runs. Unique session names per test prevent cross-test interference.</p>
       </div>
-      <div style="background:var(--surface);border:2px solid var(--border);box-shadow:4px 4px 0 var(--border);padding:16px;">
+      <div style="background: var(--surface-card); backdrop-filter: blur(4px);border: 1px solid var(--border-subtle);box-shadow: 0 4px 24px rgba(0,0,0,0.3);padding:16px;">
         <div style="font-family:var(--font-display);font-size:16px;color:var(--mint);line-height:1;margin-bottom:8px;">4</div>
         <h4 style="font-family:var(--font-mono);font-size:12px;font-weight:600;margin-bottom:4px;">CI Environment</h4>
         <p style="font-size:12px;color:var(--text-dim);line-height:1.5;"><code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">apt-get install tmux</code> in GitHub Actions runner, then <code style="font-family:var(--font-mono);font-size:11px;background:var(--lavender-dim);color:var(--lavender);padding:1px 4px;border:1px solid var(--lavender)">go test -tags=integration -timeout 60s</code></p>
@@ -1158,7 +1170,7 @@
   addEventListener('mousemove', (e) => activeDrag?.onMove(e));
   addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
 
-  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = true; // Canopy Spire is always dark
 
   mermaid.registerLayoutLoaders(elkLayouts);
   mermaid.initialize({
@@ -1167,21 +1179,21 @@
     look: 'classic',
     layout: 'elk',
     themeVariables: {
-      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontFamily: "'Georgia', 'Palatino Linotype', serif",
       fontSize: '15px',
-      primaryColor: isDark ? '#1e1830' : '#f0ecf8',
-      primaryBorderColor: isDark ? '#bea0f0' : '#a78bdb',
-      primaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      secondaryColor: isDark ? '#1a2e26' : '#e8f7f0',
-      secondaryBorderColor: isDark ? '#80e0b8' : '#6bc9a6',
-      secondaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      tertiaryColor: isDark ? '#2a200e' : '#fdf5e8',
-      tertiaryBorderColor: isDark ? '#f0b878' : '#f0a868',
-      tertiaryTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      lineColor: isDark ? '#9a8eb0' : '#7a6e62',
-      noteBkgColor: isDark ? '#1e1830' : '#fdf5e8',
-      noteTextColor: isDark ? '#e8e0f0' : '#2d2520',
-      noteBorderColor: isDark ? '#f0b878' : '#f0a868',
+      primaryColor: '#142a20',
+      primaryBorderColor: '#c8a84e',
+      primaryTextColor: '#e8e0d4',
+      secondaryColor: '#1a2e26',
+      secondaryBorderColor: '#6bc9a6',
+      secondaryTextColor: '#e8e0d4',
+      tertiaryColor: '#2a200e',
+      tertiaryBorderColor: '#d4a574',
+      tertiaryTextColor: '#e8e0d4',
+      lineColor: '#8a8070',
+      noteBkgColor: '#1a2e30',
+      noteTextColor: '#e8e0d4',
+      noteBorderColor: '#d4a574',
     }
   });
 
@@ -1266,7 +1278,7 @@
       const svg = canvas.querySelector('svg');
       if (!svg) return;
       const clone = svg.cloneNode(true); clone.style.width = ''; clone.style.height = '';
-      const bg = isDark ? '#151020' : '#faf5ef';
+      const bg = '#0a1510';
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
       open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
     }
