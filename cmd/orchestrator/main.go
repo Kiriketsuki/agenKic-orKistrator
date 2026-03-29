@@ -15,6 +15,7 @@ import (
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/health"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
@@ -70,6 +71,17 @@ func main() {
 
 	httpHealth := ipc.NewHealthHTTPServer(healthAddr, agg)
 
+	// HTTP/SSE bridge for Godot UI.
+	bridgeAddr := ":8081"
+	if envBridge := os.Getenv("BRIDGE_ADDR"); envBridge != "" {
+		bridgeAddr = envBridge
+	}
+	var bridgeOpts []httpbridge.BridgeOption
+	if sub, subOK := sv.Substrate(); subOK {
+		bridgeOpts = append(bridgeOpts, httpbridge.WithSubstrate(sub))
+	}
+	bridge := httpbridge.NewBridge(bridgeAddr, store, executor, bridgeOpts...)
+
 	// Run supervisor loops in background.
 	go func() {
 		if err := sv.Run(ctx); err != nil {
@@ -87,6 +99,13 @@ func main() {
 		}
 	}()
 
+	// Run HTTP/SSE bridge in background.
+	go func() {
+		if err := bridge.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP bridge server exited: %v", err)
+		}
+	}()
+
 	// Graceful shutdown on signal.
 	// Order: cancel context first (stops all context-dependent loops such as
 	// the supervisor and health updater), then drain external-facing servers,
@@ -101,11 +120,12 @@ func main() {
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutCancel()
 		_ = httpHealth.Shutdown(shutCtx)
+		_ = bridge.Shutdown(shutCtx)
 		executor.Shutdown()
 		sv.Stop()
 	}()
 
-	fmt.Printf("agenKic-orKistrator gRPC on %s, health HTTP on %s\n", addr, healthAddr)
+	fmt.Printf("agenKic-orKistrator gRPC on %s, health HTTP on %s, bridge HTTP on %s\n", addr, healthAddr, bridgeAddr)
 	if err := server.StartGRPC(addr); err != nil {
 		log.Fatalf("gRPC server failed: %v", err)
 	}
