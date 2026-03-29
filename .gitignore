@@ -18,3 +18,14 @@ Thumbs.db
 /dist/
 /build/
 /out/
+
+# Tooling
+.gitnexus/
+.claude/
+.superpowers/
+docs/superpowers/
+.observer.lock
+gen/
+
+# Council debate logs
+2026-*-council-*.md

@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-research%20%2F%20spike-orange)
 
-A pixelated AI office orchestrator. AI agents appear as pixel-art workers at desks. Users see agent activity in real time, route tasks across models (Claude, Gemini, Ollama), and coordinate multi-agent workflows from a retro-aesthetic desktop interface.
+A magic tower AI orchestrator. AI agents appear as fantasy character classes working inside a vertical tower. Each floor is a project workspace that grows under load. Users see agent activity in real time, route tasks across models (Claude, Gemini, Ollama, OpenAI, DeepSeek), and coordinate multi-agent workflows from a fantasy-themed desktop interface.
 
 > Currently in the **research and spike phase.** No application code exists yet — all decisions are documented in [`docs/research/`](docs/research/).
 
@@ -19,11 +19,11 @@ A pixelated AI office orchestrator. AI agents appear as pixel-art workers at des
 | Layer | Technology |
 |-------|-----------|
 | Desktop UI | Godot 4 + godot-xterm |
+| UI-Orchestrator | HTTP/SSE bridge |
 | Orchestrator | Go + gRPC |
 | IPC | gRPC agent-to-agent + Redis Streams |
 | State | Redis (Streams + Hashes) |
-| Terminal substrate | tmux / WezTerm Lua |
-| TUI (alt) | Bubbletea + Lip Gloss |
+| Terminal substrate | tmux |
 | Model gateway | LiteLLM + Judge-Router |
 
 ## Architecture
@@ -59,4 +59,4 @@ See [`.github/CI-CD-Guide.md`](.github/CI-CD-Guide.md) for full workflow details
 | [`go-orchestrator-core-spec.md`](go-orchestrator-core-spec.md) | Supervisor, agent state machine, DAG engine |
 | [`terminal-substrate-spec.md`](terminal-substrate-spec.md) | tmux session management, command injection |
 | [`model-gateway-spec.md`](model-gateway-spec.md) | LiteLLM proxy, Judge-Router, cost tracking |
-| [`pixel-office-ui-spec.md`](pixel-office-ui-spec.md) | Godot 4 pixel-art office, godot-xterm |
+| [`pixel-office-ui-spec.md`](pixel-office-ui-spec.md) | Godot 4 magic tower, character class agents, HTTP/SSE bridge |
