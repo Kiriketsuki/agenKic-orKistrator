@@ -1,3 +1,21 @@
+## 2026-03-30 Handoff (PR #103 council fix loop)
+
+### Decisions
+- Council on PR #103 (T4 Floor scene + tower layout): CONDITIONAL — 2 in-PR fixes
+- Fix 1: tower_manager.gd — wire _tower_exterior.configure() in _ready()
+- Fix 2: tower_manager.gd — implement _on_agent_registered to call assign_agent_to_edge
+- Finding 2 (EdgeLayout dead code) and Finding 4 (tween corruption) sent to backlog
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: .claude/plans/synthetic-doodling-pearl.md
+- Manifest: council-fix-manifest.json
+- Branch: task/100-task-t4-floor-scene-tower-layout
+
+---
+
 ## 2026-03-30 Handoff (PR #101 council fix loop)
 
 ### Decisions
