@@ -1,30 +1,38 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-29-140000-council-pr-99-t2-http-sse-bridge-v3.md",
-  "motion": "Merge PR #99 — chore: T2 — HTTP/SSE bridge (Go side). Third council review (v3).",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-134500-council-pr-101-t3-bridgemanager-godot-side.md",
+  "motion": "PR #101 \"chore: T3 — BridgeManager (Godot side)\" should be merged into feature/86-feature-phase-1-skeleton-tower",
   "arbiter_verdict": "CONDITIONAL",
-  "branch": "task/95-task-t2-http-sse-bridge-go-side",
+  "branch": "task/98-task-t3-bridgemanager-godot-side",
   "fixes": [
     {
       "id": 1,
-      "description": "Add TestSendInput_EmptyKeys_WithSubstrate — construct bridge with a terminal.Substrate stub via WithSubstrate(...), POST /api/agents/{id}/input with {\"keys\": \"\"}, assert HTTP 400 with \"keys is required\". Must exercise handlers.go:200-206.",
-      "file": "internal/httpbridge/bridge_test.go",
-      "line": 224,
-      "severity": "MEDIUM",
-      "citations": ["internal/httpbridge/bridge_test.go L:224-239", "internal/httpbridge/handlers.go L:200-206"]
+      "description": "SSE agent.registered schema mismatch — Go sends \"agent_id\" but Godot reads \"id\". Expand SSEAgentRegistered to carry full AgentJSON fields with json:\"id\" tag",
+      "file": "internal/httpbridge/types.go",
+      "line": 61,
+      "severity": "Bug",
+      "citations": [
+        "internal/httpbridge/types.go L:61-64",
+        "godot/scripts/models/bridge_data.gd L:17",
+        "godot/scripts/autoload/bridge_manager.gd L:232-235"
+      ]
     },
     {
       "id": 2,
-      "description": "Fix misleading log at main.go:87 — remove \"(localhost only)\" parenthetical which is inaccurate when BRIDGE_ADDR overrides the default loopback binding. Replace with: \"HTTP bridge: no BRIDGE_API_KEY set — running without auth\"",
-      "file": "cmd/orchestrator/main.go",
-      "line": 87,
-      "severity": "LOW",
-      "citations": ["cmd/orchestrator/main.go L:87"]
+      "description": "Cursor never propagated to client — embed se.ID as \"cursor\" field in all SSE event payloads so Godot _last_cursor updates and ?since= resumption works",
+      "file": "internal/httpbridge/sse.go",
+      "line": 60,
+      "severity": "Bug",
+      "citations": [
+        "internal/httpbridge/types.go L:61-79",
+        "internal/httpbridge/sse.go L:59-70",
+        "godot/scripts/autoload/bridge_manager.gd L:245"
+      ]
     }
   ],
   "pr_amendments": [
-    "Note that TestSendInput_EmptyKeys_WithSubstrate was added per v3 council review",
-    "Note that the log message at main.go:87 was corrected per v3 council review"
+    "Update bridgemanager-godot-side-spec.md API Contracts table to document cursor field in SSE event payloads",
+    "Update SSEAgentRegistered doc comment to reflect it now carries full agent state"
   ],
-  "test_command": "go test -race -count=1 ./internal/...",
-  "created": "2026-03-29T14:13:00Z"
+  "test_command": "make test",
+  "created": "2026-03-30T13:55:00Z"
 }

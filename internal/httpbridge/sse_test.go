@@ -137,6 +137,102 @@ func TestSSE_SinceCursorSkipsPriorEvents(t *testing.T) {
 	t.Fatal("never received agent-new event")
 }
 
+func TestSSE_AgentRegisteredCarriesFullAgentFields(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "agent-full",
+		Timestamp: 1700000000,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data:")
+		data = strings.TrimSpace(data)
+		if !strings.Contains(data, "agent-full") {
+			continue
+		}
+		// Must use "id" key (not "agent_id") so Godot AgentData.from_dict works.
+		if !strings.Contains(data, `"id"`) {
+			t.Fatalf("expected \"id\" field in agent.registered payload, got %s", data)
+		}
+		if strings.Contains(data, `"agent_id"`) {
+			t.Fatalf("agent.registered must not use \"agent_id\" — Godot reads \"id\": %s", data)
+		}
+		// Must carry state field (defaults to "idle" for new agents).
+		if !strings.Contains(data, `"state":"idle"`) {
+			t.Fatalf("expected state=idle in agent.registered payload, got %s", data)
+		}
+		// Must carry registered_at.
+		if !strings.Contains(data, `"registered_at"`) {
+			t.Fatalf("expected registered_at in agent.registered payload, got %s", data)
+		}
+		return // success
+	}
+	t.Fatal("never received agent.registered data with agent-full")
+}
+
+func TestSSE_EventPayloadsIncludeCursor(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "agent-cursor",
+		Timestamp: 1700000000,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data:")
+		data = strings.TrimSpace(data)
+		if !strings.Contains(data, "agent-cursor") {
+			continue
+		}
+		if !strings.Contains(data, `"cursor"`) {
+			t.Fatalf("SSE payload missing cursor field — Godot needs it for ?since= resumption: %s", data)
+		}
+		return // success
+	}
+	t.Fatal("never received event data with agent-cursor")
+}
+
 func TestSSE_ReceivesStateChangedEvent(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil)

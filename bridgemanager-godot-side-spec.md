@@ -81,7 +81,7 @@ AgentOutputChunk:
 | GET | `/api/agents` | Read | Returns `{"agents": [AgentJSON...]}` |
 | GET | `/api/floors` | Read | Returns `{"floors": [FloorJSON...]}` |
 | GET | `/api/agents/{id}/output?lines=N` | Read | Returns `{"output": "string"}` |
-| GET | `/events/stream?since=CURSOR` | Read (SSE) | Long-lived stream; events: `agent.registered`, `agent.state_changed`, `agent.output`; keepalive `:ping` every 15s |
+| GET | `/events/stream?since=CURSOR` | Read (SSE) | Long-lived stream; events: `agent.registered`, `agent.state_changed`, `agent.output`; keepalive `:ping` every 15s. All event payloads include a `"cursor"` field (Redis stream entry ID) for client-side `?since=` resumption. `agent.registered` carries full agent state (`id`, `state`, `registered_at`, etc.) matching `AgentJSON` schema. |
 | POST | `/api/tasks` | Write | Body: `{"task_id": "...", "priority": 0.0}` |
 | POST | `/api/dags` | Write | Body: `{"nodes": [...], "edges": [...]}` |
 | POST | `/api/agents/{id}/input` | Write | Body: `{"keys": "..."}` |

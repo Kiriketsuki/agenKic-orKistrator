@@ -58,7 +58,7 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 		for _, se := range events {
 			cursor = se.ID
-			sseType, data := mapStoreEvent(se.Event)
+			sseType, data := mapStoreEvent(se.Event, se.ID)
 			if sseType == "" {
 				continue
 			}
@@ -88,13 +88,17 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 // mapStoreEvent converts a store event to an SSE event type and payload.
+// cursor is the Redis stream entry ID, embedded so clients can resume via ?since=.
 // Returns empty string if the event should be skipped.
-func mapStoreEvent(e state.Event) (string, interface{}) {
+func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	switch e.Type {
 	case "agent_registered":
 		return "agent.registered", SSEAgentRegistered{
-			AgentID:   e.AgentID,
-			Timestamp: e.Timestamp,
+			ID:            e.AgentID,
+			State:         "idle",
+			LastHeartbeat: e.Timestamp,
+			RegisteredAt:  e.Timestamp,
+			Cursor:        cursor,
 		}
 
 	case string(agent.EventTaskAssigned):
@@ -103,6 +107,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			State:     "assigned",
 			TaskID:    e.TaskID,
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	case string(agent.EventWorkStarted):
@@ -110,6 +115,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			AgentID:   e.AgentID,
 			State:     "working",
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	case string(agent.EventOutputReady):
@@ -117,6 +123,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			AgentID:   e.AgentID,
 			State:     "reporting",
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	case string(agent.EventOutputDelivered):
@@ -124,6 +131,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			AgentID:   e.AgentID,
 			State:     "idle",
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	case string(agent.EventAgentFailed):
@@ -131,6 +139,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			AgentID:   e.AgentID,
 			State:     "crashed",
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	case "output_chunk":
@@ -138,6 +147,7 @@ func mapStoreEvent(e state.Event) (string, interface{}) {
 			AgentID:   e.AgentID,
 			Payload:   e.Payload,
 			Timestamp: e.Timestamp,
+			Cursor:    cursor,
 		}
 
 	default:
