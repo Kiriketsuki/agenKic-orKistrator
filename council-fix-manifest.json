@@ -1,58 +1,77 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-150000-council-pr-101-t3-bridgemanager-godot-side-v3.md",
+  "recommendation_file": "2026-03-30-council-pr-101-t3-bridgemanager-godot-side-v4.md",
   "motion": "PR #101 \"chore: T3 — BridgeManager (Godot side)\" should be merged into feature/86-feature-phase-1-skeleton-tower",
   "arbiter_verdict": "CONDITIONAL",
   "branch": "task/98-task-t3-bridgemanager-godot-side",
+  "council_round": 4,
   "fixes": [
     {
       "id": 1,
-      "description": "Add timeout on sync HTTPRequest nodes to prevent permanent CONNECTING hang",
+      "description": "_on_command_completed must check result/code — silent discard of HTTP errors on write commands",
       "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 37,
+      "line": 331,
       "severity": "Bug",
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:37-42"],
-      "details": "Add _sync_agents_request.timeout = 10 after line 38 and _sync_floors_request.timeout = 10 after line 42"
+      "blocking": true,
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:331-333"],
+      "details": "Check _result and _code params; emit a command_failed signal or push_warning on non-200. At minimum log the failure so write command errors are observable.",
+      "advocate_verdict": "CONCEDE",
+      "critic_verdict": "REBUT (blocking)"
     },
     {
       "id": 2,
-      "description": "Document at-least-once delivery semantics for agent_registered during reconnect",
+      "description": "_command_request has no timeout — hung POST stalls entire command queue permanently",
       "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 99,
-      "severity": "Improvement",
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:99-106", "godot/scripts/autoload/bridge_manager.gd L:233-235"],
-      "details": "Add code comment in _on_agents_synced documenting that reconnect uses at-least-once delivery — consumers must handle idempotent agent_registered signals"
+      "line": 47,
+      "severity": "Bug",
+      "blocking": true,
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:47-49", "godot/scripts/autoload/bridge_manager.gd L:39", "godot/scripts/autoload/bridge_manager.gd L:44"],
+      "details": "Add _command_request.timeout = 10 after line 48, consistent with sync request timeouts at L:39 and L:44.",
+      "advocate_verdict": "not raised",
+      "critic_verdict": "new finding in rebuttal"
     },
     {
       "id": 3,
-      "description": "Check .request() return value to detect ERR_ALREADY_IN_USE",
+      "description": "Guard command dispatch against DISCONNECTED state",
       "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 83,
+      "line": 306,
       "severity": "Improvement",
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:83-84"],
-      "details": "Check return value of _sync_agents_request.request() and _sync_floors_request.request(); if not OK, call _on_initial_sync_failed()"
+      "blocking": false,
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:306-309"],
+      "details": "In _enqueue_command or _process_next_command, check _connection_state before dispatching. Either hold commands until CONNECTED or emit a command_rejected signal.",
+      "advocate_verdict": "not raised",
+      "critic_verdict": "QUALIFY"
     },
     {
       "id": 4,
-      "description": "Fix SSE fallback port from 8080 to 8081",
+      "description": "Extract task_id from agent.state_changed SSE events",
       "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 163,
+      "line": 247,
       "severity": "Improvement",
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:163"],
-      "details": "Change 'var port: int = 8080' to 'var port: int = 8081' to match bridge default"
+      "blocking": false,
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:247-252", "internal/httpbridge/types.go L:72-78"],
+      "details": "Read task_id from data dict in agent.state_changed dispatch. Either add it to the signal signature or update _agent_states to store {state, task_id}. Low urgency — REST re-sync covers the gap.",
+      "advocate_verdict": "CONCEDE",
+      "critic_verdict": "QUALIFY"
+    }
+  ],
+  "dismissed": [
+    {
+      "finding": "F1: Reconnect path dead",
+      "reason": "REBUT — path exists: _process → _update_backoff_timer → _start_reconnect (L:275-285)"
     },
     {
-      "id": 5,
-      "description": "Add max-size guard on _sse_buffer to prevent unbounded growth",
-      "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 197,
-      "severity": "Improvement",
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:196-198"],
-      "details": "Add buffer size check before appending; if _sse_buffer exceeds threshold (1MB), disconnect and reconnect"
+      "finding": "F2: HTTPS/TLS on SSE",
+      "reason": "Real but zero impact — default is http://localhost:8081, no HTTPS use case in spec"
+    },
+    {
+      "finding": "F3: Multi-line SSE data: concat",
+      "reason": "Server (sse.go:69) always emits single-line data: — theoretical only"
     }
   ],
   "pr_amendments": [
-    "Document at-least-once agent_registered delivery during reconnect; consumer nodes must handle idempotent registration"
+    "Add command_failed signal for write command error observability",
+    "Document command queue behavior during disconnected state"
   ],
   "test_command": "go test ./internal/httpbridge/...",
-  "created": "2026-03-30T15:12:00Z"
+  "created": "2026-03-30T09:40:00Z"
 }

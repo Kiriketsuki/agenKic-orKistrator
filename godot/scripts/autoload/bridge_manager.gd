@@ -3,9 +3,10 @@ extends Node
 ## Autoloaded singleton. Handles initial sync, live SSE updates, and write commands.
 
 signal agent_registered(agent_data: BridgeData.AgentData)
-signal agent_state_changed(agent_id: String, old_state: String, new_state: String)
+signal agent_state_changed(agent_id: String, old_state: String, new_state: String, task_id: String)
 signal agent_output(chunk: BridgeData.AgentOutputChunk)
 signal connection_status_changed(status: String)
+signal command_failed(path: String, code: int)
 
 enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
@@ -46,6 +47,7 @@ func _ready() -> void:
 
 	_command_request = HTTPRequest.new()
 	add_child(_command_request)
+	_command_request.timeout = 10
 	_command_request.request_completed.connect(_on_command_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
@@ -143,6 +145,8 @@ func _check_initial_sync_complete() -> void:
 	_set_connection_state(ConnectionState.CONNECTED)
 	_last_data_time = Time.get_unix_time_from_system()
 	_backoff_seconds = 1.0
+	if not _command_queue.is_empty() and not _command_in_flight:
+		_process_next_command()
 
 
 func _on_initial_sync_failed() -> void:
@@ -247,8 +251,9 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 		"agent.state_changed":
 			var agent_id: String = data.get("agent_id", "")
 			var new_state: String = data.get("state", "")
+			var task_id: String = data.get("task_id", "")
 			var old_state: String = _agent_states.get(agent_id, "")
-			agent_state_changed.emit(agent_id, old_state, new_state)
+			agent_state_changed.emit(agent_id, old_state, new_state, task_id)
 			_agent_states[agent_id] = new_state
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
@@ -305,6 +310,8 @@ func get_agent_output(agent_id: String, lines: int = 50) -> void:
 
 func _enqueue_command(method: String, path: String, body: Dictionary) -> void:
 	_command_queue.append({"method": method, "path": path, "body": body})
+	if _connection_state != ConnectionState.CONNECTED:
+		return
 	if not _command_in_flight:
 		_process_next_command()
 
@@ -328,6 +335,12 @@ func _process_next_command() -> void:
 	)
 
 
-func _on_command_completed(_result: int, _code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+func _on_command_completed(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		var path: String = ""
+		if not _command_queue.is_empty():
+			path = _command_queue[0].get("path", "")
+		push_warning("BridgeManager: command failed (result=%d, code=%d, path=%s)" % [result, code, path])
+		command_failed.emit(path, code)
 	_command_in_flight = false
 	_process_next_command()
