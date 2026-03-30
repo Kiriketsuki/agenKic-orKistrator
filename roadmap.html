@@ -109,7 +109,7 @@
 
   @keyframes progressFill {
     from { width: 0%; }
-    to   { width: var(--progress-target, 35%); }
+    to   { width: var(--progress-target, 80%); }
   }
 
   @keyframes lineGrow {
@@ -136,7 +136,7 @@
     }
     .scroll-reveal { opacity: 1; transform: none; }
     .timeline-line-fill { height: 100% !important; }
-    .progress-bar-fill { width: var(--progress-target, 35%) !important; }
+    .progress-bar-fill { width: var(--progress-target, 80%) !important; }
   }
 
   .page { max-width: 1140px; margin: 0 auto; padding: 48px 32px 80px; }
@@ -201,7 +201,7 @@
     overflow: hidden;
   }
   .progress-bar-fill {
-    --progress-target: 35%;
+    --progress-target: 80%;
     height: 100%;
     width: 0%;
     background: linear-gradient(90deg, var(--mint), var(--lavender));
@@ -590,7 +590,7 @@
     <div class="progress-strip anim" style="--i:3">
       <div class="progress-strip-head">
         <span class="progress-label">Overall Completion</span>
-        <span class="progress-pct">~35%</span>
+        <span class="progress-pct">~80%</span>
       </div>
       <div class="progress-track">
         <div class="progress-bar-fill"></div>
@@ -598,19 +598,19 @@
       <div class="progress-phases">
         <div class="progress-phase-item">
           <div class="progress-phase-dot" style="background:var(--lavender)"></div>
-          <span class="progress-phase-name">Epic 1 &mdash; In Progress</span>
+          <span class="progress-phase-name">Epic 1 &mdash; Complete</span>
         </div>
         <div class="progress-phase-item">
           <div class="progress-phase-dot" style="background:var(--sky)"></div>
-          <span class="progress-phase-name">Epic 2 &mdash; In Progress</span>
+          <span class="progress-phase-name">Epic 2 &mdash; Complete</span>
         </div>
         <div class="progress-phase-item">
           <div class="progress-phase-dot" style="background:var(--mint)"></div>
-          <span class="progress-phase-name">Epic 3 &mdash; Planned</span>
+          <span class="progress-phase-name">Epic 3 &mdash; Complete</span>
         </div>
         <div class="progress-phase-item">
           <div class="progress-phase-dot" style="background:var(--peach)"></div>
-          <span class="progress-phase-name">Epic 4 &mdash; Future</span>
+          <span class="progress-phase-name">Epic 4 &mdash; In Progress</span>
         </div>
         <div class="progress-phase-item">
           <div class="progress-phase-dot" style="background:var(--pink)"></div>
@@ -633,7 +633,7 @@
          PHASE 1: FOUNDATION (Epic 1)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-lavender is-active" aria-hidden="true"></div>
+      <div class="milestone-dot phase-lavender" aria-hidden="true"></div>
       <div
         class="milestone-card"
         tabindex="0"
@@ -646,10 +646,10 @@
             <div class="milestone-phase">Phase 1 &mdash; Foundation</div>
             <div class="milestone-title">Epic 1: Go Orchestrator Core</div>
           </div>
-          <span class="status-badge badge-in-progress">In Progress</span>
+          <span class="status-badge badge-complete">Complete</span>
         </div>
 
-        <!-- Features completed -->
+        <!-- All features completed -->
         <div class="feature-section">
           <div class="feature-section-label">Completed</div>
           <div class="feature-list">
@@ -659,16 +659,9 @@
             <span class="feature-tag done">DAG engine</span>
             <span class="feature-tag done">Supervisor</span>
             <span class="feature-tag done">Health probes</span>
-          </div>
-        </div>
-
-        <!-- Features open -->
-        <div class="feature-section" style="margin-top:10px;">
-          <div class="feature-section-label">Open</div>
-          <div class="feature-list">
-            <span class="feature-tag open">E2E lifecycle tests</span>
-            <span class="feature-tag open">Optimistic locking (CAS)</span>
-            <span class="feature-tag open">Event stream consumption</span>
+            <span class="feature-tag done">E2E lifecycle tests</span>
+            <span class="feature-tag done">Optimistic locking (CAS)</span>
+            <span class="feature-tag done">Event stream consumption</span>
           </div>
         </div>
 
@@ -677,7 +670,7 @@
           <span class="stat-callout-num">10</span>
           <div class="stat-callout-text">
             <strong>Go packages</strong>
-            5 features merged &middot; 3 PRs open
+            9 features merged &middot; Merged to main
           </div>
         </div>
 
@@ -725,19 +718,19 @@
             <div class="milestone-phase">Phase 2 &mdash; Terminal Layer</div>
             <div class="milestone-title">Epic 2: Terminal Substrate</div>
           </div>
-          <span class="status-badge badge-in-progress">In Progress</span>
+          <span class="status-badge badge-complete">Complete</span>
         </div>
 
         <!-- Features -->
         <div class="feature-section">
-          <div class="feature-section-label">Features</div>
+          <div class="feature-section-label">Completed</div>
           <div class="feature-list">
-            <span class="feature-tag">Substrate interface</span>
-            <span class="feature-tag">tmux session management</span>
-            <span class="feature-tag">Command injection</span>
-            <span class="feature-tag">Output capture</span>
-            <span class="feature-tag">Layout management</span>
-            <span class="feature-tag">Integration tests</span>
+            <span class="feature-tag done">Substrate interface</span>
+            <span class="feature-tag done">tmux session management</span>
+            <span class="feature-tag done">Command injection</span>
+            <span class="feature-tag done">Output capture</span>
+            <span class="feature-tag done">Layout management</span>
+            <span class="feature-tag done">Integration tests</span>
           </div>
         </div>
 
@@ -746,7 +739,7 @@
           <span class="stat-callout-num">6</span>
           <div class="stat-callout-text">
             <strong>Interface methods</strong>
-            4 features &middot; 7 Go files
+            4 features merged &middot; Merged to main
           </div>
         </div>
 
@@ -783,7 +776,7 @@
     <div class="milestone scroll-reveal">
       <div class="milestone-dot phase-mint" aria-hidden="true"></div>
       <div
-        class="milestone-card is-future"
+        class="milestone-card"
         tabindex="0"
         role="button"
         aria-expanded="false"
@@ -794,18 +787,18 @@
             <div class="milestone-phase">Phase 3 &mdash; Intelligence</div>
             <div class="milestone-title">Epic 3: Model Gateway</div>
           </div>
-          <span class="status-badge badge-planned">Planned</span>
+          <span class="status-badge badge-complete">Complete</span>
         </div>
 
         <!-- Features -->
         <div class="feature-section">
-          <div class="feature-section-label">Planned Features</div>
+          <div class="feature-section-label">Completed</div>
           <div class="feature-list">
-            <span class="feature-tag">LiteLLM proxy integration</span>
-            <span class="feature-tag">Judge-Router (Haiku&#8594;Sonnet&#8594;Opus)</span>
-            <span class="feature-tag">Provider adapters</span>
-            <span class="feature-tag">Fallback chains</span>
-            <span class="feature-tag">Cost tracking dashboard</span>
+            <span class="feature-tag done">LiteLLM proxy integration</span>
+            <span class="feature-tag done">Judge-Router (Haiku&#8594;Sonnet&#8594;Opus)</span>
+            <span class="feature-tag done">Provider adapters</span>
+            <span class="feature-tag done">Fallback chains</span>
+            <span class="feature-tag done">Cost tracking dashboard</span>
           </div>
         </div>
 
@@ -814,7 +807,7 @@
           <span class="stat-callout-num">3</span>
           <div class="stat-callout-text">
             <strong>Routing tiers</strong>
-            60&ndash;90% cost savings target
+            5 features merged &middot; Merged to main
           </div>
         </div>
 
@@ -849,9 +842,9 @@
          PHASE 4: INTERFACE (Epic 4)
     ─────────────────────────────────────────────── -->
     <div class="milestone scroll-reveal">
-      <div class="milestone-dot phase-peach" aria-hidden="true"></div>
+      <div class="milestone-dot phase-peach is-active" aria-hidden="true"></div>
       <div
-        class="milestone-card is-future"
+        class="milestone-card"
         tabindex="0"
         role="button"
         aria-expanded="false"
@@ -860,29 +853,45 @@
         <div class="milestone-head">
           <div>
             <div class="milestone-phase">Phase 4 &mdash; Interface</div>
-            <div class="milestone-title">Epic 4: Pixel Office UI</div>
+            <div class="milestone-title">Epic 4: Magic Tower UI</div>
           </div>
-          <span class="status-badge badge-future">Future</span>
+          <span class="status-badge badge-in-progress">In Progress</span>
         </div>
 
-        <!-- Features -->
+        <!-- Completed features -->
         <div class="feature-section">
-          <div class="feature-section-label">Planned Features</div>
+          <div class="feature-section-label">Completed</div>
           <div class="feature-list">
-            <span class="feature-tag">Godot 4 project setup</span>
-            <span class="feature-tag">Pixel-art agent sprites</span>
-            <span class="feature-tag">godot-xterm embedding</span>
-            <span class="feature-tag">Real-time agent visualization</span>
-            <span class="feature-tag">Panel layout system</span>
+            <span class="feature-tag done">Godot 4 project scaffold (T1)</span>
+            <span class="feature-tag done">HTTP/SSE bridge &mdash; Go side (T2)</span>
+            <span class="feature-tag done">BridgeManager &mdash; Godot side (T3)</span>
+          </div>
+        </div>
+
+        <!-- In progress -->
+        <div class="feature-section" style="margin-top:10px;">
+          <div class="feature-section-label">In Review</div>
+          <div class="feature-list">
+            <span class="feature-tag open">Floor scene + tower layout (T4)</span>
+          </div>
+        </div>
+
+        <!-- Open -->
+        <div class="feature-section" style="margin-top:10px;">
+          <div class="feature-section-label">Open</div>
+          <div class="feature-list">
+            <span class="feature-tag">Agent character scene (T5)</span>
+            <span class="feature-tag">Floating runes (T6)</span>
+            <span class="feature-tag">Basic navigation (T7)</span>
           </div>
         </div>
 
         <!-- Stat -->
         <div class="stat-callout stat-peach">
-          <span class="stat-callout-num" style="font-size:14px;font-family:var(--font-mono)">Pixel</span>
+          <span class="stat-callout-num" style="font-size:14px;font-family:var(--font-mono)">Tower</span>
           <div class="stat-callout-text">
-            <strong>Pixel-art office aesthetic</strong>
-            Real-time agent coordination view
+            <strong>Magic tower aesthetic</strong>
+            3 tasks merged &middot; Phase 1 of 4
           </div>
         </div>
 
@@ -896,7 +905,7 @@
         <div class="milestone-details">
           <div class="milestone-details-inner">
             <p style="font-size:13px;color:var(--text-dim);line-height:1.6;">
-              The Pixel Office is a Godot 4 application that renders a top-down pixel-art office where each AI agent is a character sprite at their workstation. Terminals are embedded via godot-xterm directly inside the scene. Agent state (idle, working, reporting) drives sprite animations. The panel layout system allows flexible arrangement of agent views and the cost dashboard.
+              The Magic Tower is a Godot 4 application rendering a vertical fantasy tower where each floor is a project workspace. AI agents appear as fantasy character classes at their stations. The tower uses a Canopy Spire palette with Hollow Knight and Noita-inspired aesthetics. An HTTP/SSE bridge connects the Go orchestrator to the Godot scene in real time. Phase 1 (Skeleton Tower) establishes the floor layout, tower exterior, and agent placement.
             </p>
             <span class="dep-hint">
               <span>Consumes real-time state from Epics 1, 2, 3</span>
@@ -1021,7 +1030,7 @@
   // ── Progress bar (reduced-motion fallback) ──
   if (reducedMotion) {
     var fill = document.querySelector('.progress-bar-fill');
-    if (fill) fill.style.width = '35%';
+    if (fill) fill.style.width = '80%';
   }
 })();
 </script>

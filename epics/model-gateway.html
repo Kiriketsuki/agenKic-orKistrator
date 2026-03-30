@@ -162,6 +162,21 @@
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
 
+  .badge-merged {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--mint);
+    background: var(--mint-dim);
+    border: 2px solid var(--mint);
+    padding: 3px 10px;
+    margin-left: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+
   h1 {
     font-family: var(--font-display);
     font-size: 20px;
@@ -838,7 +853,7 @@
 
   <!-- HEADER -->
   <div class="animate" style="--i:0">
-    <span class="epic-tag">Epic 3</span>
+    <span class="epic-tag">Epic 3</span><span class="badge-merged">Merged</span>
   </div>
   <h1 class="animate" style="--i:1">Model Gateway / Judge-Router</h1>
   <p class="lead animate" style="--i:2">
@@ -851,12 +866,16 @@
   <!-- STATS -->
   <div class="stats-row animate" style="--i:3">
     <div class="stat-card">
-      <div class="stat-card__label">Features</div>
+      <div class="stat-card__label">Status</div>
+      <div class="stat-card__value">Merged (PR #26)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Features Merged</div>
       <div class="stat-card__value" data-count="5">5</div>
     </div>
     <div class="stat-card">
-      <div class="stat-card__label">Spec Tasks</div>
-      <div class="stat-card__value--amber stat-card__value">T1&ndash;T9</div>
+      <div class="stat-card__label">PRs Open</div>
+      <div class="stat-card__value" data-count="0">0</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__label">Routing Tiers</div>
@@ -1330,16 +1349,16 @@ flowchart LR
 
   <!-- EXIT CRITERIA -->
   <div class="section-label scroll-reveal">09 &mdash; Exit Criteria</div>
-  <h2 class="scroll-reveal">Definition of Done</h2>
+  <h2 class="scroll-reveal">Definition of Done <span class="badge-merged" style="font-size:9px;vertical-align:middle">All Met</span></h2>
 
   <ul class="exit-list scroll-reveal">
-    <li><span class="exit-check">&square;</span> All Must-Have acceptance scenarios pass in CI</li>
-    <li><span class="exit-check">&square;</span> No regressions on Epic 1 (orchestrator core) features</li>
-    <li><span class="exit-check">&square;</span> Judge-Router correctly classifies at least 3 task complexity levels</li>
-    <li><span class="exit-check">&square;</span> Fallback chains recover from single-provider outage</li>
-    <li><span class="exit-check">&square;</span> Cost report shows measurable savings vs. all-frontier baseline</li>
-    <li><span class="exit-check">&square;</span> Provider adapters tested for Anthropic, OpenAI, and Ollama formats</li>
-    <li><span class="exit-check">&square;</span> Config validated at startup &mdash; invalid YAML fails fast with clear error</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> All Must-Have acceptance scenarios pass in CI</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> No regressions on Epic 1 (orchestrator core) features</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> Judge-Router correctly classifies at least 3 task complexity levels</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> Fallback chains recover from single-provider outage</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> Cost report shows measurable savings vs. all-frontier baseline</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> Provider adapters tested for Anthropic, OpenAI, and Ollama formats</li>
+    <li><span class="exit-check" style="color:var(--mint)">&#x2713;</span> Config validated at startup &mdash; invalid YAML fails fast with clear error</li>
   </ul>
 
   <!-- FOOTER -->

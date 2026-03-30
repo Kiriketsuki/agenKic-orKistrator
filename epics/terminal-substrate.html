@@ -140,13 +140,13 @@
   .section-dot.is-visible { animation: dotPulse 0.5s var(--ease-out-quart) both; }
 
   /* Badge shimmer */
-  .badge-open {
+  .badge-merged {
     background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
     background-size: 200% 100%;
     background-position: -100% 0;
   }
-  .badge-open.shimmer-active {
-    animation: badgeShimmer 0.7s var(--ease-out-quart) both;
+  .badge-merged.is-visible {
+    animation: badgeShimmer 1.2s var(--ease-out-quart) 0.3s both;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -478,8 +478,7 @@
     letter-spacing: 0.3px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   }
-  .badge-open { background: var(--peach-dim); color: var(--peach); }
-  .badge-pending { background: rgba(26, 46, 48, 0.8); backdrop-filter: blur(4px); color: var(--text-dim); border-color: var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
+  .badge-merged { background: var(--mint-dim); color: var(--mint); }
 
   /* ERROR MAPPING */
   .err-row {
@@ -996,35 +995,35 @@
           <td><strong>F1 &mdash; Substrate Interface & Core</strong></td>
           <td>#42</td>
           <td><code>feature/42-...-f1</code></td>
-          <td><span class="badge badge-open">open</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>Substrate interface, types, TmuxSubstrate, SpawnSession, DestroySession</td>
         </tr>
         <tr>
           <td><strong>F2 &mdash; Command Injection & Output Capture</strong></td>
           <td>#44</td>
           <td><code>feature/44-...-f2</code></td>
-          <td><span class="badge badge-open">open</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>SendCommand (send-keys + Enter), CaptureOutput (capture-pane -S)</td>
         </tr>
         <tr>
           <td><strong>F3 &mdash; Layout Management & Error Handling</strong></td>
           <td>#48</td>
           <td><code>feature/48-...-f3</code></td>
-          <td><span class="badge badge-open">open</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>ListSessions, SplitPane, CheckTmux, parseTmuxError, ValidateSessionName</td>
         </tr>
         <tr>
           <td><strong>F4 &mdash; Integration Tests</strong></td>
           <td>#53</td>
           <td><code>feature/53-...-f4</code></td>
-          <td><span class="badge badge-open">open</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>7 integration tests, marker-based verification, CI setup</td>
         </tr>
         <tr>
           <td><strong>T6 &mdash; Wire into Orchestrator</strong></td>
+          <td>#25</td>
           <td>&mdash;</td>
-          <td>&mdash;</td>
-          <td><span class="badge badge-pending">pending</span></td>
+          <td><span class="badge badge-merged scroll-reveal">merged</span></td>
           <td>Supervisor spawns agents into tmux sessions</td>
         </tr>
       </tbody>
@@ -1098,12 +1097,12 @@
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         // Small delay so reveal animation completes first
-        setTimeout(() => entry.target.classList.add('shimmer-active'), 300);
+        setTimeout(() => entry.target.classList.add('is-visible'), 300);
         badgeObserver.unobserve(entry.target);
       }
     });
   }, { threshold: 0.5 });
-  document.querySelectorAll('.badge-open').forEach(el => badgeObserver.observe(el));
+  document.querySelectorAll('.badge-merged').forEach(el => badgeObserver.observe(el));
 
   // ── Status counter animation ──
   function animateCounter(el, target, duration) {
