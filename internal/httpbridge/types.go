@@ -58,9 +58,14 @@ type ErrorResponse struct {
 // ── SSE event payload types ──────────────────────────────────────────────────
 
 // SSEAgentRegistered is the payload for agent.registered events.
+// Carries the full agent state so Godot can construct AgentData directly.
 type SSEAgentRegistered struct {
-	AgentID   string `json:"agent_id"`
-	Timestamp int64  `json:"timestamp"`
+	ID            string `json:"id"`
+	State         string `json:"state"`
+	CurrentTaskID string `json:"current_task_id,omitempty"`
+	LastHeartbeat int64  `json:"last_heartbeat"`
+	RegisteredAt  int64  `json:"registered_at"`
+	Cursor        string `json:"cursor,omitempty"`
 }
 
 // SSEAgentStateChanged is the payload for agent.state_changed events.
@@ -69,6 +74,7 @@ type SSEAgentStateChanged struct {
 	State     string `json:"state"`
 	TaskID    string `json:"task_id,omitempty"`
 	Timestamp int64  `json:"timestamp"`
+	Cursor    string `json:"cursor,omitempty"`
 }
 
 // SSEAgentOutput is the payload for agent.output events.
@@ -76,4 +82,5 @@ type SSEAgentOutput struct {
 	AgentID   string `json:"agent_id"`
 	Payload   string `json:"payload"`
 	Timestamp int64  `json:"timestamp"`
+	Cursor    string `json:"cursor,omitempty"`
 }

@@ -1,3 +1,22 @@
+## 2026-03-30 Handoff (PR #101 council fix loop)
+
+### Decisions
+- Council on PR #101 (T3 BridgeManager Godot side): CONDITIONAL — 2 in-PR fixes
+- Fix 1: types.go — expand SSEAgentRegistered to carry full AgentJSON fields (json:"id" not "agent_id")
+- Fix 2: sse.go — embed se.ID as "cursor" field in all SSE event payloads
+- Gap 3 (write command errors) dropped — spec ambiguous on callback mechanism
+- Gap 4 (premature CONNECTED) dropped — defensible semantic for pre-consumer phase
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: .claude/plans/lazy-mixing-hopper.md
+- Manifest: council-fix-manifest.json
+- Branch: task/98-task-t3-bridgemanager-godot-side
+
+---
+
 ## 2026-03-29 Handoff (PR #99 council v3 fix loop)
 
 ### Decisions
