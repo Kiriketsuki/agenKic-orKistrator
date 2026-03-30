@@ -25,6 +25,7 @@ func _ready() -> void:
 	_config = TowerConfig.from_file(config_path)
 	_spawn_permanent_floors()
 	_apply_fisheye_layout()
+	_tower_exterior.configure(_config.polygon_sides, _floors.size() * FLOOR_SPACING)
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -142,6 +143,7 @@ func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	var floor_node: Node2D = _create_floor(floor_data.name, floor_data.name, floor_data.is_permanent)
 	_floors.append(floor_node)
 	_apply_fisheye_layout()
+	_tower_exterior.configure(_config.polygon_sides, _floors.size() * FLOOR_SPACING)
 
 
 func _on_floor_removed(floor_name: String) -> void:
@@ -158,8 +160,10 @@ func _on_floor_removed(floor_name: String) -> void:
 			return
 
 
-func _on_agent_registered(_agent_data: BridgeData.AgentData) -> void:
-	pass
+func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
+	var floor_name: String = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
+	var edge: int = _find_best_edge_for_agent(floor_name, agent_data.current_task_id)
+	assign_agent_to_edge(agent_data.id, floor_name, edge)
 
 
 func _on_agent_state_changed(_agent_id: String, _old_state: String, _new_state: String, _task_id: String) -> void:
@@ -186,18 +190,18 @@ func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int)
 			return
 
 
-func _find_best_edge_for_agent(_floor_name: String, task_id: String) -> int:
+func _find_best_edge_for_agent(floor_name: String, task_id: String) -> int:
 	if task_id != "":
 		for existing_id: String in _agent_assignments:
 			var assignment: Dictionary = _agent_assignments[existing_id]
-			if assignment.get("floor", "") == _floor_name:
+			if assignment.get("floor", "") == floor_name:
 				return assignment.get("edge", 0)
 	var edge_counts: Dictionary = {}
 	for i: int in range(_config.polygon_sides):
 		edge_counts[i] = 0
 	for existing_id: String in _agent_assignments:
 		var assignment: Dictionary = _agent_assignments[existing_id]
-		if assignment.get("floor", "") == _floor_name:
+		if assignment.get("floor", "") == floor_name:
 			var e: int = assignment.get("edge", 0)
 			edge_counts[e] = edge_counts.get(e, 0) + 1
 	var min_edge: int = 0
