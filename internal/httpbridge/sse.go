@@ -153,6 +153,19 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 			Cursor:    cursor,
 		}
 
+	case "floor_created":
+		return "floor.created", SSEFloorCreated{
+			Name:       e.Payload,
+			AgentCount: 0,
+			Cursor:     cursor,
+		}
+
+	case "floor_removed":
+		return "floor.removed", SSEFloorRemoved{
+			Name:   e.Payload,
+			Cursor: cursor,
+		}
+
 	default:
 		log.Printf("httpbridge: unrecognised event type %q — skipped", e.Type)
 		return "", nil

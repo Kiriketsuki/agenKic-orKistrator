@@ -136,6 +136,12 @@ func (sv *Supervisor) RegisterAgent(ctx context.Context, agentID string) error {
 		sessionName := "agent-" + agentID
 		if _, err := sv.substrate.SpawnSession(ctx, sessionName, ""); err != nil {
 			log.Printf("supervisor: substrate: SpawnSession %q failed (agent %s continues): %v", sessionName, agentID, err)
+		} else {
+			_ = sv.store.PublishEvent(ctx, state.Event{
+				Type:      "floor_created",
+				Payload:   sessionName,
+				Timestamp: now,
+			})
 		}
 	}
 
@@ -166,6 +172,12 @@ func (sv *Supervisor) Stop() {
 			sessionName := "agent-" + id
 			if err := sv.substrate.DestroySession(context.Background(), sessionName); err != nil {
 				log.Printf("supervisor: Stop: DestroySession %q failed (agent %s): %v", sessionName, id, err)
+			} else {
+				_ = sv.store.PublishEvent(context.Background(), state.Event{
+					Type:      "floor_removed",
+					Payload:   sessionName,
+					Timestamp: time.Now().UnixMilli(),
+				})
 			}
 		}
 	}
@@ -321,6 +333,12 @@ func (sv *Supervisor) crashAgent(ctx context.Context, agentID string) {
 		sessionName := "agent-" + agentID
 		if err := sv.substrate.DestroySession(ctx, sessionName); err != nil {
 			log.Printf("supervisor: substrate: DestroySession %q failed (agent %s): %v", sessionName, agentID, err)
+		} else {
+			_ = sv.store.PublishEvent(ctx, state.Event{
+				Type:      "floor_removed",
+				Payload:   sessionName,
+				Timestamp: time.Now().UnixMilli(),
+			})
 		}
 	}
 }

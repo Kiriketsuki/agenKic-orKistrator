@@ -233,6 +233,92 @@ func TestSSE_EventPayloadsIncludeCursor(t *testing.T) {
 	t.Fatal("never received event data with agent-cursor")
 }
 
+func TestSSE_ReceivesFloorCreatedEvent(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "floor_created",
+		Payload:   "workers-3",
+		Timestamp: 1234567890,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	foundEvent := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event: floor.created") {
+			foundEvent = true
+		}
+		if foundEvent && strings.HasPrefix(line, "data:") {
+			if !strings.Contains(line, `"name":"workers-3"`) {
+				t.Fatalf("expected name=workers-3 in data, got %s", line)
+			}
+			return // success
+		}
+	}
+
+	if !foundEvent {
+		t.Fatal("never received floor.created event")
+	}
+}
+
+func TestSSE_ReceivesFloorRemovedEvent(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "floor_removed",
+		Payload:   "workers-3",
+		Timestamp: 1234567890,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	foundEvent := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event: floor.removed") {
+			foundEvent = true
+		}
+		if foundEvent && strings.HasPrefix(line, "data:") {
+			if !strings.Contains(line, `"name":"workers-3"`) {
+				t.Fatalf("expected name=workers-3 in data, got %s", line)
+			}
+			return // success
+		}
+	}
+
+	if !foundEvent {
+		t.Fatal("never received floor.removed event")
+	}
+}
+
 func TestSSE_ReceivesStateChangedEvent(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil)
