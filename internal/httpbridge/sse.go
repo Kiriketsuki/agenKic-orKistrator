@@ -93,6 +93,9 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	switch e.Type {
 	case "agent_registered":
+		// Agents always register in idle state. Subsequent state transitions
+		// arrive as separate agent.state_changed events in the stream, so
+		// SSE replay naturally converges to the current state.
 		return "agent.registered", SSEAgentRegistered{
 			ID:            e.AgentID,
 			State:         "idle",

@@ -172,7 +172,7 @@ func _open_sse_stream() -> void:
 	elif url.begins_with("https://"):
 		url = url.substr(8)
 	var host: String = url.split("/")[0]
-	var port: int = 8081
+	var port: int = 443 if base_url.begins_with("https://") else 80
 	if ":" in host:
 		var parts: PackedStringArray = host.split(":")
 		host = parts[0]
@@ -232,6 +232,8 @@ func _parse_sse_event(raw: String) -> Dictionary:
 		if line.begins_with("event:"):
 			event_type = line.substr(6).strip_edges()
 		elif line.begins_with("data:"):
+			if data_str != "":
+				data_str += "\n"
 			data_str += line.substr(5).strip_edges()
 	if event_type == "" or data_str == "":
 		return {}
@@ -319,6 +321,8 @@ func _enqueue_command(method: String, path: String, body: Dictionary) -> void:
 
 func _process_next_command() -> void:
 	if _command_queue.is_empty():
+		return
+	if _connection_state != ConnectionState.CONNECTED:
 		return
 	var cmd: Dictionary = _command_queue.pop_front()
 	_inflight_path = cmd["path"]
