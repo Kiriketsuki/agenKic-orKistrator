@@ -24,6 +24,7 @@ var _backoff_seconds: float = 1.0
 var _backoff_timer: float = 0.0
 var _command_queue: Array[Dictionary] = []
 var _command_in_flight: bool = false
+var _inflight_path: String = ""
 
 var _sync_agents_request: HTTPRequest
 var _sync_floors_request: HTTPRequest
@@ -320,6 +321,7 @@ func _process_next_command() -> void:
 	if _command_queue.is_empty():
 		return
 	var cmd: Dictionary = _command_queue.pop_front()
+	_inflight_path = cmd["path"]
 	_command_in_flight = true
 	var http_method: HTTPClient.Method = HTTPClient.METHOD_GET
 	if cmd["method"] == "POST":
@@ -337,10 +339,7 @@ func _process_next_command() -> void:
 
 func _on_command_completed(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
-		var path: String = ""
-		if not _command_queue.is_empty():
-			path = _command_queue[0].get("path", "")
-		push_warning("BridgeManager: command failed (result=%d, code=%d, path=%s)" % [result, code, path])
-		command_failed.emit(path, code)
+		push_warning("BridgeManager: command failed (result=%d, code=%d, path=%s)" % [result, code, _inflight_path])
+		command_failed.emit(_inflight_path, code)
 	_command_in_flight = false
 	_process_next_command()
