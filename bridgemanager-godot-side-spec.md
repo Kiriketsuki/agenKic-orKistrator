@@ -30,7 +30,7 @@
 - **Typed data model**: `AgentData`, `FloorData`, `AgentOutputChunk` as `RefCounted` classes with `from_dict()` factory methods — signals carry typed objects, not raw Dictionaries
 - **Initial sync via REST**: `HTTPRequest` GETs to `/api/agents` and `/api/floors` on startup; parse responses into typed arrays; emit `agent_registered` for each agent
 - **SSE stream parser**: Low-level `HTTPClient` polled in `_process()`; buffer accumulation; `\n\n` delimiter splitting; extract `event:` type and `data:` JSON payload; handle `:ping` keepalive comments
-- **Signal dispatch**: Map SSE `agent.registered` -> `agent_registered(AgentData)`, `agent.state_changed` -> `agent_state_changed(agent_id, old_state, new_state)`, `agent.output` -> `agent_output(AgentOutputChunk)`
+- **Signal dispatch**: Map SSE `agent.registered` -> `agent_registered(AgentData)`, `agent.state_changed` -> `agent_state_changed(agent_id, old_state, new_state, task_id)`, `agent.output` -> `agent_output(AgentOutputChunk)`
 - **Automatic reconnection**: 20s keepalive timeout (Go sends `:ping` every 15s); exponential backoff 1s/2s/4s/8s capped at 30s; reset on successful reconnect; cursor-based resumption via `?since=<last_cursor>` to prevent data loss
 - **Connection status signals**: State enum (disconnected, connecting, connected, reconnecting); `connection_status_changed(status)` emitted at every transition
 - **Write commands**: `submit_task(task_id, priority)` -> POST `/api/tasks`, `submit_dag(nodes, edges)` -> POST `/api/dags`, `send_input(agent_id, keys)` -> POST `/api/agents/{id}/input` via `HTTPRequest`
@@ -159,7 +159,7 @@ Feature: BridgeManager (Godot side)
     Scenario: Agent state change via SSE
       Given BridgeManager is connected and SSE stream is open
       When the orchestrator emits an agent.state_changed event
-      Then BridgeManager emits agent_state_changed(agent_id, old_state, new_state)
+      Then BridgeManager emits agent_state_changed(agent_id, old_state, new_state, task_id)
 
     Scenario: Agent output via SSE
       Given BridgeManager is connected and SSE stream is open
