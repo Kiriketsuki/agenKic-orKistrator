@@ -1,38 +1,36 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-134500-council-pr-101-t3-bridgemanager-godot-side.md",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-141500-council-pr-101-t3-bridgemanager-godot-side-v2.md",
   "motion": "PR #101 \"chore: T3 — BridgeManager (Godot side)\" should be merged into feature/86-feature-phase-1-skeleton-tower",
   "arbiter_verdict": "CONDITIONAL",
   "branch": "task/98-task-t3-bridgemanager-godot-side",
   "fixes": [
     {
       "id": 1,
-      "description": "SSE agent.registered schema mismatch — Go sends \"agent_id\" but Godot reads \"id\". Expand SSEAgentRegistered to carry full AgentJSON fields with json:\"id\" tag",
-      "file": "internal/httpbridge/types.go",
-      "line": 61,
+      "description": "Port default mismatch — bridge_manager.gd defaults to :8080 but bridge runs on :8081",
+      "file": "godot/scripts/autoload/bridge_manager.gd",
+      "line": 12,
       "severity": "Bug",
       "citations": [
-        "internal/httpbridge/types.go L:61-64",
-        "godot/scripts/models/bridge_data.gd L:17",
-        "godot/scripts/autoload/bridge_manager.gd L:232-235"
-      ]
+        "godot/scripts/autoload/bridge_manager.gd L:12",
+        "cmd/orchestrator/main.go L:75"
+      ],
+      "status": "DONE"
     },
     {
       "id": 2,
-      "description": "Cursor never propagated to client — embed se.ID as \"cursor\" field in all SSE event payloads so Godot _last_cursor updates and ?since= resumption works",
-      "file": "internal/httpbridge/sse.go",
-      "line": 60,
+      "description": "Spec Background instructs wrong port (8080 instead of 8081)",
+      "file": "bridgemanager-godot-side-spec.md",
+      "line": 138,
       "severity": "Bug",
       "citations": [
-        "internal/httpbridge/types.go L:61-79",
-        "internal/httpbridge/sse.go L:59-70",
-        "godot/scripts/autoload/bridge_manager.gd L:245"
-      ]
+        "bridgemanager-godot-side-spec.md L:138"
+      ],
+      "status": "DONE"
     }
   ],
   "pr_amendments": [
-    "Update bridgemanager-godot-side-spec.md API Contracts table to document cursor field in SSE event payloads",
-    "Update SSEAgentRegistered doc comment to reflect it now carries full agent state"
+    "Note the port default fix aligning Godot base_url with Go bridge address"
   ],
   "test_command": "make test",
-  "created": "2026-03-30T13:55:00Z"
+  "created": "2026-03-30T14:20:00Z"
 }

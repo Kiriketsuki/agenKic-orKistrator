@@ -134,8 +134,8 @@ Feature: BridgeManager (Godot side)
   So that the pixel office reflects real-time agent activity
 
   Background:
-    Given the Go orchestrator is running on localhost:8080
-    And BridgeManager.base_url is set to "http://localhost:8080"
+    Given the Go orchestrator is running on localhost:8081
+    And BridgeManager.base_url is set to "http://localhost:8081"
 
   Rule: Initial sync populates current state
 

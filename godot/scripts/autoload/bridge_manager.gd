@@ -9,7 +9,7 @@ signal connection_status_changed(status: String)
 
 enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
-@export var base_url: String = "http://localhost:8080"
+@export var base_url: String = "http://localhost:8081"
 
 var _connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var _agent_states: Dictionary = {}
