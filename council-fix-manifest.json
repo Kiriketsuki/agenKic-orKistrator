@@ -1,36 +1,58 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-141500-council-pr-101-t3-bridgemanager-godot-side-v2.md",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-150000-council-pr-101-t3-bridgemanager-godot-side-v3.md",
   "motion": "PR #101 \"chore: T3 — BridgeManager (Godot side)\" should be merged into feature/86-feature-phase-1-skeleton-tower",
   "arbiter_verdict": "CONDITIONAL",
   "branch": "task/98-task-t3-bridgemanager-godot-side",
   "fixes": [
     {
       "id": 1,
-      "description": "Port default mismatch — bridge_manager.gd defaults to :8080 but bridge runs on :8081",
+      "description": "Add timeout on sync HTTPRequest nodes to prevent permanent CONNECTING hang",
       "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 12,
+      "line": 37,
       "severity": "Bug",
-      "citations": [
-        "godot/scripts/autoload/bridge_manager.gd L:12",
-        "cmd/orchestrator/main.go L:75"
-      ],
-      "status": "DONE"
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:37-42"],
+      "details": "Add _sync_agents_request.timeout = 10 after line 38 and _sync_floors_request.timeout = 10 after line 42"
     },
     {
       "id": 2,
-      "description": "Spec Background instructs wrong port (8080 instead of 8081)",
-      "file": "bridgemanager-godot-side-spec.md",
-      "line": 138,
-      "severity": "Bug",
-      "citations": [
-        "bridgemanager-godot-side-spec.md L:138"
-      ],
-      "status": "DONE"
+      "description": "Document at-least-once delivery semantics for agent_registered during reconnect",
+      "file": "godot/scripts/autoload/bridge_manager.gd",
+      "line": 99,
+      "severity": "Improvement",
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:99-106", "godot/scripts/autoload/bridge_manager.gd L:233-235"],
+      "details": "Add code comment in _on_agents_synced documenting that reconnect uses at-least-once delivery — consumers must handle idempotent agent_registered signals"
+    },
+    {
+      "id": 3,
+      "description": "Check .request() return value to detect ERR_ALREADY_IN_USE",
+      "file": "godot/scripts/autoload/bridge_manager.gd",
+      "line": 83,
+      "severity": "Improvement",
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:83-84"],
+      "details": "Check return value of _sync_agents_request.request() and _sync_floors_request.request(); if not OK, call _on_initial_sync_failed()"
+    },
+    {
+      "id": 4,
+      "description": "Fix SSE fallback port from 8080 to 8081",
+      "file": "godot/scripts/autoload/bridge_manager.gd",
+      "line": 163,
+      "severity": "Improvement",
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:163"],
+      "details": "Change 'var port: int = 8080' to 'var port: int = 8081' to match bridge default"
+    },
+    {
+      "id": 5,
+      "description": "Add max-size guard on _sse_buffer to prevent unbounded growth",
+      "file": "godot/scripts/autoload/bridge_manager.gd",
+      "line": 197,
+      "severity": "Improvement",
+      "citations": ["godot/scripts/autoload/bridge_manager.gd L:196-198"],
+      "details": "Add buffer size check before appending; if _sse_buffer exceeds threshold (1MB), disconnect and reconnect"
     }
   ],
   "pr_amendments": [
-    "Note the port default fix aligning Godot base_url with Go bridge address"
+    "Document at-least-once agent_registered delivery during reconnect; consumer nodes must handle idempotent registration"
   ],
-  "test_command": "make test",
-  "created": "2026-03-30T14:20:00Z"
+  "test_command": "go test ./internal/httpbridge/...",
+  "created": "2026-03-30T15:12:00Z"
 }

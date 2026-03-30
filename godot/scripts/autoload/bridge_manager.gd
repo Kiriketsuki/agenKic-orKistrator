@@ -36,10 +36,12 @@ var _initial_sync_failed: bool = false
 func _ready() -> void:
 	_sync_agents_request = HTTPRequest.new()
 	add_child(_sync_agents_request)
+	_sync_agents_request.timeout = 10
 	_sync_agents_request.request_completed.connect(_on_agents_synced)
 
 	_sync_floors_request = HTTPRequest.new()
 	add_child(_sync_floors_request)
+	_sync_floors_request.timeout = 10
 	_sync_floors_request.request_completed.connect(_on_floors_synced)
 
 	_command_request = HTTPRequest.new()
@@ -80,10 +82,15 @@ func _start_initial_sync() -> void:
 	_agents_synced = false
 	_floors_synced = false
 	_initial_sync_failed = false
-	_sync_agents_request.request(base_url + "/api/agents")
-	_sync_floors_request.request(base_url + "/api/floors")
+	var err_agents := _sync_agents_request.request(base_url + "/api/agents")
+	var err_floors := _sync_floors_request.request(base_url + "/api/floors")
+	if err_agents != OK or err_floors != OK:
+		_on_initial_sync_failed()
 
 
+# NOTE: On reconnect, agent_registered is emitted for ALL agents via REST sync,
+# then SSE replay may re-emit for agents registered during the disconnect window.
+# This is at-least-once delivery by design. Consumers must be idempotent.
 func _on_agents_synced(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 		_on_initial_sync_failed()
@@ -160,7 +167,7 @@ func _open_sse_stream() -> void:
 	elif url.begins_with("https://"):
 		url = url.substr(8)
 	var host: String = url.split("/")[0]
-	var port: int = 8080
+	var port: int = 8081
 	if ":" in host:
 		var parts: PackedStringArray = host.split(":")
 		host = parts[0]
@@ -194,6 +201,10 @@ func _poll_sse(_delta: float) -> void:
 				return
 			_last_data_time = Time.get_unix_time_from_system()
 			_sse_buffer += chunk.get_string_from_utf8()
+			if _sse_buffer.length() > 1_048_576:
+				_sse_buffer = ""
+				_on_sse_disconnected()
+				return
 			var events: PackedStringArray = _sse_buffer.split("\n\n")
 			_sse_buffer = events[events.size() - 1]
 			for i: int in range(events.size() - 1):
