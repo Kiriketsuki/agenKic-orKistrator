@@ -136,6 +136,10 @@ func _rotate_focused_edge(direction: int) -> void:
 
 # --- Signal Handlers ---
 
+# TODO(dynamic-floor): Non-permanent floors created here will leave stale _agent_assignments
+# entries if removed — _on_floor_removed does not clean _agent_assignments, and the idempotency
+# guard in _on_agent_registered blocks recovery on reconnect. Add cleanup when implementing
+# the dynamic floor lifecycle task.
 func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	for existing: Node2D in _floors:
 		if existing.get_meta("floor_name", "") == floor_data.name:
