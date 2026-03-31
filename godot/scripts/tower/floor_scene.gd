@@ -106,15 +106,12 @@ func _rebuild_interior() -> void:
 			edge_agents.append(slot)
 	if edge_agents.is_empty():
 		return
-	var slot_width: float = 16.0
-	var slot_height: float = 20.0
-	var spacing: float = 4.0
-	var total_width: float = edge_agents.size() * (slot_width + spacing) - spacing
-	var start_x: float = -total_width / 2.0
+	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, 280.0)
+	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), edge_width)
 	for i: int in range(edge_agents.size()):
 		var rect := ColorRect.new()
-		rect.size = Vector2(slot_width, slot_height)
-		rect.position = Vector2(start_x + i * (slot_width + spacing), -slot_height / 2.0)
+		rect.size = Vector2(EdgeLayout.DESK_WIDTH, EdgeLayout.DESK_HEIGHT)
+		rect.position = positions[i]
 		rect.color = Color(0.55, 0.45, 0.25, 1.0)  # warm amber for agent desks
 		_agent_slots_node.add_child(rect)
 
