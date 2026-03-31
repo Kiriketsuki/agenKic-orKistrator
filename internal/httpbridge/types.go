@@ -84,3 +84,16 @@ type SSEAgentOutput struct {
 	Timestamp int64  `json:"timestamp"`
 	Cursor    string `json:"cursor,omitempty"`
 }
+
+// SSEFloorCreated is the payload for floor.created events.
+type SSEFloorCreated struct {
+	Name       string `json:"name"`
+	AgentCount int    `json:"agent_count"`
+	Cursor     string `json:"cursor,omitempty"`
+}
+
+// SSEFloorRemoved is the payload for floor.removed events.
+type SSEFloorRemoved struct {
+	Name   string `json:"name"`
+	Cursor string `json:"cursor,omitempty"`
+}
