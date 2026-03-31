@@ -1,30 +1,21 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-30-123500-council-pr-103-t4-floor-scene-tower-layout.md",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-31-143000-council-pr-103-t4-floor-scene-tower-layout.md",
   "motion": "PR #103 — chore: T4 — Floor scene + tower layout should be merged into feature/86-feature-phase-1-skeleton-tower",
   "arbiter_verdict": "CONDITIONAL",
   "branch": "task/100-task-t4-floor-scene-tower-layout",
   "fixes": [
     {
       "id": 1,
-      "description": "Wire TowerExterior.configure() — call _tower_exterior.configure(_config.polygon_sides, tower_height) in _ready() after _spawn_permanent_floors() and _apply_fisheye_layout()",
+      "description": "Add existence guard to _on_agent_registered at tower_manager.gd:163 — add `if _agent_assignments.has(agent_data.id): return` before _find_best_edge_for_agent is called. Prevents permanent _agent_assignments/_agent_slots desync on reconnect re-registration.",
       "file": "godot/scripts/tower/tower_manager.gd",
-      "line": 22,
+      "line": 163,
       "severity": "Bug",
-      "citations": ["godot/scripts/tower/tower_manager.gd L:22", "godot/scripts/tower/tower_exterior.gd L:18"]
-    },
-    {
-      "id": 2,
-      "description": "Implement _on_agent_registered to call assign_agent_to_edge using _find_best_edge_for_agent, resolving floor name from agent data",
-      "file": "godot/scripts/tower/tower_manager.gd",
-      "line": 161,
-      "severity": "Bug",
-      "citations": ["godot/scripts/tower/tower_manager.gd L:161-162", "godot/scripts/tower/tower_manager.gd L:179-209"]
+      "citations": ["godot/scripts/tower/tower_manager.gd L:163"]
     }
   ],
   "pr_amendments": [
-    "Add to test plan: 'Agent placeholder slots appear on a focused floor after an agent_registered SSE event'",
-    "Add to test plan: 'TowerExterior hexagonal roof and base are visible at startup and on d>=2 floors'"
+    "Add to PR description: 'Fixes idempotency gap in _on_agent_registered — adds existence guard to prevent _agent_assignments/_agent_slots desync on reconnect.'"
   ],
-  "test_command": "go test ./...",
-  "created": "2026-03-30T12:45:00Z"
+  "test_command": "make test",
+  "created": "2026-03-31T14:38:00Z"
 }

@@ -1,3 +1,20 @@
+## 2026-03-31 Handoff (PR #103 council Round 3 fix loop)
+
+### Decisions
+- Council Round 3 on PR #103: CONDITIONAL — 1 in-PR fix
+- Fix: tower_manager.gd:163 — add `if _agent_assignments.has(agent_data.id): return` before `_find_best_edge_for_agent`
+- Semantic decision: skip-if-already-placed (AgentData carries no floor/edge field)
+- EdgeLayout dead code observation carried forward as quality-only
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-03-31-14h38-council-r3-fix-loop.md
+- Branch: task/100-task-t4-floor-scene-tower-layout
+
+---
+
 ## 2026-03-30 Handoff (PR #103 council fix loop)
 
 ### Decisions
