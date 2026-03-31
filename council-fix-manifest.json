@@ -1,21 +1,10 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-31-103947-council-pr-103-t4-floor-scene-tower-layout.md",
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-31-150000-council-pr-103-t4-floor-scene-tower-layout.md",
   "motion": "PR #103 — chore: T4 — Floor scene + tower layout should be merged into feature/86-feature-phase-1-skeleton-tower",
-  "arbiter_verdict": "CONDITIONAL",
+  "arbiter_verdict": "FOR",
   "branch": "task/100-task-t4-floor-scene-tower-layout",
-  "fixes": [
-    {
-      "id": 1,
-      "description": "Remove broken task affinity branch at tower_manager.gd:196-200 — the `if task_id != \"\":` block returns first-floor-occupant's edge without comparing task IDs, bypassing the correct load-balancer (lines 201-215) for all task-bearing agents. Delete the 5 lines (196-200) so all agents use the load-balancing path. Alternative: replace with a single comment stub `# TODO: task affinity — requires storing task_id in _agent_assignments`.",
-      "file": "godot/scripts/tower/tower_manager.gd",
-      "line": 196,
-      "severity": "Bug",
-      "citations": ["godot/scripts/tower/tower_manager.gd L:196-200", "godot/scripts/tower/tower_manager.gd L:17"]
-    }
-  ],
-  "pr_amendments": [
-    "Replace 'Agent edge assignment with task_id affinity clustering on registration' in PR body with: 'Agent edge assignment with load-balancing on registration (task_id affinity stubbed, pending _agent_assignments schema extension).'"
-  ],
+  "fixes": [],
+  "pr_amendments": [],
   "test_command": "make test",
-  "created": "2026-03-31T10:41:00Z"
+  "created": "2026-03-31T15:00:00Z"
 }
