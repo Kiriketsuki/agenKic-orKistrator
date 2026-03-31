@@ -7,6 +7,8 @@ signal agent_state_changed(agent_id: String, old_state: String, new_state: Strin
 signal agent_output(chunk: BridgeData.AgentOutputChunk)
 signal connection_status_changed(status: String)
 signal command_failed(path: String, code: int)
+signal floor_created(floor_data: BridgeData.FloorData)
+signal floor_removed(floor_name: String)
 
 enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
@@ -261,6 +263,14 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
 			agent_output.emit(chunk)
+		"floor.created":
+			var floor_data: BridgeData.FloorData = BridgeData.FloorData.from_dict(data)
+			_floors.append(floor_data)
+			floor_created.emit(floor_data)
+		"floor.removed":
+			var floor_name: String = data.get("name", "")
+			_floors = _floors.filter(func(f: BridgeData.FloorData) -> bool: return f.name != floor_name)
+			floor_removed.emit(floor_name)
 	if data.has("cursor"):
 		_last_cursor = str(data["cursor"])
 

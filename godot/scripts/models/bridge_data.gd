@@ -25,11 +25,15 @@ class AgentData extends RefCounted:
 class FloorData extends RefCounted:
 	var name: String = ""
 	var agent_count: int = 0
+	var is_permanent: bool = false
+	var polygon_sides: int = 6
 
 	static func from_dict(d: Dictionary) -> FloorData:
 		var f := FloorData.new()
 		f.name = d.get("name", "")
 		f.agent_count = d.get("agent_count", 0)
+		f.is_permanent = d.get("is_permanent", false)
+		f.polygon_sides = d.get("polygon_sides", 6)
 		return f
 
 

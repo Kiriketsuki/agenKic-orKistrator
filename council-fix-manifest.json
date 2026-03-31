@@ -1,77 +1,10 @@
 {
-  "recommendation_file": "2026-03-30-council-pr-101-t3-bridgemanager-godot-side-v4.md",
-  "motion": "PR #101 \"chore: T3 — BridgeManager (Godot side)\" should be merged into feature/86-feature-phase-1-skeleton-tower",
-  "arbiter_verdict": "CONDITIONAL",
-  "branch": "task/98-task-t3-bridgemanager-godot-side",
-  "council_round": 4,
-  "fixes": [
-    {
-      "id": 1,
-      "description": "_on_command_completed must check result/code — silent discard of HTTP errors on write commands",
-      "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 331,
-      "severity": "Bug",
-      "blocking": true,
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:331-333"],
-      "details": "Check _result and _code params; emit a command_failed signal or push_warning on non-200. At minimum log the failure so write command errors are observable.",
-      "advocate_verdict": "CONCEDE",
-      "critic_verdict": "REBUT (blocking)"
-    },
-    {
-      "id": 2,
-      "description": "_command_request has no timeout — hung POST stalls entire command queue permanently",
-      "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 47,
-      "severity": "Bug",
-      "blocking": true,
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:47-49", "godot/scripts/autoload/bridge_manager.gd L:39", "godot/scripts/autoload/bridge_manager.gd L:44"],
-      "details": "Add _command_request.timeout = 10 after line 48, consistent with sync request timeouts at L:39 and L:44.",
-      "advocate_verdict": "not raised",
-      "critic_verdict": "new finding in rebuttal"
-    },
-    {
-      "id": 3,
-      "description": "Guard command dispatch against DISCONNECTED state",
-      "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 306,
-      "severity": "Improvement",
-      "blocking": false,
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:306-309"],
-      "details": "In _enqueue_command or _process_next_command, check _connection_state before dispatching. Either hold commands until CONNECTED or emit a command_rejected signal.",
-      "advocate_verdict": "not raised",
-      "critic_verdict": "QUALIFY"
-    },
-    {
-      "id": 4,
-      "description": "Extract task_id from agent.state_changed SSE events",
-      "file": "godot/scripts/autoload/bridge_manager.gd",
-      "line": 247,
-      "severity": "Improvement",
-      "blocking": false,
-      "citations": ["godot/scripts/autoload/bridge_manager.gd L:247-252", "internal/httpbridge/types.go L:72-78"],
-      "details": "Read task_id from data dict in agent.state_changed dispatch. Either add it to the signal signature or update _agent_states to store {state, task_id}. Low urgency — REST re-sync covers the gap.",
-      "advocate_verdict": "CONCEDE",
-      "critic_verdict": "QUALIFY"
-    }
-  ],
-  "dismissed": [
-    {
-      "finding": "F1: Reconnect path dead",
-      "reason": "REBUT — path exists: _process → _update_backoff_timer → _start_reconnect (L:275-285)"
-    },
-    {
-      "finding": "F2: HTTPS/TLS on SSE",
-      "reason": "Real but zero impact — default is http://localhost:8081, no HTTPS use case in spec"
-    },
-    {
-      "finding": "F3: Multi-line SSE data: concat",
-      "reason": "Server (sse.go:69) always emits single-line data: — theoretical only"
-    }
-  ],
-  "pr_amendments": [
-    "Add command_failed signal for write command error observability",
-    "Document command queue behavior during disconnected state"
-  ],
-  "test_command": "go test ./internal/httpbridge/...",
-  "created": "2026-03-30T09:40:00Z"
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-31-133152-council-pr-103-t4-floor-scene-tower-layout.md",
+  "motion": "PR #103 — chore: T4 — Floor scene + tower layout should be merged into feature/86-feature-phase-1-skeleton-tower",
+  "arbiter_verdict": "FOR",
+  "branch": "task/100-task-t4-floor-scene-tower-layout",
+  "fixes": [],
+  "pr_amendments": [],
+  "test_command": "make test",
+  "created": "2026-03-31T13:31:52Z"
 }
