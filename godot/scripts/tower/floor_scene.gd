@@ -64,6 +64,9 @@ func reactivate() -> void:
 
 
 func add_agent_slot(agent_id: String, edge_index: int) -> void:
+	for slot: Dictionary in _agent_slots:
+		if slot["agent_id"] == agent_id:
+			return
 	_agent_slots.append({"agent_id": agent_id, "edge_index": edge_index})
 	if edge_index == _active_edge:
 		_rebuild_interior()
