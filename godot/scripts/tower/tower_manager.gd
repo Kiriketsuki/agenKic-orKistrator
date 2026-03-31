@@ -161,6 +161,8 @@ func _on_floor_removed(floor_name: String) -> void:
 
 
 func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
+	if _agent_assignments.has(agent_data.id):
+		return
 	var floor_name: String = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name, agent_data.current_task_id)
 	assign_agent_to_edge(agent_data.id, floor_name, edge)
