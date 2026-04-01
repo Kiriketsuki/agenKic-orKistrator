@@ -1,3 +1,21 @@
+## 2026-04-01 Handoff (PR #105 T5 council fix loop)
+
+### Decisions
+- Council on PR #105 (T5 Agent character scene): CONDITIONAL — 2 in-PR fixes
+- Fix 1: agent_character.gd:68-69 — clamp STATE_TINTS WORKING/REPORTING to <=1.0 using hue/sat shift
+- Fix 2: agent_character.gd:play_exit_animation — reparent fading node out of _agent_slots_node before tween so _rebuild_interior can't cut it
+- No automated test runner for Godot scripts — manual visual verification only
+
+### Failed Approaches
+- None — fresh fix loop
+
+### Handoff Target
+- Plan file: ~/.claude/plans/encapsulated-petting-umbrella.md
+- Manifest: council-fix-manifest.json
+- Branch: task/102-task-t5-agent-character-scene
+
+---
+
 ## 2026-03-31 Handoff (PR #103 council Round 3 fix loop)
 
 ### Decisions

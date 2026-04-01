@@ -66,8 +66,8 @@ const STATE_BY_NAME: Dictionary = {
 const STATE_TINTS: Dictionary = {
 	AnimState.IDLE:      Color(1.0,  1.0,  1.0,  1.0),
 	AnimState.WALKING:   Color(0.8,  0.9,  1.0,  1.0),
-	AnimState.WORKING:   Color(1.2,  1.2,  0.8,  1.0),
-	AnimState.REPORTING: Color(1.2,  1.1,  0.5,  1.0),
+	AnimState.WORKING:   Color(0.9,  0.95, 0.6,  1.0),
+	AnimState.REPORTING: Color(0.9,  0.85, 0.4,  1.0),
 	AnimState.STUNNED:   Color(0.5,  0.3,  0.3,  0.8),
 }
 
@@ -125,7 +125,11 @@ func get_anim_state() -> AnimState:
 
 
 ## Fade out over 0.4 s then free self. Called by TowerManager on agent.deregistered.
+## Reparents self to the floor root before tweening so concurrent _rebuild_interior
+## calls on _agent_slots_node do not queue_free this node mid-fade.
 func play_exit_animation() -> void:
+	var floor_root: Node = get_parent().get_parent()
+	reparent(floor_root)
 	var tween: Tween = create_tween()
 	tween.tween_property(self, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(queue_free)
