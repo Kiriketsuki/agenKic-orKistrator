@@ -1,78 +1,60 @@
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+# AGENTS.md
 
-This project is indexed by GitNexus as **agenKic-orKistrator** (741 symbols, 1660 relationships, 33 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+## Overview
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+agenKic-orKistrator is a pixel-art AI office orchestrator: a native desktop app where AI agents appear as workers at desks, expose real-time activity, and can be routed across multiple model providers.
 
-## Always Do
+This repository is currently in the research and spike phase. There is no application code yet. Architectural decisions live in `docs/research/`, especially `docs/research/Agentic-Orchestrator-MOC.md`.
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+## Stack
 
-## When Debugging
+- Godot 4 with `godot-xterm` for the desktop UI
+- Go with gRPC for orchestration and IPC
+- Redis Streams and Hashes for durable state
+- tmux or WezTerm Lua for terminal/pane control
+- LiteLLM with a judge-router pattern for multi-model routing
 
-1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
-2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/agenKic-orKistrator/process/{processName}` — trace the full execution flow step by step
-4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
+## Commands
 
-## When Refactoring
+No build, run, or test commands exist yet. Update this file once the Go module and Godot project are scaffolded.
 
-- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review the preview — graph edits are safe, text_search edits need manual review. Then run with `dry_run: false`.
-- **Extracting/Splitting**: MUST run `gitnexus_context({name: "target"})` to see all incoming/outgoing refs, then `gitnexus_impact({target: "target", direction: "upstream"})` to find all external callers before moving code.
-- After any refactor: run `gitnexus_detect_changes({scope: "all"})` to verify only expected files changed.
+## Architecture
 
-## Never Do
+Planned architecture:
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- `cmd/orchestrator/main.go`: supervisor entrypoint
+- `internal/supervisor/`: restart strategies, health probes, supervision tree
+- `internal/agent/`: agent lifecycle and state machine
+- `internal/dag/`: task DAG execution
+- `internal/ipc/`: gRPC services and transport
+- `internal/state/`: Redis-backed state and event storage
+- `internal/gateway/`: LiteLLM gateway, routing, provider adapters
+- `internal/terminal/`: tmux / WezTerm substrate
+- `proto/orchestrator.proto`: API contract
+- `godot/`: Godot desktop client
 
-## Tools Quick Reference
+Key decisions from the research MOC:
 
-| Tool | When to use | Command |
-|------|-------------|---------|
-| `query` | Find code by concept | `gitnexus_query({query: "auth validation"})` |
-| `context` | 360-degree view of one symbol | `gitnexus_context({name: "validateUser"})` |
-| `impact` | Blast radius before editing | `gitnexus_impact({target: "X", direction: "upstream"})` |
-| `detect_changes` | Pre-commit scope check | `gitnexus_detect_changes({scope: "staged"})` |
-| `rename` | Safe multi-file rename | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
-| `cypher` | Custom graph queries | `gitnexus_cypher({query: "MATCH ..."})` |
+- Supervisor/worker plus DAG orchestration
+- gRPC for typed IPC, Redis for durable coordination
+- "Context window = RAM"; persistent state externalized
+- OTP-style supervision over defensive long-lived processes
+- Godot 4 plus `godot-xterm` for the pixel-office UI
+- tmux as the primary terminal substrate
 
-## Impact Risk Levels
+## Active Work
 
-| Depth | Meaning | Action |
-|-------|---------|--------|
-| d=1 | WILL BREAK — direct callers/importers | MUST update these |
-| d=2 | LIKELY AFFECTED — indirect deps | Should test |
-| d=3 | MAY NEED TESTING — transitive | Test if critical path |
+Current work is research-driven:
 
-## Resources
+- Validate Godot 4 plus `godot-xterm` as the desktop UI path
+- Prototype tmux-based multi-agent orchestration with shared Redis state
+- Design the agent state machine and routing algorithm
+- Evaluate Anthropic Agent SDK fit for structured agent-to-agent calls
 
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/agenKic-orKistrator/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/agenKic-orKistrator/clusters` | All functional areas |
-| `gitnexus://repo/agenKic-orKistrator/processes` | All execution flows |
-| `gitnexus://repo/agenKic-orKistrator/process/{name}` | Step-by-step execution trace |
+## Git Workflow
 
-## Self-Check Before Finishing
+All work is issue-driven. Never push directly to `main`.
 
-Before completing any code modification task, verify:
-1. `gitnexus_impact` was run for all modified symbols
-2. No HIGH/CRITICAL risk warnings were ignored
-3. `gitnexus_detect_changes()` confirms changes match expected scope
-4. All d=1 (WILL BREAK) dependents were updated
-
-## CLI
-
-- Re-index: `npx gitnexus analyze`
-- Check freshness: `npx gitnexus status`
-- Generate docs: `npx gitnexus wiki`
-
-<!-- gitnexus:end -->
+- Create an issue first, then work from the generated issue branch
+- Branch types: `epic/*`, `feature/*`, `task/*`, `bug/*`, `hotfix/*`
+- All PRs are squash-merged
