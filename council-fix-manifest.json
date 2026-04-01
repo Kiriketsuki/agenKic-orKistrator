@@ -1,10 +1,30 @@
 {
-  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-03-31-133152-council-pr-103-t4-floor-scene-tower-layout.md",
-  "motion": "PR #103 — chore: T4 — Floor scene + tower layout should be merged into feature/86-feature-phase-1-skeleton-tower",
-  "arbiter_verdict": "FOR",
-  "branch": "task/100-task-t4-floor-scene-tower-layout",
-  "fixes": [],
-  "pr_amendments": [],
-  "test_command": "make test",
-  "created": "2026-03-31T13:31:52Z"
+  "recommendation_file": "/home/kiriketsuki/dev/Personal/agenKic-orKistrator/2026-04-01-094658-council-pr-105-t5-agent-character-scene.md",
+  "motion": "PR #105 (T5 — Agent character scene) is correct and ready to merge into feature/86-feature-phase-1-skeleton-tower",
+  "arbiter_verdict": "CONDITIONAL",
+  "branch": "task/102-task-t5-agent-character-scene",
+  "fixes": [
+    {
+      "id": 1,
+      "description": "Clamp STATE_TINTS values to <=1.0 — WORKING and REPORTING have R/G components of 1.2 which are silently clamped on non-HDR viewports, wasting the brightening intent. Replace with values <=1.0 that achieve visible hue/saturation differentiation instead.",
+      "file": "godot/scripts/agents/agent_character.gd",
+      "line": 68,
+      "severity": "Improvement",
+      "citations": ["godot/scripts/agents/agent_character.gd L:69"]
+    },
+    {
+      "id": 2,
+      "description": "Guard exit animation against concurrent _rebuild_interior calls. _rebuild_interior calls queue_free() on all children unconditionally at floor_scene.gd:136-137, which cuts any mid-fade AgentCharacter node. Fix: in play_exit_animation(), reparent the fading node out of _agent_slots_node (e.g. to the floor root) before starting the tween, so _rebuild_interior never touches it. Remove it from _agent_slots_node in the tween_callback instead.",
+      "file": "godot/scripts/tower/floor_scene.gd",
+      "line": 136,
+      "severity": "Bug",
+      "citations": ["godot/scripts/tower/floor_scene.gd L:136"]
+    }
+  ],
+  "pr_amendments": [
+    "Note that STATE_TINTS values >1.0 were corrected to work on non-HDR viewports.",
+    "Note that exit animation is now guarded against concurrent edge rebuilds."
+  ],
+  "test_command": null,
+  "created": "2026-04-01T02:05:52Z"
 }

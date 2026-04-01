@@ -11,6 +11,10 @@ class AgentData extends RefCounted:
 	var current_task_id: String = ""
 	var last_heartbeat: int = 0
 	var registered_at: int = 0
+	## Floor this agent belongs to. Empty means "assign to default floor".
+	var floor_name: String = ""
+	## One of: alchemist, scribe, archmage, wardkeeper, librarian, enchanter, apprentice.
+	var character_class: String = "apprentice"
 
 	static func from_dict(d: Dictionary) -> AgentData:
 		var a := AgentData.new()
@@ -19,6 +23,8 @@ class AgentData extends RefCounted:
 		a.current_task_id = d.get("current_task_id", "")
 		a.last_heartbeat = d.get("last_heartbeat", 0)
 		a.registered_at = d.get("registered_at", 0)
+		a.floor_name = d.get("floor_name", "")
+		a.character_class = d.get("character_class", "apprentice")
 		return a
 
 

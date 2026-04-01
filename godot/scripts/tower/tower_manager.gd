@@ -32,6 +32,7 @@ func _ready() -> void:
 		bridge.connect("floor_removed", _on_floor_removed)
 		bridge.connect("agent_registered", _on_agent_registered)
 		bridge.connect("agent_state_changed", _on_agent_state_changed)
+		bridge.connect("agent_deregistered", _on_agent_deregistered)
 		bridge.connect("connection_status_changed", _on_connection_status_changed)
 
 
@@ -136,10 +137,15 @@ func _rotate_focused_edge(direction: int) -> void:
 
 # --- Signal Handlers ---
 
-# TODO(dynamic-floor): Non-permanent floors created here will leave stale _agent_assignments
-# entries if removed — _on_floor_removed does not clean _agent_assignments, and the idempotency
-# guard in _on_agent_registered blocks recovery on reconnect. Add cleanup when implementing
-# the dynamic floor lifecycle task.
+# TODO(dynamic-floor): Two known cases where the idempotency guard at _on_agent_registered:169
+# blocks recovery, to be resolved together in the dynamic floor lifecycle task:
+# 1. Floor removal: non-permanent floors leave stale _agent_assignments entries when removed —
+#    _on_floor_removed does not clean _agent_assignments, so reconnect re-registration is silently
+#    dropped for agents that were on the removed floor.
+# 2. Rapid deregister→re-register: _on_agent_deregistered defers _agent_assignments.erase() by
+#    0.45s (exit animation window). If agent.registered fires for the same agent within that window
+#    — e.g., an agent crash-restart under supervision — the guard at line 169 returns early and the
+#    re-registration is permanently lost. The dropped SSE event is not re-emitted by the orchestrator.
 func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	for existing: Node2D in _floors:
 		if existing.get_meta("floor_name", "") == floor_data.name:
@@ -167,13 +173,48 @@ func _on_floor_removed(floor_name: String) -> void:
 func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if _agent_assignments.has(agent_data.id):
 		return
-	var floor_name: String = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
+	var floor_name: String = agent_data.floor_name
+	if floor_name.is_empty() or not _has_floor(floor_name):
+		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
-	assign_agent_to_edge(agent_data.id, floor_name, edge)
+	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class)
 
 
-func _on_agent_state_changed(_agent_id: String, _old_state: String, _new_state: String, _task_id: String) -> void:
-	pass
+func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:
+	var assignment: Dictionary = _agent_assignments.get(agent_id, {})
+	if assignment.is_empty():
+		return
+	var floor_name: String = assignment.get("floor", "")
+	for floor_node: Node2D in _floors:
+		if floor_node.get_meta("floor_name", "") == floor_name:
+			floor_node.update_agent_state(agent_id, new_state)
+			return
+
+
+func _on_agent_deregistered(agent_id: String) -> void:
+	var assignment: Dictionary = _agent_assignments.get(agent_id, {})
+	if assignment.is_empty():
+		_agent_assignments.erase(agent_id)
+		return
+	var floor_name: String = assignment.get("floor", "")
+	for floor_node: Node2D in _floors:
+		if floor_node.get_meta("floor_name", "") == floor_name:
+			var char_node: AgentCharacter = floor_node.get_agent_character(agent_id)
+			if char_node:
+				char_node.play_exit_animation()
+				# Remove slot after exit animation (0.4 s) so rebuild doesn't cull the fading node.
+				var timer: SceneTreeTimer = get_tree().create_timer(0.45)
+				timer.timeout.connect(func() -> void:
+					if is_instance_valid(floor_node):
+						floor_node.remove_agent_slot(agent_id)
+					_agent_assignments.erase(agent_id)
+				)
+			else:
+				# Agent is on a non-active edge — remove immediately.
+				floor_node.remove_agent_slot(agent_id)
+				_agent_assignments.erase(agent_id)
+			return
+	_agent_assignments.erase(agent_id)
 
 
 func _on_connection_status_changed(status: String) -> void:
@@ -186,11 +227,11 @@ func _on_connection_status_changed(status: String) -> void:
 
 # --- Agent Assignment ---
 
-func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int) -> void:
+func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice") -> void:
 	_agent_assignments[agent_id] = {"floor": floor_name, "edge": edge_index}
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
-			floor_node.add_agent_slot(agent_id, edge_index)
+			floor_node.add_agent_slot(agent_id, edge_index, character_class)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
 			return
@@ -212,3 +253,10 @@ func _find_best_edge_for_agent(floor_name: String) -> int:
 			min_count = edge_counts[e]
 			min_edge = e
 	return min_edge
+
+
+func _has_floor(floor_name: String) -> bool:
+	for floor_node: Node2D in _floors:
+		if floor_node.get_meta("floor_name", "") == floor_name:
+			return true
+	return false
