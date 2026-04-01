@@ -1,6 +1,8 @@
 extends Node2D
 ## FloorScene — a single floor in the tower. Manages edge rotation,
-## agent slot rendering, and the ephemeral lifecycle state machine.
+## AgentCharacter spawning, and the ephemeral lifecycle state machine.
+
+const AGENT_CHARACTER_SCENE: PackedScene = preload("res://scenes/agent_character.tscn")
 
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
@@ -11,7 +13,8 @@ enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
 var _state: FloorState = FloorState.ACTIVE
 var _active_edge: int = 0
-var _agent_slots: Array[Dictionary] = []  # [{agent_id, edge_index}]
+## Each entry: {agent_id, edge_index, character_class, state}
+var _agent_slots: Array[Dictionary] = []
 var _linger_timer: float = 0.0
 var _linger_duration: float = 30.0
 
@@ -63,17 +66,24 @@ func reactivate() -> void:
 	modulate.a = 1.0
 
 
-func add_agent_slot(agent_id: String, edge_index: int) -> void:
+func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice") -> void:
 	for slot: Dictionary in _agent_slots:
 		if slot["agent_id"] == agent_id:
 			return
-	_agent_slots.append({"agent_id": agent_id, "edge_index": edge_index})
+	_agent_slots.append({
+		"agent_id": agent_id,
+		"edge_index": edge_index,
+		"character_class": character_class,
+		"state": "idle",
+	})
 	if edge_index == _active_edge:
 		_rebuild_interior()
 
 
 func remove_agent_slot(agent_id: String) -> void:
-	_agent_slots = _agent_slots.filter(func(s: Dictionary) -> bool: return s["agent_id"] != agent_id)
+	_agent_slots = _agent_slots.filter(
+		func(s: Dictionary) -> bool: return s["agent_id"] != agent_id
+	)
 	_rebuild_interior()
 
 
@@ -83,6 +93,31 @@ func get_agent_count_on_edge(edge: int) -> int:
 		if slot["edge_index"] == edge:
 			count += 1
 	return count
+
+
+## Update the stored state for an agent and propagate to its live node if visible.
+func update_agent_state(agent_id: String, state: String) -> void:
+	for slot: Dictionary in _agent_slots:
+		if slot["agent_id"] == agent_id:
+			slot["state"] = state
+			break
+	var char_node: AgentCharacter = get_agent_character(agent_id)
+	if char_node:
+		char_node.set_animation_state(state)
+
+
+## Return the live AgentCharacter node for an agent, or null if not on the active edge.
+func get_agent_character(agent_id: String) -> AgentCharacter:
+	for child: Node in _agent_slots_node.get_children():
+		if child is AgentCharacter and (child as AgentCharacter).agent_id == agent_id:
+			return child as AgentCharacter
+	return null
+
+
+func set_show_interior(visible_flag: bool) -> void:
+	_interior.visible = visible_flag
+	_agent_slots_node.visible = visible_flag
+	_name_label.visible = visible_flag
 
 
 func _rebuild_background() -> void:
@@ -108,15 +143,13 @@ func _rebuild_interior() -> void:
 		return
 	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, 280.0)
 	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), edge_width)
+	# Offset converts EdgeLayout's top-left corner to AgentCharacter's center origin.
+	var center_offset: Vector2 = Vector2(EdgeLayout.DESK_WIDTH / 2.0, EdgeLayout.DESK_HEIGHT / 2.0)
 	for i: int in range(edge_agents.size()):
-		var rect := ColorRect.new()
-		rect.size = Vector2(EdgeLayout.DESK_WIDTH, EdgeLayout.DESK_HEIGHT)
-		rect.position = positions[i]
-		rect.color = Color(0.55, 0.45, 0.25, 1.0)  # warm amber for agent desks
-		_agent_slots_node.add_child(rect)
-
-
-func set_show_interior(visible_flag: bool) -> void:
-	_interior.visible = visible_flag
-	_agent_slots_node.visible = visible_flag
-	_name_label.visible = visible_flag
+		var slot: Dictionary = edge_agents[i]
+		var char_node: AgentCharacter = AGENT_CHARACTER_SCENE.instantiate() as AgentCharacter
+		char_node.agent_id = slot["agent_id"]
+		_agent_slots_node.add_child(char_node)
+		char_node.position = positions[i] + center_offset
+		char_node.set_character_class(slot.get("character_class", "apprentice"))
+		char_node.set_animation_state(slot.get("state", "idle"))

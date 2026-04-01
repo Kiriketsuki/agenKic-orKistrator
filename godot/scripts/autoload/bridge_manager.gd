@@ -4,6 +4,7 @@ extends Node
 
 signal agent_registered(agent_data: BridgeData.AgentData)
 signal agent_state_changed(agent_id: String, old_state: String, new_state: String, task_id: String)
+signal agent_deregistered(agent_id: String)
 signal agent_output(chunk: BridgeData.AgentOutputChunk)
 signal connection_status_changed(status: String)
 signal command_failed(path: String, code: int)
@@ -260,6 +261,11 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			var old_state: String = _agent_states.get(agent_id, "")
 			agent_state_changed.emit(agent_id, old_state, new_state, task_id)
 			_agent_states[agent_id] = new_state
+		"agent.deregistered":
+			var agent_id: String = data.get("agent_id", "")
+			if agent_id != "":
+				_agent_states.erase(agent_id)
+				agent_deregistered.emit(agent_id)
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
 			agent_output.emit(chunk)
