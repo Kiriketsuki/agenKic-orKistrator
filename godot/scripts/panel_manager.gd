@@ -516,6 +516,8 @@ func _save_layout() -> void:
 	var panels: Array[Dictionary] = []
 	for panel_id: String in panels_by_id:
 		var panel: PanelBase = panels_by_id[panel_id]
+		if not panel.agent_id.is_empty():
+			mode_preferences[panel.agent_id] = panel.mode
 		panels.append({
 			"panel_id": panel.panel_id,
 			"agent_id": panel.agent_id,
@@ -554,10 +556,13 @@ func _restore_layout() -> void:
 		var panel_id: String = entry.get("panel_id", "")
 		if panel_id.is_empty():
 			continue
+		var agent_id: String = entry.get("agent_id", "")
+		if not agent_id.is_empty():
+			mode_preferences[agent_id] = entry.get("mode", mode_preferences.get(agent_id, "scroll"))
 		var panel: PanelBase = open_panel(
 			panel_id,
 			entry.get("title", panel_id),
-			entry.get("agent_id", ""),
+			agent_id,
 			entry.get("mode", "scroll")
 		)
 		if floating_by_id.has(panel_id):
