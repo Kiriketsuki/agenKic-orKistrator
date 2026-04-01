@@ -137,10 +137,15 @@ func _rotate_focused_edge(direction: int) -> void:
 
 # --- Signal Handlers ---
 
-# TODO(dynamic-floor): Non-permanent floors created here will leave stale _agent_assignments
-# entries if removed — _on_floor_removed does not clean _agent_assignments, and the idempotency
-# guard in _on_agent_registered blocks recovery on reconnect. Add cleanup when implementing
-# the dynamic floor lifecycle task.
+# TODO(dynamic-floor): Two known cases where the idempotency guard at _on_agent_registered:169
+# blocks recovery, to be resolved together in the dynamic floor lifecycle task:
+# 1. Floor removal: non-permanent floors leave stale _agent_assignments entries when removed —
+#    _on_floor_removed does not clean _agent_assignments, so reconnect re-registration is silently
+#    dropped for agents that were on the removed floor.
+# 2. Rapid deregister→re-register: _on_agent_deregistered defers _agent_assignments.erase() by
+#    0.45s (exit animation window). If agent.registered fires for the same agent within that window
+#    — e.g., an agent crash-restart under supervision — the guard at line 169 returns early and the
+#    re-registration is permanently lost. The dropped SSE event is not re-emitted by the orchestrator.
 func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	for existing: Node2D in _floors:
 		if existing.get_meta("floor_name", "") == floor_data.name:
