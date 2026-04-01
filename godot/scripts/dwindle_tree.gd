@@ -182,6 +182,8 @@ func _restore_node(serialized: Variant, panels_by_id: Dictionary) -> DwindleNode
 		return null
 	var first_child: DwindleNode = _restore_node(children[0], panels_by_id)
 	var second_child: DwindleNode = _restore_node(children[1], panels_by_id)
-	if first_child == null or second_child == null:
-		return null
+	if first_child == null:
+		return second_child
+	if second_child == null:
+		return first_child
 	return DwindleNode.branch(data.get("split", SPLIT_VERTICAL), data.get("ratio", 0.5), first_child, second_child)
