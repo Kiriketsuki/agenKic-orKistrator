@@ -71,12 +71,17 @@ const STATE_TINTS: Dictionary = {
 	AnimState.STUNNED:   Color(0.5,  0.3,  0.3,  0.8),
 }
 
+const FLOATING_RUNE_SCENE: PackedScene = preload("res://scenes/floating_rune.tscn")
+const MAX_RUNES: int = 5
+
 ## Set by the owner (FloorScene) before add_child so it is ready in _ready().
 var agent_id: String = ""
 
 var _character_class: CharacterClass = CharacterClass.APPRENTICE
 var _anim_state: AnimState = AnimState.IDLE
 var _pulse_time: float = 0.0
+var _provider: String = ""
+var _active_runes: Array[Node2D] = []
 
 @onready var _body: ColorRect = $Body
 @onready var _class_label: Label = $ClassLabel
@@ -122,6 +127,35 @@ func set_animation_state(state_name: String) -> void:
 
 func get_anim_state() -> AnimState:
 	return _anim_state
+
+
+func set_provider(p: String) -> void:
+	_provider = p
+
+
+func receive_output(chunk: BridgeData.AgentOutputChunk) -> void:
+	if _anim_state == AnimState.IDLE:
+		return
+	var result: Dictionary = RuneFilter.process(chunk)
+	if not result.get(&"show", false):
+		return
+	var provider: String = chunk.provider if not chunk.provider.is_empty() else _provider
+	if provider.is_empty():
+		provider = "unknown"
+	# Enforce rune cap — accelerate oldest on overflow.
+	if _active_runes.size() >= MAX_RUNES:
+		var oldest: Node2D = _active_runes[0]
+		_active_runes.remove_at(0)
+		if is_instance_valid(oldest) and oldest.has_method("accelerate_fade"):
+			oldest.accelerate_fade()
+	var rune: FloatingRune = FLOATING_RUNE_SCENE.instantiate() as FloatingRune
+	add_child(rune)
+	rune.position = Vector2(0.0, -14.0)
+	rune.setup(result[&"text"], result[&"keywords"], provider)
+	_active_runes.append(rune)
+	rune.tree_exiting.connect(func() -> void:
+		_active_runes.erase(rune)
+	)
 
 
 ## Fade out over 0.4 s then free self. Called by TowerManager on agent.deregistered.

@@ -66,7 +66,7 @@ func reactivate() -> void:
 	modulate.a = 1.0
 
 
-func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice") -> void:
+func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
 	for slot: Dictionary in _agent_slots:
 		if slot["agent_id"] == agent_id:
 			return
@@ -75,6 +75,7 @@ func add_agent_slot(agent_id: String, edge_index: int, character_class: String =
 		"edge_index": edge_index,
 		"character_class": character_class,
 		"state": "idle",
+		"provider": provider,
 	})
 	if edge_index == _active_edge:
 		_rebuild_interior()
@@ -153,3 +154,4 @@ func _rebuild_interior() -> void:
 		char_node.position = positions[i] + center_offset
 		char_node.set_character_class(slot.get("character_class", "apprentice"))
 		char_node.set_animation_state(slot.get("state", "idle"))
+		char_node.set_provider(slot.get("provider", ""))

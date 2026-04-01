@@ -33,6 +33,7 @@ func _ready() -> void:
 		bridge.connect("agent_registered", _on_agent_registered)
 		bridge.connect("agent_state_changed", _on_agent_state_changed)
 		bridge.connect("agent_deregistered", _on_agent_deregistered)
+		bridge.connect("agent_output", _on_agent_output)
 		bridge.connect("connection_status_changed", _on_connection_status_changed)
 
 
@@ -177,7 +178,7 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if floor_name.is_empty() or not _has_floor(floor_name):
 		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
-	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class)
+	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class, agent_data.provider)
 
 
 func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:
@@ -217,21 +218,35 @@ func _on_agent_deregistered(agent_id: String) -> void:
 	_agent_assignments.erase(agent_id)
 
 
+func _on_agent_output(chunk: BridgeData.AgentOutputChunk) -> void:
+	var assignment: Dictionary = _agent_assignments.get(chunk.agent_id, {})
+	if assignment.is_empty():
+		return
+	var floor_name: String = assignment.get("floor", "")
+	for floor_node: Node2D in _floors:
+		if floor_node.get_meta("floor_name", "") == floor_name:
+			var char_node: AgentCharacter = floor_node.get_agent_character(chunk.agent_id)
+			if char_node:
+				char_node.receive_output(chunk)
+			return
+
+
 func _on_connection_status_changed(status: String) -> void:
 	match status:
 		"disconnected", "reconnecting":
 			modulate = Color(0.6, 0.6, 0.7, 1.0)
 		"connected":
 			modulate = Color(1.0, 1.0, 1.0, 1.0)
+			RuneFilter.reset_rate_limits()
 
 
 # --- Agent Assignment ---
 
-func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice") -> void:
+func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
 	_agent_assignments[agent_id] = {"floor": floor_name, "edge": edge_index}
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
-			floor_node.add_agent_slot(agent_id, edge_index, character_class)
+			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
 			return
