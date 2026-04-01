@@ -20,6 +20,7 @@ var panels_by_id: Dictionary = {}
 
 var _dragging_master_boundary: bool = false
 var _last_layout: Dictionary = {}
+var _active_preview_side: String = ""
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -75,8 +76,9 @@ func close_panel(panel_id: String) -> void:
 
 
 func focus_panel(panel: PanelBase) -> void:
-	if panel.get_parent() == _floating_layer:
-		_floating_layer.move_child(panel, _floating_layer.get_child_count() - 1)
+	var parent: Node = panel.get_parent()
+	if parent is Control:
+		(parent as Control).move_child(panel, parent.get_child_count() - 1)
 
 
 func has_panel(panel_id: String) -> bool:
@@ -98,6 +100,15 @@ func _wire_panel(panel: PanelBase) -> void:
 	)
 	panel.close_requested.connect(func(p: PanelBase) -> void:
 		close_panel(p.panel_id)
+	)
+	panel.drag_started.connect(func(p: PanelBase) -> void:
+		_on_panel_drag_started(p)
+	)
+	panel.drag_moved.connect(func(p: PanelBase, rect: Rect2) -> void:
+		_on_panel_drag_moved(p, rect)
+	)
+	panel.drag_finished.connect(func(p: PanelBase, rect: Rect2) -> void:
+		_on_panel_drag_finished(p, rect)
 	)
 
 
@@ -136,6 +147,7 @@ func _input(event: InputEvent) -> void:
 func _refresh_layout() -> void:
 	_last_layout = _compute_regions()
 	_apply_regions(_last_layout)
+	_layout_docked_panels()
 	master_region_changed.emit(_last_layout.get("master", Rect2()))
 
 
@@ -172,14 +184,15 @@ func _compute_regions() -> Dictionary:
 func _apply_regions(regions: Dictionary) -> void:
 	var left_rect: Rect2 = regions.get("left", Rect2())
 	var right_rect: Rect2 = regions.get("right", Rect2())
+	var viewport_size: Vector2 = get_viewport_rect().size
 	_left_zone.position = left_rect.position
 	_left_zone.size = left_rect.size
 	_right_zone.position = right_rect.position
 	_right_zone.size = right_rect.size
 	_left_preview.position = Vector2.ZERO
-	_left_preview.size = Vector2(minf(DOCK_PREVIEW_WIDTH, size.x), size.y)
-	_right_preview.position = Vector2(maxf(size.x - DOCK_PREVIEW_WIDTH, 0.0), 0.0)
-	_right_preview.size = Vector2(minf(DOCK_PREVIEW_WIDTH, size.x), size.y)
+	_left_preview.size = Vector2(minf(DOCK_PREVIEW_WIDTH, viewport_size.x), viewport_size.y)
+	_right_preview.position = Vector2(maxf(viewport_size.x - DOCK_PREVIEW_WIDTH, 0.0), 0.0)
+	_right_preview.size = Vector2(minf(DOCK_PREVIEW_WIDTH, viewport_size.x), viewport_size.y)
 	_left_divider.visible = left_rect.size.x > 0.0
 	_right_divider.visible = right_rect.size.x > 0.0
 	if _left_divider.visible:
@@ -217,3 +230,98 @@ func _default_floating_position(index: int) -> Vector2:
 	var base: Vector2 = viewport_size * Vector2(0.56, 0.16)
 	var offset: Vector2 = Vector2(28.0 * index, 24.0 * index)
 	return base + offset
+
+
+func _on_panel_drag_started(panel: PanelBase) -> void:
+	focus_panel(panel)
+	if panel.state != PanelBase.PanelState.DOCKED:
+		return
+	var docked_side: String = panel.dock_side
+	_remove_panel_from_trees(panel.panel_id)
+	_reparent_preserving_global(panel, _floating_layer)
+	panel.set_panel_state(PanelBase.PanelState.UNDOCKING)
+	panel.dock_side = ""
+	panel.play_undock_animation()
+	_refresh_layout()
+	_show_preview_for_side(docked_side)
+
+
+func _on_panel_drag_moved(_panel: PanelBase, rect: Rect2) -> void:
+	_show_preview_for_side(_dock_side_for_rect(rect))
+
+
+func _on_panel_drag_finished(panel: PanelBase, rect: Rect2) -> void:
+	var target_side: String = _dock_side_for_rect(rect)
+	_show_preview_for_side("")
+	if target_side.is_empty():
+		panel.set_panel_state(PanelBase.PanelState.FLOATING)
+		return
+	_dock_panel(panel, target_side)
+
+
+func _dock_panel(panel: PanelBase, side: String) -> void:
+	_remove_panel_from_trees(panel.panel_id)
+	panel.remember_restore_rect()
+	panel.set_panel_state(PanelBase.PanelState.DOCKING)
+	if side == "left":
+		left_tree.insert_panel(panel)
+		_reparent_preserving_global(panel, _left_zone)
+	else:
+		right_tree.insert_panel(panel)
+		_reparent_preserving_global(panel, _right_zone)
+	panel.dock_side = side
+	_refresh_layout()
+
+
+func _layout_docked_panels() -> void:
+	_apply_tree_layout(left_tree, _left_zone)
+	_apply_tree_layout(right_tree, _right_zone)
+
+
+func _apply_tree_layout(tree: DwindleTree, zone: Control) -> void:
+	if tree.is_empty():
+		return
+	var solved: Dictionary = tree.layout(Rect2(Vector2.ZERO, zone.size))
+	for panel_id: String in solved:
+		if not panels_by_id.has(panel_id):
+			continue
+		var panel: PanelBase = panels_by_id[panel_id]
+		if panel.get_parent() != zone:
+			_reparent_preserving_global(panel, zone)
+		_tween_panel_to_rect(panel, solved[panel_id], true)
+
+
+func _tween_panel_to_rect(panel: PanelBase, target_rect: Rect2, docked: bool) -> void:
+	var tween: Tween = create_tween().set_parallel(true)
+	tween.tween_property(panel, "position", target_rect.position, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(panel, "size", target_rect.size, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	if docked:
+		tween.finished.connect(func() -> void:
+			panel.set_docked(panel.dock_side)
+		)
+
+
+func _dock_side_for_rect(rect: Rect2) -> String:
+	var viewport_width: float = get_viewport_rect().size.x
+	if rect.position.x <= DOCK_PREVIEW_WIDTH:
+		return "left"
+	if rect.end.x >= viewport_width - DOCK_PREVIEW_WIDTH:
+		return "right"
+	return ""
+
+
+func _show_preview_for_side(side: String) -> void:
+	_active_preview_side = side
+	_left_preview.visible = side == "left"
+	_right_preview.visible = side == "right"
+
+
+func _remove_panel_from_trees(panel_id: String) -> void:
+	left_tree.remove_panel(panel_id)
+	right_tree.remove_panel(panel_id)
+
+
+func _reparent_preserving_global(panel: PanelBase, new_parent: Control) -> void:
+	var global_rect: Rect2 = panel.get_global_rect()
+	panel.reparent(new_parent)
+	panel.global_position = global_rect.position
