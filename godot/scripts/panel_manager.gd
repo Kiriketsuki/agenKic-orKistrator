@@ -17,6 +17,7 @@ var master_ratio: float = MASTER_RATIO_DEFAULT
 var left_tree: DwindleTree = DwindleTree.new("left")
 var right_tree: DwindleTree = DwindleTree.new("right")
 var panels_by_id: Dictionary = {}
+var mode_preferences: Dictionary = {}
 
 var _dragging_master_boundary: bool = false
 var _last_layout: Dictionary = {}
@@ -24,6 +25,8 @@ var _active_preview_side: String = ""
 var _fullscreen_panel: PanelBase = null
 var _active_panel: PanelBase = null
 var _panels_hidden: bool = false
+var _restoring_layout: bool = false
+var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -50,6 +53,7 @@ func _ready() -> void:
 		master_region_changed.connect(func(region: Rect2) -> void:
 			_tower_manager.call("set_master_region", region)
 		)
+	_restore_layout()
 	_refresh_layout()
 
 
@@ -62,13 +66,14 @@ func open_panel(panel_id: String, title: String, agent_id: String = "", preferre
 	panel.panel_id = panel_id
 	panel.agent_id = agent_id
 	panel.set_panel_title(title)
-	panel.set_mode(preferred_mode)
+	panel.set_mode(mode_preferences.get(agent_id, preferred_mode) if not agent_id.is_empty() else preferred_mode)
 	panel.position = _default_floating_position(panels_by_id.size())
 	_floating_layer.add_child(panel)
 	panel.size = Vector2(maxf(420.0, panel.custom_minimum_size.x), maxf(280.0, panel.custom_minimum_size.y))
 	_wire_panel(panel)
 	panels_by_id[panel_id] = panel
 	focus_panel(panel)
+	_save_layout()
 	return panel
 
 
@@ -86,6 +91,7 @@ func close_panel(panel_id: String) -> void:
 	panels_by_id.erase(panel_id)
 	panel.queue_free()
 	_refresh_layout()
+	_save_layout()
 
 
 func focus_panel(panel: PanelBase) -> void:
@@ -129,6 +135,11 @@ func _wire_panel(panel: PanelBase) -> void:
 	)
 	panel.restore_requested.connect(func(p: PanelBase) -> void:
 		_restore_fullscreen(p)
+	)
+	panel.mode_changed.connect(func(p: PanelBase, next_mode: String) -> void:
+		if not p.agent_id.is_empty():
+			mode_preferences[p.agent_id] = next_mode
+		_save_layout()
 	)
 
 
@@ -234,6 +245,7 @@ func _update_master_ratio_from_pointer(side: String, pointer_x: float) -> void:
 		normalized = pointer_x / viewport_width
 	master_ratio = _snapped_master_ratio(clampf(normalized, MASTER_RATIO_MIN, MASTER_RATIO_MAX))
 	_refresh_layout()
+	_save_layout()
 
 
 func _snapped_master_ratio(value: float) -> float:
@@ -311,6 +323,7 @@ func _dock_panel(panel: PanelBase, side: String) -> void:
 		_reparent_preserving_global(panel, _right_zone)
 	panel.dock_side = side
 	_refresh_layout()
+	_save_layout()
 
 
 func _layout_docked_panels() -> void:
@@ -433,3 +446,76 @@ func reset_layout() -> void:
 	_show_preview_for_side("")
 	_dimmer.visible = false
 	_refresh_layout()
+	_save_layout()
+
+
+func _save_layout() -> void:
+	if _restoring_layout:
+		return
+	var floating: Array[Dictionary] = []
+	var panels: Array[Dictionary] = []
+	for panel_id: String in panels_by_id:
+		var panel: PanelBase = panels_by_id[panel_id]
+		panels.append({
+			"panel_id": panel.panel_id,
+			"agent_id": panel.agent_id,
+			"title": panel.panel_title,
+			"mode": panel.mode,
+		})
+		if panel.dock_side.is_empty():
+			floating.append({
+				"panel_id": panel.panel_id,
+				"mode": panel.mode,
+				"position": [panel.position.x, panel.position.y],
+				"size": [panel.size.x, panel.size.y],
+			})
+	var data: Dictionary = {
+		"master_ratio": master_ratio,
+		"left_zone": left_tree.serialize(),
+		"right_zone": right_tree.serialize(),
+		"floating": floating,
+		"panels": panels,
+		"mode_preferences": mode_preferences.duplicate(true),
+	}
+	_layout_persistence.save(data)
+
+
+func _restore_layout() -> void:
+	var data: Dictionary = _layout_persistence.load()
+	if data.is_empty():
+		return
+	_restoring_layout = true
+	mode_preferences = data.get("mode_preferences", {}).duplicate(true)
+	master_ratio = data.get("master_ratio", MASTER_RATIO_DEFAULT)
+	var floating_by_id: Dictionary = {}
+	for entry: Dictionary in data.get("floating", []):
+		floating_by_id[entry.get("panel_id", "")] = entry
+	for entry: Dictionary in data.get("panels", []):
+		var panel_id: String = entry.get("panel_id", "")
+		if panel_id.is_empty():
+			continue
+		var panel: PanelBase = open_panel(
+			panel_id,
+			entry.get("title", panel_id),
+			entry.get("agent_id", ""),
+			entry.get("mode", "scroll")
+		)
+		if floating_by_id.has(panel_id):
+			var floating_entry: Dictionary = floating_by_id[panel_id]
+			var position_values: Array = floating_entry.get("position", [panel.position.x, panel.position.y])
+			var size_values: Array = floating_entry.get("size", [panel.size.x, panel.size.y])
+			panel.position = Vector2(position_values[0], position_values[1])
+			panel.size = Vector2(size_values[0], size_values[1])
+			panel.set_panel_state(PanelBase.PanelState.FLOATING)
+	var panels_lookup: Dictionary = {}
+	for panel_id: String in panels_by_id:
+		panels_lookup[panel_id] = panels_by_id[panel_id]
+	left_tree.restore(data.get("left_zone", null), panels_lookup)
+	right_tree.restore(data.get("right_zone", null), panels_lookup)
+	for panel_id: String in left_tree.panel_ids():
+		if panels_by_id.has(panel_id):
+			panels_by_id[panel_id].dock_side = "left"
+	for panel_id: String in right_tree.panel_ids():
+		if panels_by_id.has(panel_id):
+			panels_by_id[panel_id].dock_side = "right"
+	_restoring_layout = false
