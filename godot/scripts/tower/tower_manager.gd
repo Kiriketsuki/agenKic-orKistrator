@@ -8,7 +8,7 @@ const ADJACENT_SCALE: float = 0.4
 const ZOOM_MIN: float = 0.5
 const ZOOM_MAX: float = 2.0
 const ZOOM_STEP: float = 0.1
-const MAX_QUEUE_SIZE: int = 3
+const MAX_QUEUE_SIZE: int = 2
 
 @export var config_path: String = "res://config/tower.json"
 
@@ -52,10 +52,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rotate_focused_edge(1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("scroll_up"):
-		_scroll_focus(-1)
+		_scroll_focus(1)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("scroll_down"):
-		_scroll_focus(1)
+		_scroll_focus(-1)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
@@ -64,13 +64,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				if mb.ctrl_pressed:
 					_zoom(-ZOOM_STEP)
 				else:
-					_scroll_focus(-1)
+					_scroll_focus(1)
 				get_viewport().set_input_as_handled()
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.ctrl_pressed:
 					_zoom(ZOOM_STEP)
 				else:
-					_scroll_focus(1)
+					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()
 
 
@@ -136,6 +136,7 @@ func _scroll_focus(direction: int) -> void:
 		return
 	var new_index: int = _focused_index + direction
 	if new_index < 0 or new_index >= _floors.size():
+		_input_queue.clear()
 		_elastic_overscroll(direction)
 		return
 	if _scroll_tween != null and _scroll_tween.is_running():
