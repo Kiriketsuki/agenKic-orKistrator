@@ -2,6 +2,7 @@ extends Node2D
 ## TowerExterior — draws procedural roof and base polygons.
 
 var _polygon_sides: int = 6
+var _tower_radius: float = 44.0
 var _roof_polygon: Polygon2D
 var _base_polygon: Polygon2D
 
@@ -15,23 +16,25 @@ func _ready() -> void:
 	add_child(_base_polygon)
 
 
-func configure(polygon_sides: int, tower_height: float) -> void:
+func configure(polygon_sides: int, tower_height: float, tower_radius: float = 44.0) -> void:
 	_polygon_sides = polygon_sides
+	_tower_radius = tower_radius
 	_draw_roof(tower_height)
 	_draw_base()
 
 
 func _draw_roof(tower_top_y: float) -> void:
-	var points: PackedVector2Array = _regular_polygon_points(30.0)
-	var offset := Vector2(0.0, tower_top_y - 30.0)
+	var roof_radius: float = _tower_radius * 0.78
+	var points: PackedVector2Array = _regular_polygon_points(roof_radius)
+	var offset := Vector2(0.0, tower_top_y - roof_radius)
 	for i: int in range(points.size()):
 		points[i] += offset
 	_roof_polygon.polygon = points
 
 
 func _draw_base() -> void:
-	var points: PackedVector2Array = _regular_polygon_points(40.0)
-	var offset := Vector2(0.0, 30.0)
+	var points: PackedVector2Array = _regular_polygon_points(_tower_radius)
+	var offset := Vector2(0.0, _tower_radius * 0.75)
 	for i: int in range(points.size()):
 		points[i] += offset
 	_base_polygon.polygon = points
