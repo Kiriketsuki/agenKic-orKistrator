@@ -17,6 +17,7 @@ enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
 var _connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var _agent_states: Dictionary = {}
+var _agents: Dictionary = {}
 var _floors: Array[BridgeData.FloorData] = []
 var _sse_client: HTTPClient
 var _sse_buffer: String = ""
@@ -109,11 +110,13 @@ func _on_agents_synced(result: int, code: int, _headers: PackedStringArray, body
 	if not agents_array is Array:
 		_on_initial_sync_failed()
 		return
+	_agents.clear()
 	for item: Variant in (agents_array as Array):
 		if not item is Dictionary:
 			continue
 		var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(item as Dictionary)
 		_agent_states[agent.id] = agent.state
+		_agents[agent.id] = agent
 		agent_registered.emit(agent)
 	_agents_synced = true
 	_check_initial_sync_complete()
@@ -253,18 +256,22 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 		"agent.registered":
 			var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(data)
 			_agent_states[agent.id] = agent.state
+			_agents[agent.id] = agent
 			agent_registered.emit(agent)
 		"agent.state_changed":
 			var agent_id: String = data.get("agent_id", "")
 			var new_state: String = data.get("state", "")
 			var task_id: String = data.get("task_id", "")
 			var old_state: String = _agent_states.get(agent_id, "")
+			if _agents.has(agent_id):
+				_agents[agent_id].state = new_state
 			agent_state_changed.emit(agent_id, old_state, new_state, task_id)
 			_agent_states[agent_id] = new_state
 		"agent.deregistered":
 			var agent_id: String = data.get("agent_id", "")
 			if agent_id != "":
 				_agent_states.erase(agent_id)
+				_agents.erase(agent_id)
 				agent_deregistered.emit(agent_id)
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
@@ -363,3 +370,10 @@ func _on_command_completed(result: int, code: int, _headers: PackedStringArray, 
 		command_failed.emit(_inflight_path, code)
 	_command_in_flight = false
 	_process_next_command()
+
+
+func get_registered_agents() -> Array[BridgeData.AgentData]:
+	var agents: Array[BridgeData.AgentData] = []
+	for agent_id: String in _agents:
+		agents.append(_agents[agent_id])
+	return agents

@@ -1,6 +1,8 @@
 extends Node2D
 ## TowerManager — fisheye layout engine, floor ordering, scroll/zoom, signal routing.
 
+signal agent_panel_requested(agent_id: String)
+
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
@@ -102,6 +104,9 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.is_permanent = permanent
 	instance.polygon_sides = _config.polygon_sides
 	instance.set_meta("floor_name", floor_name)
+	instance.agent_clicked.connect(func(agent_id: String) -> void:
+		agent_panel_requested.emit(agent_id)
+	)
 	_floors_container.add_child(instance)
 	return instance
 

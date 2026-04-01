@@ -27,6 +27,7 @@ var _active_panel: PanelBase = null
 var _panels_hidden: bool = false
 var _restoring_layout: bool = false
 var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
+var _agent_list: Dictionary = {}
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -37,6 +38,10 @@ var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
 @onready var _left_divider: ColorRect = $Dividers/LeftDivider
 @onready var _right_divider: ColorRect = $Dividers/RightDivider
 @onready var _tower_manager: Node = get_node_or_null("../../Tower")
+@onready var _bridge_manager: Node = get_node_or_null("/root/BridgeManager")
+@onready var _panel_menu_button: Button = $PanelMenuButton
+@onready var _panel_menu_popup: PopupPanel = $PanelMenuPopup
+@onready var _panel_menu_list: ItemList = $PanelMenuPopup/PanelList
 
 
 func _ready() -> void:
@@ -53,6 +58,19 @@ func _ready() -> void:
 		master_region_changed.connect(func(region: Rect2) -> void:
 			_tower_manager.call("set_master_region", region)
 		)
+	if _tower_manager != null and _tower_manager.has_signal("agent_panel_requested"):
+		_tower_manager.connect("agent_panel_requested", _open_agent_panel)
+	if _bridge_manager != null:
+		if _bridge_manager.has_signal("agent_registered"):
+			_bridge_manager.connect("agent_registered", _on_agent_registered)
+		if _bridge_manager.has_signal("agent_deregistered"):
+			_bridge_manager.connect("agent_deregistered", _on_agent_deregistered)
+		if _bridge_manager.has_method("get_registered_agents"):
+			for agent_data: BridgeData.AgentData in _bridge_manager.get_registered_agents():
+				_agent_list[agent_data.id] = agent_data
+	_panel_menu_button.pressed.connect(_toggle_panel_menu)
+	_panel_menu_list.item_selected.connect(_on_panel_menu_item_selected)
+	_rebuild_panel_menu()
 	_restore_layout()
 	_refresh_layout()
 
@@ -282,6 +300,9 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	elif event.is_action_pressed("reset_panel_layout"):
 		reset_layout()
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_panel_menu"):
+		_toggle_panel_menu()
+		get_viewport().set_input_as_handled()
 
 
 func _on_panel_drag_started(panel: PanelBase) -> void:
@@ -447,6 +468,45 @@ func reset_layout() -> void:
 	_dimmer.visible = false
 	_refresh_layout()
 	_save_layout()
+
+
+func _open_agent_panel(agent_id: String) -> void:
+	var title: String = "Agent %s" % agent_id
+	open_panel("agent:%s" % agent_id, title, agent_id, mode_preferences.get(agent_id, "scroll"))
+
+
+func _toggle_panel_menu() -> void:
+	if _panel_menu_popup.visible:
+		_panel_menu_popup.hide()
+		return
+	_rebuild_panel_menu()
+	_panel_menu_popup.popup(Rect2i(Vector2i(get_viewport_rect().size.x - 300, 48), Vector2i(280, 320)))
+
+
+func _rebuild_panel_menu() -> void:
+	_panel_menu_list.clear()
+	var agent_ids: Array[String] = []
+	for agent_id: String in _agent_list:
+		agent_ids.append(agent_id)
+	agent_ids.sort()
+	for agent_id: String in agent_ids:
+		_panel_menu_list.add_item(agent_id)
+
+
+func _on_panel_menu_item_selected(index: int) -> void:
+	var agent_id: String = _panel_menu_list.get_item_text(index)
+	_panel_menu_popup.hide()
+	_open_agent_panel(agent_id)
+
+
+func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
+	_agent_list[agent_data.id] = agent_data
+	_rebuild_panel_menu()
+
+
+func _on_agent_deregistered(agent_id: String) -> void:
+	_agent_list.erase(agent_id)
+	_rebuild_panel_menu()
 
 
 func _save_layout() -> void:

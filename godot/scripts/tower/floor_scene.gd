@@ -2,6 +2,8 @@ extends Node2D
 ## FloorScene — a single floor in the tower. Manages edge rotation,
 ## AgentCharacter spawning, and the ephemeral lifecycle state machine.
 
+signal agent_clicked(agent_id: String)
+
 const AGENT_CHARACTER_SCENE: PackedScene = preload("res://scenes/agent_character.tscn")
 
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
@@ -163,3 +165,6 @@ func _rebuild_interior() -> void:
 		char_node.set_character_class(slot.get("character_class", "apprentice"))
 		char_node.set_animation_state(slot.get("state", "idle"))
 		char_node.set_provider(slot.get("provider", ""))
+		char_node.character_clicked.connect(func(agent_id: String) -> void:
+			agent_clicked.emit(agent_id)
+		)
