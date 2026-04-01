@@ -237,6 +237,7 @@ func _on_connection_status_changed(status: String) -> void:
 			modulate = Color(0.6, 0.6, 0.7, 1.0)
 		"connected":
 			modulate = Color(1.0, 1.0, 1.0, 1.0)
+			RuneFilter.reset_rate_limits()
 
 
 # --- Agent Assignment ---

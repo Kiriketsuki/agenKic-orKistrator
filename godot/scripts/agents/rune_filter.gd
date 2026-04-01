@@ -167,15 +167,18 @@ static func _truncate(text: String, keywords: PackedStringArray) -> String:
 
 	var cut: int = MAX_CHARS
 
-	# Extend cut point if it falls inside a keyword
+	# Extend cut point if it falls inside a keyword (scan all occurrences, not just first)
 	for kw: String in keywords:
-		var pos: int = text.find(kw)
-		if pos == -1:
-			continue
-		var kw_end: int = pos + kw.length()
-		if pos < cut and kw_end > cut:
-			# Cutting here would split this keyword — extend
-			cut = kw_end
+		var search_pos: int = 0
+		while true:
+			var pos: int = text.findn(kw, search_pos)
+			if pos == -1:
+				break
+			var kw_end: int = pos + kw.length()
+			if pos < cut and kw_end > cut:
+				# Cutting here would split this keyword — extend
+				cut = kw_end
+			search_pos = pos + 1
 
 	if cut >= text.length():
 		return text
