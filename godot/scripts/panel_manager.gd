@@ -21,6 +21,7 @@ var panels_by_id: Dictionary = {}
 var _dragging_master_boundary: bool = false
 var _last_layout: Dictionary = {}
 var _active_preview_side: String = ""
+var _fullscreen_panel: PanelBase = null
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -114,6 +115,12 @@ func _wire_panel(panel: PanelBase) -> void:
 	)
 	panel.drag_finished.connect(func(p: PanelBase, rect: Rect2) -> void:
 		_on_panel_drag_finished(p, rect)
+	)
+	panel.fullscreen_requested.connect(func(p: PanelBase) -> void:
+		_enter_fullscreen(p)
+	)
+	panel.restore_requested.connect(func(p: PanelBase) -> void:
+		_restore_fullscreen(p)
 	)
 
 
@@ -291,6 +298,8 @@ func _apply_tree_layout(tree: DwindleTree, zone: Control) -> void:
 		if not panels_by_id.has(panel_id):
 			continue
 		var panel: PanelBase = panels_by_id[panel_id]
+		if panel == _fullscreen_panel:
+			continue
 		if panel.get_parent() != zone:
 			_reparent_preserving_global(panel, zone)
 		_tween_panel_to_rect(panel, solved[panel_id], true)
@@ -330,3 +339,43 @@ func _reparent_preserving_global(panel: PanelBase, new_parent: Control) -> void:
 	var global_rect: Rect2 = panel.get_global_rect()
 	panel.reparent(new_parent)
 	panel.global_position = global_rect.position
+
+
+func _enter_fullscreen(panel: PanelBase) -> void:
+	if _fullscreen_panel != null and _fullscreen_panel != panel:
+		_restore_fullscreen(_fullscreen_panel)
+	panel.previous_state = panel.state
+	panel.remember_restore_rect()
+	_fullscreen_panel = panel
+	_dimmer.visible = true
+	_dimmer.color.a = 0.0
+	_reparent_preserving_global(panel, _floating_layer)
+	panel.set_panel_state(PanelBase.PanelState.FULLSCREEN)
+	focus_panel(panel)
+	var viewport_rect: Rect2 = get_viewport_rect()
+	var tween: Tween = create_tween().set_parallel(true)
+	tween.tween_property(_dimmer, "color:a", 0.45, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(panel, "position", viewport_rect.position, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(panel, "size", viewport_rect.size, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+func _restore_fullscreen(panel: PanelBase) -> void:
+	if _fullscreen_panel != panel:
+		return
+	_fullscreen_panel = null
+	var tween: Tween = create_tween()
+	tween.tween_property(_dimmer, "color:a", 0.0, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.finished.connect(func() -> void:
+		_dimmer.visible = false
+	)
+	if panel.previous_state == PanelBase.PanelState.DOCKED and not panel.dock_side.is_empty():
+		panel.set_panel_state(PanelBase.PanelState.DOCKED)
+		if panel.dock_side == "left":
+			_reparent_preserving_global(panel, _left_zone)
+		else:
+			_reparent_preserving_global(panel, _right_zone)
+		_refresh_layout()
+		return
+	_reparent_preserving_global(panel, _floating_layer)
+	panel.set_panel_state(PanelBase.PanelState.FLOATING)
+	_tween_panel_to_rect(panel, panel.restore_rect, false)
