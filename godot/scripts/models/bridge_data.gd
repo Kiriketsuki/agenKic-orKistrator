@@ -15,6 +15,8 @@ class AgentData extends RefCounted:
 	var floor_name: String = ""
 	## One of: alchemist, scribe, archmage, wardkeeper, librarian, enchanter, apprentice.
 	var character_class: String = "apprentice"
+	## LLM provider: claude, gemini, openai, ollama, deepseek, or empty.
+	var provider: String = ""
 
 	static func from_dict(d: Dictionary) -> AgentData:
 		var a := AgentData.new()
@@ -25,6 +27,7 @@ class AgentData extends RefCounted:
 		a.registered_at = d.get("registered_at", 0)
 		a.floor_name = d.get("floor_name", "")
 		a.character_class = d.get("character_class", "apprentice")
+		a.provider = d.get("provider", "")
 		return a
 
 
@@ -47,10 +50,16 @@ class AgentOutputChunk extends RefCounted:
 	var agent_id: String = ""
 	var payload: String = ""
 	var timestamp: int = 0
+	## Per-output provider override. Empty = use agent default.
+	var provider: String = ""
+	## Orchestrator hint: true = always show as rune.
+	var significant: bool = false
 
 	static func from_dict(d: Dictionary) -> AgentOutputChunk:
 		var c := AgentOutputChunk.new()
 		c.agent_id = d.get("agent_id", "")
 		c.payload = d.get("payload", "")
 		c.timestamp = d.get("timestamp", 0)
+		c.provider = d.get("provider", "")
+		c.significant = d.get("significant", false)
 		return c
