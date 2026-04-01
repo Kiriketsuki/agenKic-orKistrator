@@ -27,6 +27,8 @@ const _LIFETIME: float = 7.0
 const _RISE_SPEED: float = 8.0
 const _DRIFT_AMPLITUDE: float = 4.0
 
+static var _glow_shader: Shader
+
 @onready var _label: RichTextLabel = $Label
 
 var _elapsed: float = 0.0
@@ -53,14 +55,19 @@ func setup(text: String, keywords: PackedStringArray, provider: String) -> void:
 	var bbcode: String = _build_bbcode(text, keywords, base_hex, keyword_hex)
 	_label.text = bbcode
 
-	var shader: Shader = Shader.new()
-	shader.code = _GLOW_SHADER_CODE
+	if _glow_shader == null:
+		_glow_shader = Shader.new()
+		_glow_shader.code = _GLOW_SHADER_CODE
 
 	_shader_material = ShaderMaterial.new()
-	_shader_material.shader = shader
+	_shader_material.shader = _glow_shader
 	_shader_material.set_shader_parameter("glow_color", keyword_color)
 	_shader_material.set_shader_parameter("glow_intensity", 0.6)
 	_label.material = _shader_material
+
+
+static func _escape_bbcode(raw: String) -> String:
+	return raw.replace("[", "[lb]")
 
 
 func _build_bbcode(
@@ -70,9 +77,9 @@ func _build_bbcode(
 	keyword_hex: String
 ) -> String:
 	if keywords.is_empty():
-		return "[color=#%s]%s[/color]" % [base_hex, text]
+		return "[color=#%s]%s[/color]" % [base_hex, _escape_bbcode(text)]
 
-	# Find all keyword ranges, sorted by position
+	# Find all keyword ranges, sorted by position (search on raw text)
 	var ranges: Array = []
 	for kw in keywords:
 		if kw.is_empty():
@@ -86,7 +93,7 @@ func _build_bbcode(
 			search_pos = idx + kw.length()
 
 	if ranges.is_empty():
-		return "[color=#%s]%s[/color]" % [base_hex, text]
+		return "[color=#%s]%s[/color]" % [base_hex, _escape_bbcode(text)]
 
 	# Sort by start position
 	ranges.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -101,17 +108,17 @@ func _build_bbcode(
 		else:
 			merged.append(r.duplicate())
 
-	# Build BBCode string
+	# Build BBCode string — escape each text segment individually
 	var result: String = ""
 	var cursor: int = 0
 	for r in merged:
 		if cursor < r["start"]:
-			result += "[color=#%s]%s[/color]" % [base_hex, text.substr(cursor, r["start"] - cursor)]
-		result += "[b][color=#%s]%s[/color][/b]" % [keyword_hex, text.substr(r["start"], r["end"] - r["start"])]
+			result += "[color=#%s]%s[/color]" % [base_hex, _escape_bbcode(text.substr(cursor, r["start"] - cursor))]
+		result += "[b][color=#%s]%s[/color][/b]" % [keyword_hex, _escape_bbcode(text.substr(r["start"], r["end"] - r["start"]))]
 		cursor = r["end"]
 
 	if cursor < text.length():
-		result += "[color=#%s]%s[/color]" % [base_hex, text.substr(cursor)]
+		result += "[color=#%s]%s[/color]" % [base_hex, _escape_bbcode(text.substr(cursor))]
 
 	return result
 
