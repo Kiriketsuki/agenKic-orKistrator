@@ -110,6 +110,7 @@ func _input(event: InputEvent) -> void:
 		var mb_drag: InputEventMouseButton = event as InputEventMouseButton
 		if not mb_drag.pressed and mb_drag.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = false
+			on_drag_visual_changed(false)
 			drag_finished.emit(self, get_global_rect())
 			get_viewport().set_input_as_handled()
 	elif _resizing and event is InputEventMouseMotion:
@@ -145,9 +146,11 @@ func set_mode(value: String) -> void:
 func set_panel_state(next_state: PanelState) -> void:
 	if state == next_state:
 		return
+	var prior_state: PanelState = state
 	previous_state = state
 	state = next_state
 	_apply_visual_state()
+	on_panel_state_changed(prior_state, next_state)
 
 
 func set_docked(side: String) -> void:
@@ -181,17 +184,17 @@ func play_materialize_animation() -> void:
 	modulate.a = 0.0
 	_particles.restart()
 	_particles.emitting = true
+	on_animation_hook(&"materialize")
 	_materialize_tween = create_tween().set_parallel(true)
 	_materialize_tween.tween_property(self, "modulate:a", 1.0, MATERIALIZE_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	_materialize_tween.tween_property(self, "scale", Vector2.ONE, MATERIALIZE_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	animation_hook_requested.emit(self, &"materialize")
 
 
 func play_undock_animation() -> void:
+	on_animation_hook(&"undock")
 	var tween: Tween = create_tween().set_parallel(true)
 	tween.tween_property(self, "scale", Vector2(1.03, 1.03), 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "scale", Vector2.ONE, 0.14).set_delay(0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	animation_hook_requested.emit(self, &"undock")
 
 
 func _configure_handles() -> void:
@@ -284,6 +287,7 @@ func _on_title_bar_input(event: InputEvent) -> void:
 			remember_restore_rect()
 			_dragging = true
 			_drag_offset = mb.global_position - global_position
+			on_drag_visual_changed(true)
 			drag_started.emit(self)
 			get_viewport().set_input_as_handled()
 
@@ -320,3 +324,15 @@ func _configure_particles() -> void:
 
 func _max_vec2(a: Vector2, b: Vector2) -> Vector2:
 	return Vector2(maxf(a.x, b.x), maxf(a.y, b.y))
+
+
+func on_animation_hook(hook_name: StringName) -> void:
+	animation_hook_requested.emit(self, hook_name)
+
+
+func on_panel_state_changed(_from_state: PanelState, _to_state: PanelState) -> void:
+	pass
+
+
+func on_drag_visual_changed(_active: bool) -> void:
+	pass
