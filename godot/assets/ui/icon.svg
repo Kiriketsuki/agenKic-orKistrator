@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tower" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#142a20"/>
+      <stop offset="40%" stop-color="#1a2e30"/>
+      <stop offset="70%" stop-color="#1e1a35"/>
+      <stop offset="100%" stop-color="#2a2545"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="16" fill="#0a0e14"/>
+  <polygon points="64,12 84,36 84,116 44,116 44,36" fill="url(#tower)" stroke="#c8a84e" stroke-width="2"/>
+  <polygon points="64,8 48,28 80,28" fill="#2a2545" stroke="#c8a84e" stroke-width="1.5"/>
+  <rect x="52" y="48" width="8" height="8" rx="1" fill="#d4a574" opacity="0.8"/>
+  <rect x="68" y="48" width="8" height="8" rx="1" fill="#88c8f7" opacity="0.8"/>
+  <rect x="52" y="68" width="8" height="8" rx="1" fill="#f0a070" opacity="0.8"/>
+  <rect x="68" y="68" width="8" height="8" rx="1" fill="#a088e0" opacity="0.8"/>
+  <rect x="60" y="88" width="8" height="8" rx="1" fill="#d06060" opacity="0.8"/>
+  <circle cx="64" cy="24" r="3" fill="#c8a84e" opacity="0.6"/>
+</svg>

@@ -6,7 +6,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              Thanks for taking the time to report this bug! Bugs can branch from a Feature, Task, or `main`. When merged to any parent branch, they bump the **Minor** version (4th digit: YY.MM.X.**Y**). The target branch will be rebased before merge to ensure a linear history.
+              Thanks for taking the time to report this bug! Bug branches bump the **Patch** version (4th digit: YY.X.Y.**Z**). The target branch will be rebased before merge to ensure a linear history.
 
               **Hierarchical Workflow**: If this bug is related to a specific Feature or Task, add it as a sub-issue to that issue for automatic parent tracking.
 
