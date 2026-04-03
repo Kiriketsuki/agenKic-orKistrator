@@ -6,9 +6,9 @@ body:
     - type: markdown
       attributes:
           value: |
-              Thanks for taking the time to suggest a new feature! Features can branch from a Task or from `main`. When merged, they bump the **Major** version (3rd digit: YY.MM.**X**.0). The target branch will be rebased before merge to ensure a linear history.
+              Thanks for taking the time to suggest a new feature! Feature branches bump the **Minor** version (3rd digit: YY.X.**Y**.0). The target branch will be rebased before merge to ensure a linear history.
 
-              **Hierarchical Workflow**: If this feature belongs to a specific Task, add it as a sub-issue to that Task issue for automatic parent tracking.
+              **Hierarchical Workflow**: If this feature belongs to a specific Epic, add it as a sub-issue to that Epic for automatic parent tracking.
 
     - type: textarea
       id: problem

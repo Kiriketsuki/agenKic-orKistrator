@@ -6,7 +6,12 @@ on:
 
 jobs:
     handle-issue-branch:
-        if: contains(github.event.issue.labels.*.name, 'task') || contains(github.event.issue.labels.*.name, 'feature') || contains(github.event.issue.labels.*.name, 'bug')
+        if: >-
+            contains(github.event.issue.labels.*.name, 'epic') ||
+            contains(github.event.issue.labels.*.name, 'feature') ||
+            contains(github.event.issue.labels.*.name, 'task') ||
+            contains(github.event.issue.labels.*.name, 'bug') ||
+            contains(github.event.issue.labels.*.name, 'hotfix')
         runs-on: ubuntu-latest
         permissions:
             issues: write
@@ -16,40 +21,44 @@ jobs:
         steps:
             - name: Checkout repository
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   fetch-depth: 0
 
-            - name: Determine Branch Configuration
+            - name: Determine branch configuration
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
               id: config
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               with:
                   script: |
                       const labels = context.payload.issue.labels.map(l => l.name);
 
+                      // Priority order: epic > feature > task > bug > hotfix
                       let prefix = 'feature';
                       let prLabel = 'addition';
 
-                      if (labels.includes('task')) {
-                          prefix = 'task';
-                          prLabel = 'implementation';
-                          core.setOutput('pr_title_verb', 'Implementing');
+                      if (labels.includes('epic')) {
+                          prefix = 'epic';
+                          prLabel = 'epic';
                       } else if (labels.includes('feature')) {
                           prefix = 'feature';
                           prLabel = 'addition';
-                          core.setOutput('pr_title_verb', 'Adding');
+                      } else if (labels.includes('task')) {
+                          prefix = 'task';
+                          prLabel = 'implementation';
                       } else if (labels.includes('bug')) {
                           prefix = 'bug';
                           prLabel = 'fix';
-                          core.setOutput('pr_title_verb', 'Fixing');
+                      } else if (labels.includes('hotfix')) {
+                          prefix = 'hotfix';
+                          prLabel = 'hotfix';
                       }
 
                       console.log(`Detected prefix: ${prefix}, PR label: ${prLabel}`);
                       core.setOutput('prefix', prefix);
                       core.setOutput('pr_label', prLabel);
 
-                      // Check for Parent Issue (Sub-issue tracking)
+                      // Check for parent issue via GraphQL sub-issue tracking
                       const query = `
                         query($owner: String!, $repo: String!, $number: Int!) {
                           repository(owner: $owner, name: $repo) {
@@ -84,11 +93,9 @@ jobs:
 
                           const parentLabels = parent.labels.nodes.map(l => l.name);
                           let parentPrefix = 'feature';
-                          if (parentLabels.includes('task')) {
-                              parentPrefix = 'task';
-                          } else if (parentLabels.includes('feature')) {
-                              parentPrefix = 'feature';
-                          }
+                          if (parentLabels.includes('epic')) parentPrefix = 'epic';
+                          else if (parentLabels.includes('feature')) parentPrefix = 'feature';
+                          else if (parentLabels.includes('task')) parentPrefix = 'task';
 
                           core.setOutput('parent_exists', 'true');
                           core.setOutput('parent_number', parent.number);
@@ -103,7 +110,7 @@ jobs:
                         core.setOutput('parent_exists', 'false');
                       }
 
-            - name: Sanitize Parent Branch Name
+            - name: Sanitize parent branch name
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.config.outputs.parent_exists == 'true'
               id: sanitize-parent
               uses: ./.github/actions/sanitize-branch-name
@@ -112,14 +119,27 @@ jobs:
                   issue-title: ${{ steps.config.outputs.parent_title }}
                   prefix: ${{ steps.config.outputs.parent_prefix }}
 
-            - name: Calculate Base Branch
+            - name: Calculate base branch
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
               id: base-branch
               env:
                   PARENT_EXISTS: ${{ steps.config.outputs.parent_exists }}
                   PARENT_BRANCH_NAME: ${{ steps.sanitize-parent.outputs.branch-name }}
+                  CURRENT_PREFIX: ${{ steps.config.outputs.prefix }}
               run: |
-                  if [ "$PARENT_EXISTS" == "true" ]; then
+                  # Hierarchy enforcement:
+                  # epic -> always from main
+                  # feature -> from epic branch (if parent is epic), else main
+                  # task -> from feature/epic branch (if parent), else main
+                  # bug/hotfix -> standalone, always from main
+
+                  if [ "$CURRENT_PREFIX" == "epic" ] || [ "$CURRENT_PREFIX" == "hotfix" ]; then
+                    echo "BASE_BRANCH=main" >> $GITHUB_ENV
+                    echo "$CURRENT_PREFIX branches always target main."
+                  elif [ "$CURRENT_PREFIX" == "bug" ]; then
+                    echo "BASE_BRANCH=main" >> $GITHUB_ENV
+                    echo "Bug branches target main."
+                  elif [ "$PARENT_EXISTS" == "true" ]; then
                     PARENT_BRANCH="$PARENT_BRANCH_NAME"
                     echo "Calculated parent branch: $PARENT_BRANCH"
 
@@ -156,6 +176,7 @@ jobs:
 
                   git fetch origin --quiet
 
+                  # Check if branch already exists
                   if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
                     echo "Branch $BRANCH_NAME already exists, skipping creation"
                     echo "BRANCH_EXISTS=true" >> $GITHUB_ENV
@@ -189,7 +210,7 @@ jobs:
             - name: Create pull request
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && env.BRANCH_EXISTS == 'false'
               id: create-pr
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               with:
                   script: |
                       const branchName = process.env.BRANCH_NAME;
@@ -209,53 +230,21 @@ jobs:
                           return existingPRs[0].number;
                         }
 
-                        const issueBody = context.payload.issue.body || '_No description provided._';
-                        const prBody = [
-                          '## Summary',
-                          '',
-                          `Closes #${context.issue.number}`,
-                          '',
-                          `> Draft auto-created from [#${context.issue.number}](${context.payload.issue.html_url}). Base branch: \`${baseBranch}\`. Fill in the sections below before requesting review.`,
-                          '',
-                          '<details>',
-                          '<summary>Original issue description</summary>',
-                          '',
-                          issueBody,
-                          '',
-                          '</details>',
-                          '',
-                          '---',
-                          '',
-                          '## Changes',
-                          '',
-                          '<!-- Brief bullet list of what was changed and why. -->',
-                          '',
-                          '-',
-                          '',
-                          '---',
-                          '',
-                          '## Testing',
-                          '',
-                          '### Pre-PR checklist',
-                          '',
-                          '- [ ] Tests pass locally',
-                          '- [ ] No regressions introduced',
-                          '- [ ] Documentation updated if needed',
-                          '',
-                          '---',
-                          '',
-                          '## Notes for reviewers',
-                          '',
-                          '<!-- Anything a reviewer should pay special attention to, or known limitations. -->',
-                        ].join('\n');
+                        // Derive PR title from issue label
+                        const issueTitle = context.payload.issue.title;
+                        const prefix = '${{ steps.config.outputs.prefix }}';
+                        const prefixMap = { epic: 'epic', feature: 'feat', task: 'chore', bug: 'fix', hotfix: 'hotfix' };
+                        const commitPrefix = prefixMap[prefix] || 'feat';
+                        const strippedTitle = issueTitle.replace(/^\[(Epic|Feature|Task|Bug|Hotfix)\][:\s]*/i, '');
+                        const prTitle = `${commitPrefix}: ${strippedTitle}`;
 
                         const pr = await github.rest.pulls.create({
                           owner: context.repo.owner,
                           repo: context.repo.repo,
-                          title: `${{ steps.config.outputs.pr_title_verb }} ${context.payload.issue.title}`,
+                          title: prTitle,
                           head: branchName,
                           base: baseBranch,
-                          body: prBody,
+                          body: `Closes #${context.issue.number}\n\n${context.payload.issue.body || 'No description provided.'}\n\n---\n\nThis pull request was automatically created from issue #${context.issue.number}. Base branch: \`${baseBranch}\`.`,
                           draft: true
                         });
 
@@ -269,7 +258,7 @@ jobs:
 
             - name: Add PR label
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.create-pr.outputs.pr_number
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               with:
                   script: |
                       const prNumber = ${{ steps.create-pr.outputs.pr_number }};
@@ -286,12 +275,12 @@ jobs:
                         });
                         console.log(`Added label '${prLabel}' to PR #${prNumber}`);
                       } catch (error) {
-                        console.error('Error adding label to PR:', error.message);
+                        console.error('Error adding label:', error.message);
                       }
 
             - name: Comment on issue
               if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open' && steps.create-pr.outputs.result != 'null'
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               env:
                   BRANCH_NAME: ${{ env.BRANCH_NAME }}
                   BASE_BRANCH: ${{ env.BASE_BRANCH }}
@@ -308,12 +297,24 @@ jobs:
                         issue_number: context.issue.number,
                         owner: context.repo.owner,
                         repo: context.repo.repo,
-                        body: `A branch (\`${branchName}\`) and pull request (#${prNumber}) have been created for this issue.\n\n- **Branch**: \`${branchName}\`\n- **Pull Request**: [#${prNumber}](https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${prNumber})\n\n<!-- branch-name: ${branchName} -->`
+                        body: `Branch \`${branchName}\` and PR #${prNumber} created.\n\n- **Branch**: \`${branchName}\`\n- **Base**: \`${baseBranch}\`\n- **PR**: #${prNumber}\n\n\`\`\`bash\ngit fetch origin\ngit checkout ${branchName}\n\`\`\`\n\n<!-- branch-name: ${branchName} -->`
                       });
 
-            - name: Comment on issue close
+            - name: Assign issue
+              if: (github.event.action == 'opened' || github.event.action == 'labeled') && github.event.issue.state == 'open'
+              uses: actions/github-script@v8
+              with:
+                  script: |
+                      await github.rest.issues.addAssignees({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        assignees: ['Kiriketsuki']
+                      });
+
+            - name: Handle issue close
               if: github.event.action == 'closed'
-              uses: actions/github-script@v7
+              uses: actions/github-script@v8
               with:
                   script: |
                       try {
@@ -345,12 +346,12 @@ jobs:
                               issue_number: context.issue.number,
                               owner: context.repo.owner,
                               repo: context.repo.repo,
-                              body: `Issue closed. Branch \`${branchName}\` can be deleted:\n\`\`\`bash\ngit push origin --delete ${branchName}\n\`\`\``
+                              body: `Issue closed. Branch \`${branchName}\` still exists and can be deleted:\n\`\`\`bash\ngit push origin --delete ${branchName}\n\`\`\``
                             });
                           } catch (e) {
-                            console.log('Branch check failed (branch might already be deleted):', e.message);
+                            console.log('Branch already deleted or not found:', e.message);
                           }
                         }
                       } catch (error) {
-                        console.log('Error in issue close handler:', error.message);
+                        console.log('Close handler error:', error.message);
                       }

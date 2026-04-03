@@ -1,9 +1,11 @@
 ## PR Naming Convention
 | Type | PR Title Format |
 |------|----------------|
-| Feature | `Adding [Feature]: Name of Feature` |
-| Task | `Implementing [Task]: Name of Task` |
-| Bug | `Fixing [Bug]: Name of Bug` |
+| Epic | `epic: Name of Epic` |
+| Feature | `feat: Name of Feature` |
+| Task | `chore: Name of Task` |
+| Bug | `fix: Name of Bug` |
+| Hotfix | `hotfix: Name of Hotfix` |
 
 > All PRs are **squash merged**. Keep individual commits on your branch descriptive — they'll be squashed into one on main.
 
