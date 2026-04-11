@@ -2,13 +2,15 @@ extends Node2D
 ## TowerManager — fisheye layout engine, floor ordering, scroll/zoom, signal routing.
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
-const FLOOR_SPACING: float = 50.0
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
 const ZOOM_MIN: float = 0.5
 const ZOOM_MAX: float = 2.0
 const ZOOM_STEP: float = 0.1
 const MAX_QUEUE_SIZE: int = 2
+const BASE_FLOOR_WIDTH: float = 280.0
+const BASE_FLOOR_HEIGHT: float = 40.0
+const BASE_TOWER_RADIUS: float = 40.0
 
 @export var config_path: String = "res://config/tower.json"
 
@@ -20,6 +22,11 @@ var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
 var _is_overscrolling: bool = false
 var _input_queue: Array[int] = []
+var _floor_spacing: float = 50.0
+var _floor_width: float = BASE_FLOOR_WIDTH
+var _floor_height: float = BASE_FLOOR_HEIGHT
+var _tower_radius: float = BASE_TOWER_RADIUS
+var _master_region: Rect2 = Rect2()
 
 @onready var _floors_container: Node2D = $FloorsContainer
 @onready var _camera: Camera2D = $Camera
@@ -28,11 +35,13 @@ var _input_queue: Array[int] = []
 
 func _ready() -> void:
 	_config = TowerConfig.from_file(config_path)
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	_spawn_permanent_floors()
+	_recalculate_layout_metrics()
 	_layout_floors()
-	_camera.position.y = _focused_index * -FLOOR_SPACING
+	_update_tower_frame()
 	_apply_fisheye_layout()
-	_tower_exterior.configure(_config.polygon_sides, _floors.size() * FLOOR_SPACING)
+	_sync_tower_exterior()
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -100,7 +109,9 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 ## Sets absolute Y positions for all floors. Call after any change to _floors.
 func _layout_floors() -> void:
 	for i: int in range(_floors.size()):
-		_floors[i].position = Vector2(0.0, i * -FLOOR_SPACING)
+		_floors[i].position = Vector2(0.0, i * -_floor_spacing)
+		if _floors[i].has_method("set_floor_dimensions"):
+			_floors[i].set_floor_dimensions(_floor_width, _floor_height)
 
 
 ## Tweens scale and opacity of all floors based on distance from _focused_index.
@@ -151,7 +162,7 @@ func _do_scroll_tween() -> void:
 	if _scroll_tween:
 		_scroll_tween.kill()
 	_scroll_tween = create_tween()
-	var target_y: float = _focused_index * -FLOOR_SPACING
+	var target_y: float = _focused_index * -_floor_spacing
 	_scroll_tween.tween_property(_camera, "position:y", target_y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_scroll_tween.tween_callback(_on_scroll_tween_finished)
 	_apply_fisheye_layout()
@@ -167,8 +178,8 @@ func _elastic_overscroll(direction: int) -> void:
 	if _is_overscrolling:
 		return
 	_is_overscrolling = true
-	var original_y: float = _focused_index * -FLOOR_SPACING
-	var overshoot_y: float = original_y + (direction * FLOOR_SPACING * -0.5)
+	var original_y: float = _focused_index * -_floor_spacing
+	var overshoot_y: float = original_y + (direction * _floor_spacing * -0.5)
 	var tween: Tween = create_tween()
 	tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -189,7 +200,7 @@ func _rotate_focused_edge(direction: int) -> void:
 	if new_edge < 0:
 		new_edge += _config.polygon_sides
 	var old_x: float = floor_node.position.x
-	var slide_offset: float = 320.0 * (-direction)
+	var slide_offset: float = maxf(_master_region.size.x * 0.18, 320.0) * (-direction)
 	var tween: Tween = create_tween()
 	tween.tween_property(floor_node, "position:x", old_x + slide_offset, 0.15)
 	tween.tween_callback(func() -> void:
@@ -218,7 +229,8 @@ func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	_floors.append(floor_node)
 	_layout_floors()
 	_apply_fisheye_layout()
-	_tower_exterior.configure(_config.polygon_sides, _floors.size() * FLOOR_SPACING)
+	_update_tower_frame()
+	_sync_tower_exterior()
 
 
 func _on_floor_removed(floor_name: String) -> void:
@@ -231,7 +243,7 @@ func _on_floor_removed(floor_name: String) -> void:
 				_floors.erase(floor_node)
 				_focused_index = clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
 				_layout_floors()
-				_camera.position.y = _focused_index * -FLOOR_SPACING
+				_update_tower_frame()
 				_apply_fisheye_layout()
 			)
 			return
@@ -341,3 +353,35 @@ func _has_floor(floor_name: String) -> bool:
 		if floor_node.get_meta("floor_name", "") == floor_name:
 			return true
 	return false
+
+
+func set_master_region(region: Rect2) -> void:
+	_master_region = region
+	_recalculate_layout_metrics()
+	_layout_floors()
+	_update_tower_frame()
+	_sync_tower_exterior()
+
+
+func _on_viewport_size_changed() -> void:
+	set_master_region(Rect2(Vector2.ZERO, get_viewport_rect().size))
+
+
+func _recalculate_layout_metrics() -> void:
+	if _master_region.size == Vector2.ZERO:
+		_master_region = Rect2(Vector2.ZERO, get_viewport_rect().size)
+	var viewport_size: Vector2 = _master_region.size
+	_floor_width = clampf(viewport_size.x * 0.24, BASE_FLOOR_WIDTH, 520.0)
+	_floor_height = clampf(_floor_width * 0.16, BASE_FLOOR_HEIGHT, 88.0)
+	_floor_spacing = clampf(viewport_size.y * 0.1, 50.0, 128.0)
+	_tower_radius = clampf(_floor_width * 0.14, BASE_TOWER_RADIUS, 88.0)
+
+
+func _update_tower_frame() -> void:
+	var center: Vector2 = _master_region.position + (_master_region.size * 0.5)
+	position = center
+	_camera.position = Vector2(0.0, _focused_index * -_floor_spacing)
+
+
+func _sync_tower_exterior() -> void:
+	_tower_exterior.configure(_config.polygon_sides, _floors.size() * _floor_spacing, _tower_radius)
