@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://main"]
+[gd_scene load_steps=4 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/panel_manager.gd" id="3"]
 
 [node name="Main" type="Node2D"]
 
@@ -35,8 +36,86 @@ anchors_preset = 0
 offset_right = 80.0
 offset_bottom = 180.0
 
-[node name="PanelContainer" type="Control" parent="UILayer"]
+[node name="PanelManager" type="Control" parent="UILayer"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+script = ExtResource("3")
+
+[node name="Dimmer" type="ColorRect" parent="UILayer/PanelManager"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.45)
+
+[node name="DockPreviews" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftPreview" type="ColorRect" parent="UILayer/PanelManager/DockPreviews"]
+visible = false
+offset_right = 72.0
+offset_bottom = 1080.0
+mouse_filter = 2
+color = Color(0.55, 0.8, 1, 0.18)
+
+[node name="RightPreview" type="ColorRect" parent="UILayer/PanelManager/DockPreviews"]
+visible = false
+offset_left = 1848.0
+offset_right = 1920.0
+offset_bottom = 1080.0
+mouse_filter = 2
+color = Color(0.55, 0.8, 1, 0.18)
+
+[node name="DockZones" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftZone" type="Control" parent="UILayer/PanelManager/DockZones"]
+mouse_filter = 2
+
+[node name="RightZone" type="Control" parent="UILayer/PanelManager/DockZones"]
+mouse_filter = 2
+
+[node name="FloatingLayer" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Dividers" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftDivider" type="ColorRect" parent="UILayer/PanelManager/Dividers"]
+visible = false
+offset_right = 8.0
+offset_bottom = 1080.0
+mouse_filter = 0
+color = Color(0.9, 0.95, 1, 0.26)
+
+[node name="RightDivider" type="ColorRect" parent="UILayer/PanelManager/Dividers"]
+visible = false
+offset_right = 8.0
+offset_bottom = 1080.0
+mouse_filter = 0
+color = Color(0.9, 0.95, 1, 0.26)
