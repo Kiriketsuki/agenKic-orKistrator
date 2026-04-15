@@ -267,7 +267,7 @@ func _apply_resize(global_mouse: Vector2) -> void:
 func _apply_visual_state() -> void:
 	_background.color = Color(0.08, 0.1, 0.12, 0.92 if state == PanelState.FLOATING else 0.97)
 	_title_bar.color = Color(0.17, 0.21, 0.25, 0.98)
-	var resize_visible: bool = state != PanelState.FULLSCREEN
+	var resize_visible: bool = state == PanelState.FLOATING
 	$Handles.visible = resize_visible
 
 
