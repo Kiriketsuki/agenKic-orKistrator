@@ -30,6 +30,7 @@ var _active_preview_side: String = ""
 @onready var _floating_layer: Control = $FloatingLayer
 @onready var _left_divider: ColorRect = $Dividers/LeftDivider
 @onready var _right_divider: ColorRect = $Dividers/RightDivider
+@onready var _tower_manager: Node = get_node_or_null("../../Tower")
 
 
 func _ready() -> void:
@@ -42,6 +43,10 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_refresh_layout)
 	_bind_divider(_left_divider, "left")
 	_bind_divider(_right_divider, "right")
+	if _tower_manager != null and _tower_manager.has_method("set_master_region"):
+		master_region_changed.connect(func(region: Rect2) -> void:
+			_tower_manager.call("set_master_region", region)
+		)
 	_refresh_layout()
 
 
