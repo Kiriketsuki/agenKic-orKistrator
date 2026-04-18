@@ -22,6 +22,8 @@ var _dragging_master_boundary: bool = false
 var _last_layout: Dictionary = {}
 var _active_preview_side: String = ""
 var _fullscreen_panel: PanelBase = null
+var _active_panel: PanelBase = null
+var _panels_hidden: bool = false
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -74,6 +76,11 @@ func close_panel(panel_id: String) -> void:
 	if not panels_by_id.has(panel_id):
 		return
 	var panel: PanelBase = panels_by_id[panel_id]
+	if _fullscreen_panel == panel:
+		_fullscreen_panel = null
+		_dimmer.visible = false
+	if _active_panel == panel:
+		_active_panel = null
 	left_tree.remove_panel(panel_id)
 	right_tree.remove_panel(panel_id)
 	panels_by_id.erase(panel_id)
@@ -82,6 +89,7 @@ func close_panel(panel_id: String) -> void:
 
 
 func focus_panel(panel: PanelBase) -> void:
+	_active_panel = panel
 	var parent: Node = panel.get_parent()
 	if parent is Control:
 		(parent as Control).move_child(panel, parent.get_child_count() - 1)
@@ -143,6 +151,7 @@ func _bind_divider(divider: ColorRect, side: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not _dragging_master_boundary:
+		_handle_hotkeys(event)
 		return
 	if event is InputEventMouseMotion:
 		var motion: InputEventMouseMotion = event as InputEventMouseMotion
@@ -154,6 +163,7 @@ func _input(event: InputEvent) -> void:
 		if not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_dragging_master_boundary = false
 			get_viewport().set_input_as_handled()
+	_handle_hotkeys(event)
 
 
 func _refresh_layout() -> void:
@@ -242,6 +252,24 @@ func _default_floating_position(index: int) -> Vector2:
 	var base: Vector2 = viewport_size * Vector2(0.56, 0.16)
 	var offset: Vector2 = Vector2(28.0 * index, 24.0 * index)
 	return base + offset
+
+
+func _handle_hotkeys(event: InputEvent) -> void:
+	if event.is_action_pressed("panel_fullscreen") and _active_panel != null:
+		_active_panel.toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_cancel"):
+		if _fullscreen_panel != null:
+			_restore_fullscreen(_fullscreen_panel)
+		elif _active_panel != null:
+			close_panel(_active_panel.panel_id)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("hide_all_panels"):
+		_toggle_panel_visibility()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("reset_panel_layout"):
+		reset_layout()
+		get_viewport().set_input_as_handled()
 
 
 func _on_panel_drag_started(panel: PanelBase) -> void:
@@ -379,3 +407,29 @@ func _restore_fullscreen(panel: PanelBase) -> void:
 	_reparent_preserving_global(panel, _floating_layer)
 	panel.set_panel_state(PanelBase.PanelState.FLOATING)
 	_tween_panel_to_rect(panel, panel.restore_rect, false)
+
+
+func _toggle_panel_visibility() -> void:
+	_panels_hidden = not _panels_hidden
+	for panel_id: String in panels_by_id:
+		var panel: PanelBase = panels_by_id[panel_id]
+		panel.visible = not _panels_hidden
+	if _fullscreen_panel != null:
+		_dimmer.visible = not _panels_hidden
+
+
+func reset_layout() -> void:
+	if _fullscreen_panel != null:
+		_restore_fullscreen(_fullscreen_panel)
+	for panel_id: String in panels_by_id.keys():
+		var panel: PanelBase = panels_by_id[panel_id]
+		panel.queue_free()
+	panels_by_id.clear()
+	left_tree = DwindleTree.new("left")
+	right_tree = DwindleTree.new("right")
+	master_ratio = MASTER_RATIO_DEFAULT
+	_active_panel = null
+	_panels_hidden = false
+	_show_preview_for_side("")
+	_dimmer.visible = false
+	_refresh_layout()
