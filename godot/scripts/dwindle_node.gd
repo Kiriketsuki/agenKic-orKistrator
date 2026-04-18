@@ -78,6 +78,8 @@ func serialize() -> Variant:
 		return {
 			"type": TYPE_LEAF,
 			"panel_id": panel_id,
+			"agent_id": panel.agent_id if panel != null else "",
+			"title": panel.panel_title if panel != null else panel_id,
 			"mode": panel.mode if panel != null else "scroll",
 		}
 	return {
