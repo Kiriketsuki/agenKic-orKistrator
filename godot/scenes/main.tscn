@@ -119,3 +119,25 @@ offset_right = 8.0
 offset_bottom = 1080.0
 mouse_filter = 0
 color = Color(0.9, 0.95, 1, 0.26)
+
+[node name="PanelMenuButton" type="Button" parent="UILayer/PanelManager"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -124.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 48.0
+grow_horizontal = 0
+text = "Panels"
+
+[node name="PanelMenuPopup" type="PopupPanel" parent="UILayer/PanelManager"]
+initial_position = 1
+size = Vector2i(280, 320)
+
+[node name="PanelList" type="ItemList" parent="UILayer/PanelManager/PanelMenuPopup"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
