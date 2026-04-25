@@ -7,7 +7,7 @@ signal master_region_changed(region: Rect2)
 
 const PANEL_BASE_SCENE: PackedScene = preload("res://scenes/panel_base.tscn")
 const MASTER_RATIO_DEFAULT: float = 0.6
-const MASTER_RATIO_MIN: float = 0.3
+const MASTER_RATIO_MIN: float = 0.2
 const MASTER_RATIO_MAX: float = 0.8
 const MASTER_RATIO_SNAP_POINTS: Array[float] = [0.25, 0.5, 0.75]
 const DIVIDER_WIDTH: float = 8.0
@@ -20,6 +20,7 @@ var panels_by_id: Dictionary = {}
 var mode_preferences: Dictionary = {}
 
 var _dragging_master_boundary: bool = false
+var _dragging_master_boundary_side: String = ""
 var _last_layout: Dictionary = {}
 var _active_preview_side: String = ""
 var _fullscreen_panel: PanelBase = null
@@ -148,6 +149,9 @@ func _wire_panel(panel: PanelBase) -> void:
 	panel.drag_finished.connect(func(p: PanelBase, rect: Rect2) -> void:
 		_on_panel_drag_finished(p, rect)
 	)
+	panel.resize_finished.connect(func(_p: PanelBase, _rect: Rect2) -> void:
+		_save_layout()
+	)
 	panel.fullscreen_requested.connect(func(p: PanelBase) -> void:
 		_enter_fullscreen(p)
 	)
@@ -170,10 +174,11 @@ func _bind_divider(divider: ColorRect, side: String) -> void:
 				return
 			_dragging_master_boundary = mb.pressed and _divider_visible(side)
 			if _dragging_master_boundary:
+				_dragging_master_boundary_side = side
 				get_viewport().set_input_as_handled()
 		elif _dragging_master_boundary and event is InputEventMouseMotion:
 			var motion: InputEventMouseMotion = event as InputEventMouseMotion
-			_update_master_ratio_from_pointer(side, motion.position.x)
+			_update_master_ratio_from_pointer(_dragging_master_boundary_side, motion.position.x)
 			get_viewport().set_input_as_handled()
 	)
 
@@ -184,13 +189,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		var motion: InputEventMouseMotion = event as InputEventMouseMotion
-		var side: String = "left" if _left_divider.visible else "right"
+		var side: String = _dragging_master_boundary_side
+		if side.is_empty():
+			side = "left" if _left_divider.visible else "right"
 		_update_master_ratio_from_pointer(side, motion.position.x)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_dragging_master_boundary = false
+			_dragging_master_boundary_side = ""
 			get_viewport().set_input_as_handled()
 	_handle_hotkeys(event)
 
@@ -256,11 +264,13 @@ func _apply_regions(regions: Dictionary) -> void:
 
 func _update_master_ratio_from_pointer(side: String, pointer_x: float) -> void:
 	var viewport_width: float = maxf(get_viewport_rect().size.x, 1.0)
-	var normalized: float
-	if side == "left":
-		normalized = 1.0 - (pointer_x / viewport_width)
-	else:
-		normalized = pointer_x / viewport_width
+	var normalized: float = pointer_x / viewport_width
+	var left_active: bool = not left_tree.is_empty()
+	var right_active: bool = not right_tree.is_empty()
+	if left_active and right_active:
+		normalized = 1.0 - (normalized * 2.0) if side == "left" else (normalized * 2.0) - 1.0
+	elif side == "left":
+		normalized = 1.0 - normalized
 	master_ratio = _snapped_master_ratio(clampf(normalized, MASTER_RATIO_MIN, MASTER_RATIO_MAX))
 	_refresh_layout()
 	_save_layout()
@@ -328,6 +338,7 @@ func _on_panel_drag_finished(panel: PanelBase, rect: Rect2) -> void:
 	_show_preview_for_side("")
 	if target_side.is_empty():
 		panel.set_panel_state(PanelBase.PanelState.FLOATING)
+		_save_layout()
 		return
 	_dock_panel(panel, target_side)
 
@@ -525,11 +536,14 @@ func _save_layout() -> void:
 			"mode": panel.mode,
 		})
 		if panel.dock_side.is_empty():
+			var layout_rect: Rect2 = Rect2(panel.position, panel.size)
+			if panel.state == PanelBase.PanelState.FULLSCREEN:
+				layout_rect = panel.restore_rect
 			floating.append({
 				"panel_id": panel.panel_id,
 				"mode": panel.mode,
-				"position": [panel.position.x, panel.position.y],
-				"size": [panel.size.x, panel.size.y],
+				"position": [layout_rect.position.x, layout_rect.position.y],
+				"size": [layout_rect.size.x, layout_rect.size.y],
 			})
 	var data: Dictionary = {
 		"master_ratio": master_ratio,

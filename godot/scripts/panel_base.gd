@@ -284,6 +284,9 @@ func _on_title_bar_input(event: InputEvent) -> void:
 				toggle_fullscreen()
 				get_viewport().set_input_as_handled()
 				return
+			if state == PanelState.FULLSCREEN:
+				get_viewport().set_input_as_handled()
+				return
 			remember_restore_rect()
 			_dragging = true
 			_drag_offset = mb.global_position - global_position
