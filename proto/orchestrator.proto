@@ -171,6 +171,12 @@ message GetDAGStatusResponse {
 
 message CompleteAgentRequest {
   string agent_id = 1;
+  // Optional. The task the agent was completing, as tagged on its
+  // OutputChunk messages during StreamOutput. When present, the server
+  // signals completion for this task_id directly, avoiding a store round
+  // trip. When omitted (legacy clients), the server falls back to reading
+  // the agent's CurrentTaskID from the store.
+  string task_id = 2;
 }
 
 message CompleteAgentResponse {}

@@ -63,8 +63,10 @@ func TestE2E_FullAgentLifecycle(t *testing.T) {
 		t.Fatalf("expected REPORTING, got %v", stateResp.State)
 	}
 
-	// reporting → idle via gRPC CompleteAgent (production path)
-	if _, err := s.client.CompleteAgent(ctx, &pb.CompleteAgentRequest{AgentId: agentID}); err != nil {
+	// reporting → idle via gRPC CompleteAgent (production path).
+	// TaskId is set to the task assigned above so the production gRPC path
+	// exercises the direct (non-fallback) completion signal thread-through.
+	if _, err := s.client.CompleteAgent(ctx, &pb.CompleteAgentRequest{AgentId: agentID, TaskId: "task-lifecycle-001"}); err != nil {
 		t.Fatalf("CompleteAgent: %v", err)
 	}
 	stateResp, err = s.client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})

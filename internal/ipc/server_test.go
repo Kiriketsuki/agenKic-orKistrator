@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -757,5 +758,158 @@ func TestStreamOutput_FinalFailsOnWrongState(t *testing.T) {
 	}
 	if st.Code() != codes.Internal {
 		t.Fatalf("expected Internal, got %v", st.Code())
+	}
+}
+
+// ── CompleteAgent task_id thread-through (issue #82) ────────────────────────
+
+// setupTestServerWithRegistry is like setupTestServerWithStore but also wires
+// a CompletionRegistry into the supervisor, and returns it, so tests can
+// assert that a CompleteAgent RPC actually signals task completion.
+func setupTestServerWithRegistry(t *testing.T) (pb.OrchestratorServiceClient, *state.MockStore, *supervisor.CompletionRegistry, func()) {
+	t.Helper()
+
+	store := state.NewMockStore()
+	machine := agent.NewMachine(store)
+	policy := supervisor.NewRestartPolicy()
+	registry := supervisor.NewCompletionRegistry()
+	sv := supervisor.NewSupervisor(machine, store, policy, supervisor.WithCompletionRegistry(registry))
+
+	submitter := dag.NewStoreSubmitter(store)
+	executor := dag.NewExecutor(context.Background(), submitter)
+	server := NewOrchestratorServer(sv, store, executor)
+
+	buf := 1024 * 1024
+	lis := bufconn.Listen(buf)
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterOrchestratorServiceServer(grpcServer, server)
+
+	go func() { _ = grpcServer.Serve(lis) }()
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+
+	client := pb.NewOrchestratorServiceClient(conn)
+	cleanup := func() {
+		conn.Close()
+		grpcServer.GracefulStop()
+	}
+	return client, store, registry, cleanup
+}
+
+// TestCompleteAgent_ThreadsTaskID proves the CompleteAgent handler threads
+// req.TaskId through to the supervisor: even with a GetAgentFields failure
+// injected for the agent, the completion signal for the supplied task_id
+// still fires (regression guard for issue #82's fix).
+func TestCompleteAgent_ThreadsTaskID(t *testing.T) {
+	client, store, registry, cleanup := setupTestServerWithRegistry(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "ca-threads-taskid"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+	const taskID = "task-threaded-82"
+
+	// Seed into REPORTING state with the task assigned.
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:         state.AgentStateReporting,
+		CurrentTaskID: taskID,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	// Inject a GetAgentFields failure — the fix must not depend on this read
+	// when task_id is supplied on the request.
+	store.SetGetAgentFieldsError(errors.New("injected GetAgentFields failure"), agentID)
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer waitCancel()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- registry.Wait(waitCtx, taskID)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	if _, err := client.CompleteAgent(ctx, &pb.CompleteAgentRequest{AgentId: agentID, TaskId: taskID}); err != nil {
+		t.Fatalf("CompleteAgent: %v", err)
+	}
+
+	select {
+	case err := <-waitDone:
+		if err != nil {
+			t.Fatalf("expected Wait to unblock with nil, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("completion signal was dropped — Wait did not unblock in time")
+	}
+}
+
+// TestCompleteAgent_NoTaskID_StillSucceeds verifies backward compatibility:
+// a client that omits task_id still gets a successful CompleteAgent call,
+// and (with a healthy store) the completion signal still fires via the
+// legacy GetAgentFields fallback.
+func TestCompleteAgent_NoTaskID_StillSucceeds(t *testing.T) {
+	client, store, registry, cleanup := setupTestServerWithRegistry(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	regResp, err := client.RegisterAgent(ctx, &pb.RegisterAgentRequest{
+		Info: &pb.AgentInfo{Name: "ca-no-taskid"},
+	})
+	if err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+	agentID := regResp.AgentId
+	const taskID = "task-legacy-82"
+
+	if err := store.SetAgentFields(ctx, agentID, state.AgentFields{
+		State:         state.AgentStateReporting,
+		CurrentTaskID: taskID,
+	}); err != nil {
+		t.Fatalf("SetAgentFields: %v", err)
+	}
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer waitCancel()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- registry.Wait(waitCtx, taskID)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	if _, err := client.CompleteAgent(ctx, &pb.CompleteAgentRequest{AgentId: agentID}); err != nil {
+		t.Fatalf("CompleteAgent: %v", err)
+	}
+
+	stateResp, err := client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
+	if err != nil {
+		t.Fatalf("GetAgentState: %v", err)
+	}
+	if stateResp.State != pb.AgentState_AGENT_STATE_IDLE {
+		t.Fatalf("expected AGENT_STATE_IDLE, got %v", stateResp.State)
+	}
+
+	select {
+	case err := <-waitDone:
+		if err != nil {
+			t.Fatalf("expected Wait to unblock with nil via fallback, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected fallback completion signal via GetAgentFields, but Wait did not unblock")
 	}
 }
