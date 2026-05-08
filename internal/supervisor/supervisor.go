@@ -554,17 +554,25 @@ func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
 
 // CompleteAgent is the public entry point for signaling agent task completion.
 // It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
-func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) error {
-	return sv.completeAgent(ctx, agentID)
+func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string, taskID string) error {
+	return sv.completeAgent(ctx, agentID, taskID)
 }
 
 // completeAgent applies EventOutputDelivered and records a success with the
 // restart policy, resetting consecutive crash counters and clearing any
 // cooldown or circuit-breaker state for the agent.
 //
+// taskID, when non-empty, is the task ID supplied by the caller (threaded
+// from CompleteAgentRequest.task_id) and is used directly to signal
+// completion — no store read is required for conformant clients. When
+// taskID is empty (legacy clients that omit the field), completeAgent falls
+// back to reading CurrentTaskID via GetAgentFields, preserving the original
+// behavior — including its failure mode where a store error silently drops
+// the completion signal.
+//
 // The per-agent mutex is held for the entire operation to prevent interleaving
 // with crashAgent (which pre-populates cooldown sentinels).
-func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
+func (sv *Supervisor) completeAgent(ctx context.Context, agentID string, taskID string) error {
 	mu := sv.getAgentMutex(agentID)
 	if mu == nil {
 		return ErrSupervisorStopped
@@ -582,10 +590,16 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	// Signal task completion BEFORE clearing CurrentTaskID so the task ID is
 	// still readable. BlockingSubmitter callers unblock here.
 	if sv.completionRegistry != nil {
-		if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil && fields.CurrentTaskID != "" {
-			sv.completionRegistry.Complete(fields.CurrentTaskID)
-		} else if fErr != nil {
-			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, CompletionRegistry.Complete skipped: %v", agentID, fErr)
+		tid := taskID
+		if tid == "" {
+			if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil {
+				tid = fields.CurrentTaskID
+			} else {
+				log.Printf("supervisor: completeAgent %s — GetAgentFields failed, falling back signal may be dropped: %v", agentID, fErr)
+			}
+		}
+		if tid != "" {
+			sv.completionRegistry.Complete(tid)
 		} else {
 			log.Printf("supervisor: completeAgent %s — CurrentTaskID empty, completion signal not sent", agentID)
 		}
