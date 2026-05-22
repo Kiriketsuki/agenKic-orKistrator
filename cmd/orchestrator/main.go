@@ -60,6 +60,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Start the tombstone reaper now that ctx exists. It is tied to the
+	// top-level ctx, which is cancelled first in the shutdown sequence below
+	// (cancel() at the start of graceful shutdown), so the reaper stops
+	// cleanly with no goroutine leak.
+	registry.StartReaper(ctx)
+
 	submitter := dag.NewBlockingSubmitter(store, registry)
 	executor := dag.NewExecutor(ctx, submitter)
 
