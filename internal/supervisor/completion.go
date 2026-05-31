@@ -24,6 +24,15 @@ type CompletionRegistry struct {
 	waiters map[string]chan struct{}
 	cleaned map[string]time.Time // tombstones for cancelled tasks; prevents orphaned entries
 
+	// completed tracks pre-closed channels planted by Complete's "no waiter
+	// yet" branch (completion.go: Complete), timestamped so the reaper can
+	// TTL-expire ones nobody ever claims via Wait+Cleanup. Without this, a
+	// late Complete that arrives after its tombstone has already been reaped
+	// (see Complete's doc comment) permanently orphans an entry in `waiters`
+	// instead of `cleaned` — unbounded growth just relocated to a different
+	// map. See #83.
+	completed map[string]time.Time
+
 	clock         func() time.Time
 	tombstoneTTL  time.Duration
 	sweepInterval time.Duration
@@ -65,6 +74,7 @@ func NewCompletionRegistry(opts ...CompletionOption) *CompletionRegistry {
 	r := &CompletionRegistry{
 		waiters:       make(map[string]chan struct{}),
 		cleaned:       make(map[string]time.Time),
+		completed:     make(map[string]time.Time),
 		clock:         time.Now,
 		tombstoneTTL:  defaultTombstoneTTL,
 		sweepInterval: defaultSweepInterval,
@@ -81,6 +91,10 @@ func (r *CompletionRegistry) Wait(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	// A new Wait clears any stale tombstone from a prior cancelled lifecycle.
 	delete(r.cleaned, taskID)
+	// This Wait claims any pre-closed channel Complete may have planted via
+	// its "no waiter yet" branch — clear the completed-timestamp so the
+	// reaper never mistakes a now-claimed entry for an orphan.
+	delete(r.completed, taskID)
 	ch, exists := r.waiters[taskID]
 	if !exists {
 		ch = make(chan struct{})
@@ -103,12 +117,12 @@ func (r *CompletionRegistry) Wait(ctx context.Context, taskID string) error {
 // background TTL sweeper (see SweepOnce/StartReaper), Complete can no longer
 // distinguish this late Complete from a legitimate complete-before-wait call
 // — both arrive with no tombstone and no waiter. In that case Complete takes
-// the complete-before-wait path below and creates one benign pre-closed
-// waiters entry. This is the documented, bounded tradeoff that replaces
-// unbounded tombstone growth: at most one benign pre-closed channel per
-// pathological late Complete, and only reachable more than tombstoneTTL
-// after the task's context was cancelled (by which point Complete is
-// assumed dead).
+// the complete-before-wait path below and creates one pre-closed waiters
+// entry, timestamped in `completed`. That timestamp lets the reaper's
+// SweepOnce TTL-expire the entry if nothing ever claims it via Wait+Cleanup
+// (see SweepOnce), so a late Complete after reap does not permanently orphan
+// an entry — it just gets a second, bounded TTL window before being reaped
+// from `waiters` instead of `cleaned`.
 func (r *CompletionRegistry) Complete(taskID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -120,9 +134,13 @@ func (r *CompletionRegistry) Complete(taskID string) {
 	}
 	ch, exists := r.waiters[taskID]
 	if !exists {
-		// No waiter yet — create a pre-closed channel so future Wait returns immediately.
+		// No waiter yet — create a pre-closed channel so future Wait returns
+		// immediately. Timestamp it so an unclaimed entry (nobody ever calls
+		// Wait/Cleanup for this taskID again) is eventually TTL-reaped
+		// instead of living forever.
 		ch = make(chan struct{})
 		r.waiters[taskID] = ch
+		r.completed[taskID] = r.clock()
 	}
 	select {
 	case <-ch:
@@ -140,13 +158,20 @@ func (r *CompletionRegistry) Complete(taskID string) {
 func (r *CompletionRegistry) Cleanup(taskID string) {
 	r.mu.Lock()
 	delete(r.waiters, taskID)
+	delete(r.completed, taskID)
 	r.cleaned[taskID] = r.clock() // tombstone for late Complete, timestamped for TTL reaping
 	r.mu.Unlock()
 }
 
-// SweepOnce removes any tombstone older than tombstoneTTL. It is pure,
-// lock-guarded, and deterministic given the registry's clock — tests drive
-// TTL logic through this method with a fake clock instead of sleeping.
+// SweepOnce removes any tombstone older than tombstoneTTL, and reaps any
+// pre-closed `waiters` entry planted by Complete's "no waiter yet" branch
+// (see Complete) that nobody has claimed via Wait/Cleanup within
+// tombstoneTTL. Without this second sweep, a late Complete arriving after
+// its tombstone was already reaped permanently orphans an entry in
+// `waiters` instead of `cleaned` — unbounded growth just relocated to a
+// different map (#83). It is pure, lock-guarded, and deterministic given
+// the registry's clock — tests drive TTL logic through this method with a
+// fake clock instead of sleeping.
 func (r *CompletionRegistry) SweepOnce() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -154,6 +179,12 @@ func (r *CompletionRegistry) SweepOnce() {
 	for taskID, insertedAt := range r.cleaned {
 		if now.Sub(insertedAt) >= r.tombstoneTTL {
 			delete(r.cleaned, taskID)
+		}
+	}
+	for taskID, insertedAt := range r.completed {
+		if now.Sub(insertedAt) >= r.tombstoneTTL {
+			delete(r.completed, taskID)
+			delete(r.waiters, taskID)
 		}
 	}
 }
