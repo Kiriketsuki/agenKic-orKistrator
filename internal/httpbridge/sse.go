@@ -17,8 +17,31 @@ const (
 	sseBatchSize    = 50
 )
 
+// writeSSEEvent renders one StreamEvent onto the wire using the shared
+// mapStoreEvent + SSE wire format, flushing after every write.
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, se state.StreamEvent) {
+	sseType, data := mapStoreEvent(se.Event, se.ID)
+	if sseType == "" {
+		return
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseType, payload)
+	flusher.Flush()
+}
+
 // handleSSE streams server-sent events to the client.
-// Each connection maintains its own cursor via ReadEvents — broadcast semantics.
+//
+// Every connection sees every event (broadcast semantics), each carrying a
+// "cursor" so clients can resume via ?since=. Steady-state delivery comes
+// from a single shared Broker — one poll goroutine performs the store read
+// for every connection combined (see broker.go). Each connection still does
+// a one-time bounded backfill replay from its own ?since= cursor up to the
+// broker's cursor snapshot ("cut") taken atomically at Subscribe, so
+// per-connection resume semantics are preserved without any connection
+// polling the store itself.
 func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -36,53 +59,92 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	ctx := r.Context()
-	cursor := "0"
-	if since := r.URL.Query().Get("since"); since != "" {
-		cursor = since
+	since := "0"
+	if s := r.URL.Query().Get("since"); s != "" {
+		since = s
 	}
+
+	sub, cut := b.broker.Subscribe()
+	defer b.broker.Unsubscribe(sub)
+
+	// One-time bounded backfill: replay [since..cut] from the store. Only ID
+	// EQUALITY is ever tested against cut — store cursor IDs (e.g. Redis
+	// "millis-seq" or MockStore "mock-N") are opaque and not safely
+	// order-comparable across the state.StateStore abstraction.
+	//
+	// foundCut starts true when since already equals cut (including the
+	// "0"=="0" case where the broker has not advanced past anything yet):
+	// there is nothing before cut to replay, and everything the client
+	// hasn't seen will arrive live. cut=="0" with since!="0" (a stale/ahead
+	// resume cursor after a broker restart) must NOT be treated as
+	// found-cut here — that is exactly the gating edge case below.
+	foundCut := since == cut
+	lastBackfilled := since
+	if !foundCut && cut != "0" && cut != "" {
+		cursor := since
+		for {
+			events, err := b.store.ReadEvents(ctx, cursor, sseBatchSize)
+			if err != nil {
+				log.Printf("httpbridge: SSE backfill ReadEvents: %v", err)
+				break
+			}
+			if len(events) == 0 {
+				break
+			}
+			for _, se := range events {
+				writeSSEEvent(w, flusher, se)
+				cursor = se.ID
+				lastBackfilled = se.ID
+				if se.ID == cut {
+					foundCut = true
+					break
+				}
+			}
+			if foundCut {
+				break
+			}
+		}
+	}
+
+	// Resume edge (server restart / stale cursor): if backfill never
+	// encountered cut, the client's `since` may be ahead of (or unrelated
+	// to) the broker's cursor. Gate live delivery until we've seen
+	// lastBackfilled (== since when backfill delivered nothing), then
+	// deliver strictly-subsequent events — reproducing the original
+	// per-connection "deliver events strictly after `since`" semantics
+	// without ever comparing two IDs with '<'.
+	gating := !foundCut && since != "0"
+	gateID := lastBackfilled
+
 	lastKeepalive := time.Now()
+	keepaliveTicker := time.NewTicker(sseKeepalive)
+	defer keepaliveTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-		}
 
-		events, err := b.store.ReadEvents(ctx, cursor, sseBatchSize)
-		if err != nil {
-			log.Printf("httpbridge: SSE ReadEvents: %v", err)
-			time.Sleep(ssePollInterval)
-			continue
-		}
-
-		for _, se := range events {
-			cursor = se.ID
-			sseType, data := mapStoreEvent(se.Event, se.ID)
-			if sseType == "" {
+		case se, ok := <-sub.Events():
+			if !ok {
+				// Broker shut down.
+				return
+			}
+			if gating {
+				if se.ID == gateID {
+					gating = false
+				}
 				continue
 			}
-			payload, jErr := json.Marshal(data)
-			if jErr != nil {
-				continue
+			writeSSEEvent(w, flusher, se)
+			lastKeepalive = time.Now()
+
+		case <-keepaliveTicker.C:
+			if time.Since(lastKeepalive) >= sseKeepalive {
+				fmt.Fprint(w, ":ping\n\n")
+				flusher.Flush()
+				lastKeepalive = time.Now()
 			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseType, payload)
-		}
-
-		if len(events) > 0 {
-			flusher.Flush()
-			lastKeepalive = time.Now()
-		}
-
-		// Keepalive if no events for a while
-		if time.Since(lastKeepalive) >= sseKeepalive {
-			fmt.Fprint(w, ":ping\n\n")
-			flusher.Flush()
-			lastKeepalive = time.Now()
-		}
-
-		if len(events) == 0 {
-			time.Sleep(ssePollInterval)
 		}
 	}
 }
