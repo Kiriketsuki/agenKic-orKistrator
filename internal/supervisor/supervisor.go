@@ -554,17 +554,30 @@ func (sv *Supervisor) ReportOutput(ctx context.Context, agentID string) error {
 
 // CompleteAgent is the public entry point for signaling agent task completion.
 // It applies EventOutputDelivered, records success, and clears cooldown/circuit state.
-func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string) error {
-	return sv.completeAgent(ctx, agentID)
+func (sv *Supervisor) CompleteAgent(ctx context.Context, agentID string, taskID string) error {
+	return sv.completeAgent(ctx, agentID, taskID)
 }
 
 // completeAgent applies EventOutputDelivered and records a success with the
 // restart policy, resetting consecutive crash counters and clearing any
 // cooldown or circuit-breaker state for the agent.
 //
+// taskID, when non-empty, is the task ID supplied by the caller (threaded
+// from CompleteAgentRequest.task_id). It is NOT trusted blindly: it is
+// cross-checked against the store's authoritative CurrentTaskID for the
+// agent (read via GetAgentFields) and the store value wins on a mismatch —
+// this prevents a stale or incorrect caller-supplied task_id (e.g. a
+// retried RPC after reassignment) from completing the wrong task while
+// silently dropping the signal for the agent's real current task. When the
+// store read fails, completeAgent falls back to the caller-supplied taskID
+// (if any) so a transient store error does not drop the signal outright —
+// this preserves the original fix for issue #82. When taskID is empty
+// (legacy clients that omit the field) and the store read fails, the
+// completion signal is dropped, preserving the original legacy behavior.
+//
 // The per-agent mutex is held for the entire operation to prevent interleaving
 // with crashAgent (which pre-populates cooldown sentinels).
-func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
+func (sv *Supervisor) completeAgent(ctx context.Context, agentID string, taskID string) error {
 	mu := sv.getAgentMutex(agentID)
 	if mu == nil {
 		return ErrSupervisorStopped
@@ -582,12 +595,33 @@ func (sv *Supervisor) completeAgent(ctx context.Context, agentID string) error {
 	// Signal task completion BEFORE clearing CurrentTaskID so the task ID is
 	// still readable. BlockingSubmitter callers unblock here.
 	if sv.completionRegistry != nil {
-		if fields, fErr := sv.store.GetAgentFields(ctx, agentID); fErr == nil && fields.CurrentTaskID != "" {
-			sv.completionRegistry.Complete(fields.CurrentTaskID)
-		} else if fErr != nil {
-			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, CompletionRegistry.Complete skipped: %v", agentID, fErr)
+		tid := taskID
+		fields, fErr := sv.store.GetAgentFields(ctx, agentID)
+		switch {
+		case fErr != nil:
+			// Store read failed. Fall back to the caller-supplied taskID (if
+			// any) rather than dropping the signal outright — this is the
+			// original fix for issue #82. There is no store value to
+			// validate against, so the caller-supplied ID must be trusted
+			// here; it cannot be cross-checked.
+			log.Printf("supervisor: completeAgent %s — GetAgentFields failed, falling back to caller-supplied taskID (unvalidated): %v", agentID, fErr)
+		case fields.CurrentTaskID == "":
+			// Store has no recorded current task for this agent. Nothing to
+			// validate against; use the caller-supplied value as-is.
+		case taskID == "" || taskID == fields.CurrentTaskID:
+			tid = fields.CurrentTaskID
+		default:
+			// Caller-supplied taskID does not match the store's authoritative
+			// CurrentTaskID for this agent. Do not trust the caller — signal
+			// completion for the store's real current task instead, so the
+			// genuine in-flight task is not left permanently unsignaled.
+			log.Printf("supervisor: completeAgent %s — caller-supplied taskID %q does not match store CurrentTaskID %q; using store value", agentID, taskID, fields.CurrentTaskID)
+			tid = fields.CurrentTaskID
+		}
+		if tid != "" {
+			sv.completionRegistry.Complete(tid)
 		} else {
-			log.Printf("supervisor: completeAgent %s — CurrentTaskID empty, completion signal not sent", agentID)
+			log.Printf("supervisor: completeAgent %s — no task ID available, completion signal not sent", agentID)
 		}
 	}
 

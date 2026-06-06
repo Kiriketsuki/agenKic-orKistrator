@@ -208,7 +208,7 @@ func (s *OrchestratorServer) CompleteAgent(ctx context.Context, req *pb.Complete
 	if req.AgentId == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_id is required")
 	}
-	if err := s.supervisor.CompleteAgent(ctx, req.AgentId); err != nil {
+	if err := s.supervisor.CompleteAgent(ctx, req.AgentId, req.GetTaskId()); err != nil {
 		return nil, status.Errorf(codes.Internal, "complete agent %s: %v", req.AgentId, err)
 	}
 	return &pb.CompleteAgentResponse{}, nil
