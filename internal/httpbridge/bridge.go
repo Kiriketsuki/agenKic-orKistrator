@@ -21,6 +21,8 @@ type Bridge struct {
 	substrate terminal.Substrate // optional; nil = PTY endpoints return 501
 	apiKey    string             // optional; empty = no auth required
 
+	broker *Broker // shared SSE fan-out broker; owns the single poll goroutine
+
 	mux     *http.ServeMux
 	handler http.Handler // authMiddleware(mux) or mux — used by ServeHTTP
 	server  *http.Server
@@ -50,6 +52,10 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	for _, opt := range opts {
 		opt(b)
 	}
+
+	// The broker's poll goroutine must launch here — not in Start — because
+	// tests exercise Bridge via httptest+ServeHTTP and never call Start.
+	b.broker = NewBroker(store, ssePollInterval, sseBatchSize, brokerDefaultBufSize)
 
 	// REST endpoints
 	b.mux.HandleFunc("GET /api/agents", b.handleListAgents)
@@ -90,8 +96,12 @@ func (b *Bridge) Start() error {
 	return b.server.ListenAndServe()
 }
 
-// Shutdown gracefully stops the server.
+// Shutdown gracefully stops the server. The broker's poll goroutine and all
+// subscriber channels are closed before the HTTP server itself shuts down.
 func (b *Bridge) Shutdown(ctx context.Context) error {
+	if b.broker != nil {
+		b.broker.Close()
+	}
 	return b.server.Shutdown(ctx)
 }
 
