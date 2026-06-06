@@ -17,8 +17,16 @@ func (sv *Supervisor) CrashAgentForTest(ctx context.Context, agentID string) {
 
 // CompleteAgentForTest exposes completeAgent for test packages.
 // It calls policy.RecordSuccess and clears cooldown/circuit-breaker state.
+// Delegates with an empty taskID so existing callers exercise the legacy
+// GetAgentFields fallback path unchanged.
 func (sv *Supervisor) CompleteAgentForTest(ctx context.Context, agentID string) error {
-	return sv.completeAgent(ctx, agentID)
+	return sv.completeAgent(ctx, agentID, "")
+}
+
+// CompleteAgentForTestWithTask exposes completeAgent with an explicit taskID
+// for test packages, exercising the direct (non-fallback) completion path.
+func (sv *Supervisor) CompleteAgentForTestWithTask(ctx context.Context, agentID string, taskID string) error {
+	return sv.completeAgent(ctx, agentID, taskID)
 }
 
 // ApplyEventForTest exposes machine.ApplyEvent for test packages.
