@@ -110,6 +110,15 @@ func (b *Broker) pollLoop() {
 		case <-b.ctx.Done():
 			return
 		case <-ticker.C:
+			// select does not prioritize cases — Done() and ticker.C can
+			// both be ready if Close() races the ticker firing. Re-check
+			// here so a shutdown is never missed in favor of one more tick.
+			select {
+			case <-b.ctx.Done():
+				return
+			default:
+			}
+
 			cursor := b.snapshotCursor()
 
 			// Outside the lock: never let store latency block Subscribe/Unsubscribe.
