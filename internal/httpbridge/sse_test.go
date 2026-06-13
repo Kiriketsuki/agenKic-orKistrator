@@ -137,6 +137,84 @@ func TestSSE_SinceCursorSkipsPriorEvents(t *testing.T) {
 	t.Fatal("never received agent-new event")
 }
 
+// TestSSE_ResumeAfterCursorEvictedDoesNotStarve exercises handleSSE (real
+// HTTP, not a hand-rolled reimplementation of its gating logic) in the
+// resume-after-restart edge case: a client reconnects with ?since=<oldID>
+// while the broker's cursor is still fresh ("0", e.g. right after a
+// server/broker restart) AND the store no longer holds `oldID` at all
+// (simulating Redis XTRIM/MAXLEN retention, or a non-persistent restart).
+//
+// Before the fix, gating armed on the literal `since` ID and could only
+// clear on an exact match — which never occurs once that ID is evicted, so
+// the connection silently received zero events forever despite new events
+// continuously arriving. This test fails (times out) against that behavior
+// and passes once gating correctly recognises "backfill found nothing to
+// replay" as "nothing to skip" rather than "wait for an ID that can never
+// reappear."
+func TestSSE_ResumeAfterCursorEvictedDoesNotStarve(t *testing.T) {
+	store := state.NewMockStore()
+
+	// Publish a "pre-restart" event and capture its ID as the client's
+	// last-known cursor.
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "pre-restart",
+		Timestamp: 1000,
+	})
+	pre, err := store.ReadEvents(context.Background(), "0", 10)
+	if err != nil || len(pre) != 1 {
+		t.Fatalf("setup: expected 1 event, got %d err=%v", len(pre), err)
+	}
+	since := pre[0].ID
+
+	// Simulate retention fully evicting the entry the client is resuming
+	// from — the store now holds nothing at or after `since`.
+	store.TrimEvents(0)
+	drained, err := store.ReadEvents(context.Background(), since, 10)
+	if err != nil {
+		t.Fatalf("sanity ReadEvents: %v", err)
+	}
+	if len(drained) != 0 {
+		t.Fatalf("setup: expected since's entry to be evicted, got %d events", len(drained))
+	}
+
+	// A long poll interval guarantees the request below reaches handleSSE
+	// (and Subscribe) before the broker's first tick — reproducing the
+	// exact cut=="0" && since!="0" branch deterministically rather than
+	// relying on a race against the default 200ms interval.
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithBrokerInterval(500*time.Millisecond))
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/events/stream?since="+since, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// A genuinely new post-restart event. The evicted `since` ID will never
+	// reappear live, so this only arrives if resume gating correctly stays
+	// off instead of waiting forever for an impossible exact match.
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "post-restart",
+		Timestamp: 2000,
+	})
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "post-restart") {
+			return // success
+		}
+	}
+	t.Fatal("never received post-restart event — resume gating starved the connection after an evicted cursor")
+}
+
 func TestSSE_AgentRegisteredCarriesFullAgentFields(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil)

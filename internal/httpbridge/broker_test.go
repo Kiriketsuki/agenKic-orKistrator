@@ -3,6 +3,7 @@ package httpbridge_test
 import (
 	"context"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -384,6 +385,73 @@ func TestBroker_ResumeAfterCursorAhead_GatingClearsOnMatch(t *testing.T) {
 	}
 
 	assertStrings(t, "post-restart gating", delivered, []string{"post-restart"})
+}
+
+// TestBroker_SubscribeAfterClose covers the shutdown race where a new SSE
+// request calls Subscribe() concurrently with (or after) Broker.Close(). A
+// subscription registered after Close() has already run its close loop
+// would otherwise never be delivered to (pollLoop has exited) and never be
+// closed (Close() only closes subscribers once) — leaving handleSSE's
+// select blocked forever on sub.Events() instead of seeing ok==false and
+// returning, as every other subscriber does on shutdown. Subscribe() must
+// hand back an already-closed channel once the broker is closed.
+func TestBroker_SubscribeAfterClose(t *testing.T) {
+	store := newCountingStore()
+	b := httpbridge.NewBroker(store, testBrokerInterval, testBrokerBatch, brokerTestBufSizeLarge)
+
+	b.Close()
+
+	sub, _ := b.Subscribe()
+	select {
+	case _, ok := <-sub.Events():
+		if ok {
+			t.Fatal("expected closed channel (ok=false), got a delivered event")
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Subscribe() after Close() returned a channel that never closes — handleSSE would block forever")
+	}
+}
+
+// TestBroker_SubscribeCloseRace hammers Subscribe() concurrently with
+// Close() so `go test -race` can catch any data race on the closed/subs
+// state, and confirms every subscription — win or lose the race — ends up
+// with a channel that closes (rather than one that hangs forever).
+func TestBroker_SubscribeCloseRace(t *testing.T) {
+	store := newCountingStore()
+	b := httpbridge.NewBroker(store, testBrokerInterval, testBrokerBatch, brokerTestBufSizeLarge)
+
+	const n = 50
+	subs := make([]*httpbridge.Subscription, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			sub, _ := b.Subscribe()
+			subs[i] = sub
+		}(i)
+	}
+	// Close concurrently with the Subscribe burst above.
+	go b.Close()
+	wg.Wait()
+
+	// b.Close() may still be finishing (its own wg.Wait() on the poll
+	// goroutine) when our wg above completes, but every Subscribe() call
+	// has already returned — and per the fix, has already been placed
+	// either fully before or fully after Close()'s critical section. Give
+	// the (already-returned) Close() call a moment to finish either way.
+	b.Close() // idempotent-in-effect: closing an already-closed broker's cancel is safe
+
+	for i, sub := range subs {
+		select {
+		case _, ok := <-sub.Events():
+			if ok {
+				t.Fatalf("subscriber %d: expected closed channel eventually, got a live event", i)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("subscriber %d: channel never closed after broker Close() — potential goroutine/connection leak", i)
+		}
+	}
 }
 
 func assertStrings(t *testing.T, label string, got, want []string) {
