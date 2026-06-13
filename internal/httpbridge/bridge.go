@@ -21,7 +21,8 @@ type Bridge struct {
 	substrate terminal.Substrate // optional; nil = PTY endpoints return 501
 	apiKey    string             // optional; empty = no auth required
 
-	broker *Broker // shared SSE fan-out broker; owns the single poll goroutine
+	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
+	brokerInterval time.Duration
 
 	mux     *http.ServeMux
 	handler http.Handler // authMiddleware(mux) or mux — used by ServeHTTP
@@ -42,6 +43,14 @@ func WithSubstrate(s terminal.Substrate) BridgeOption {
 	return func(b *Bridge) { b.substrate = s }
 }
 
+// WithBrokerInterval overrides the SSE broker's poll interval (default
+// ssePollInterval). Primarily for tests that need deterministic control over
+// the broker's poll timing — e.g. asserting on behavior that only manifests
+// before the first poll tick has advanced the broker's cursor past "0".
+func WithBrokerInterval(d time.Duration) BridgeOption {
+	return func(b *Bridge) { b.brokerInterval = d }
+}
+
 // NewBridge creates a Bridge bound to addr. Call Start() to begin serving.
 func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...BridgeOption) *Bridge {
 	b := &Bridge{
@@ -55,7 +64,11 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 
 	// The broker's poll goroutine must launch here — not in Start — because
 	// tests exercise Bridge via httptest+ServeHTTP and never call Start.
-	b.broker = NewBroker(store, ssePollInterval, sseBatchSize, brokerDefaultBufSize)
+	interval := b.brokerInterval
+	if interval <= 0 {
+		interval = ssePollInterval
+	}
+	b.broker = NewBroker(store, interval, sseBatchSize, brokerDefaultBufSize)
 
 	// REST endpoints
 	b.mux.HandleFunc("GET /api/agents", b.handleListAgents)

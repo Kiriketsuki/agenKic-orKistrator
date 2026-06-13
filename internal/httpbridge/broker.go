@@ -67,6 +67,7 @@ type Broker struct {
 	mu     sync.Mutex
 	subs   map[*Subscription]struct{}
 	cursor string
+	closed bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -159,9 +160,27 @@ func (b *Broker) snapshotCursor() string {
 // Subscribe registers a new Subscription and returns it along with "cut" —
 // a snapshot of the broker's cursor taken atomically with the insertion.
 // See the Broker doc comment for why this makes the handoff race-free.
+//
+// If the broker has already been Close()d, Subscribe returns a Subscription
+// whose channel is already closed (rather than inserting into subs) — the
+// same critical section Close() uses to close every subscriber is used here
+// to check the closed flag, so the two paths can never race: either
+// Subscribe fully precedes Close() (and gets closed normally by Close()'s
+// loop), or Close() fully precedes Subscribe (and Subscribe hands back an
+// already-closed channel here). Without this, a Subscribe that lands after
+// Close() has already run its close loop would register a subscriber that
+// pollLoop (already exited) never delivers to and Close() (already run)
+// never closes, leaving handleSSE blocked forever on a live channel instead
+// of seeing ok==false and returning.
 func (b *Broker) Subscribe() (*Subscription, string) {
 	sub := &Subscription{ch: make(chan state.StreamEvent, b.bufSize)}
 	b.mu.Lock()
+	if b.closed {
+		cut := b.cursor
+		b.mu.Unlock()
+		close(sub.ch)
+		return sub, cut
+	}
 	cut := b.cursor
 	b.subs[sub] = struct{}{}
 	b.mu.Unlock()
@@ -188,6 +207,7 @@ func (b *Broker) Unsubscribe(sub *Subscription) {
 func (b *Broker) Close() {
 	b.cancel()
 	b.mu.Lock()
+	b.closed = true
 	for sub := range b.subs {
 		delete(b.subs, sub)
 		close(sub.ch)

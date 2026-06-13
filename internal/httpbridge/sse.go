@@ -78,9 +78,21 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// hasn't seen will arrive live. cut=="0" with since!="0" (a stale/ahead
 	// resume cursor after a broker restart) must NOT be treated as
 	// found-cut here — that is exactly the gating edge case below.
+	//
+	// Backfill must run whenever there is a chance of missed history: the
+	// normal case (cut != "0", the broker has advanced) OR the resume-after-
+	// restart case (cut == "0" but since != "0" — the broker's cursor reset
+	// while the store may still hold everything after `since`). Restricting
+	// this to cut != "0" (as an earlier version did) skipped backfill
+	// entirely on that second branch, arming live-delivery gating on an
+	// exact `since` ID match that may never recur if that entry was since
+	// trimmed from the store (e.g. Redis XTRIM/MAXLEN) — the connection
+	// would then never clear gating and silently starve forever. Store reads
+	// use `since`/cursor purely as an exclusive lower bound (matching Redis
+	// XREAD semantics), so this works even if the exact ID no longer exists.
 	foundCut := since == cut
 	lastBackfilled := since
-	if !foundCut && cut != "0" && cut != "" {
+	if !foundCut && cut != "" && (cut != "0" || since != "0") {
 		cursor := since
 		for {
 			events, err := b.store.ReadEvents(ctx, cursor, sseBatchSize)
@@ -109,11 +121,21 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Resume edge (server restart / stale cursor): if backfill never
 	// encountered cut, the client's `since` may be ahead of (or unrelated
 	// to) the broker's cursor. Gate live delivery until we've seen
-	// lastBackfilled (== since when backfill delivered nothing), then
-	// deliver strictly-subsequent events — reproducing the original
-	// per-connection "deliver events strictly after `since`" semantics
-	// without ever comparing two IDs with '<'.
-	gating := !foundCut && since != "0"
+	// lastBackfilled, then deliver strictly-subsequent events — reproducing
+	// the original per-connection "deliver events strictly after `since`"
+	// semantics without ever comparing two IDs with '<'.
+	//
+	// Gating is only armed when backfill actually delivered at least one
+	// event (lastBackfilled != since): that is the only case where the live
+	// channel — which, when cut=="0", replays every event from the
+	// beginning — could hand this connection a duplicate of something
+	// backfill already wrote to the client. If backfill delivered nothing
+	// (e.g. `since` referenced an entry that has since been evicted from
+	// the store entirely, and the store holds nothing newer either), there
+	// is nothing to skip: every live event from here on is provably new, so
+	// gating on the never-again-existing `since` ID would just starve the
+	// connection forever instead of harmlessly passing everything through.
+	gating := !foundCut && since != "0" && lastBackfilled != since
 	gateID := lastBackfilled
 
 	lastKeepalive := time.Now()
