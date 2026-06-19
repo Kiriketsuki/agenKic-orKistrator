@@ -6,6 +6,9 @@ signal agent_registered(agent_data: BridgeData.AgentData)
 signal agent_state_changed(agent_id: String, old_state: String, new_state: String, task_id: String)
 signal agent_deregistered(agent_id: String)
 signal agent_output(chunk: BridgeData.AgentOutputChunk)
+## Emitted once per fetch_agent_output_history() call, with the parsed backfill
+## as an Array[BridgeData.AgentOutputChunk] (empty on any failure/parse miss).
+signal agent_output_history(agent_id: String, chunks: Array)
 signal connection_status_changed(status: String)
 signal command_failed(path: String, code: int)
 signal floor_created(floor_data: BridgeData.FloorData)
@@ -33,6 +36,8 @@ var _inflight_path: String = ""
 var _sync_agents_request: HTTPRequest
 var _sync_floors_request: HTTPRequest
 var _command_request: HTTPRequest
+var _output_history_request: HTTPRequest
+var _output_history_agent_id: String = ""
 
 var _agents_synced: bool = false
 var _floors_synced: bool = false
@@ -54,6 +59,11 @@ func _ready() -> void:
 	add_child(_command_request)
 	_command_request.timeout = 10
 	_command_request.request_completed.connect(_on_command_completed)
+
+	_output_history_request = HTTPRequest.new()
+	add_child(_output_history_request)
+	_output_history_request.timeout = 10
+	_output_history_request.request_completed.connect(_on_output_history_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
 	_start_initial_sync()
@@ -332,6 +342,71 @@ func send_input(agent_id: String, keys: String) -> void:
 
 func get_agent_output(agent_id: String, lines: int = 50) -> void:
 	_enqueue_command("GET", "/api/agents/" + agent_id + "/output?lines=" + str(lines), {})
+
+
+## Dedicated GET for scroll-panel backfill — unlike get_agent_output() above
+## (which is a fire-and-forget write-command-queue entry whose response body
+## is discarded), this reads and parses the response body and emits
+## agent_output_history with the result.
+func fetch_agent_output_history(agent_id: String, lines: int = 200) -> void:
+	_output_history_agent_id = agent_id
+	var url: String = base_url + "/api/agents/" + agent_id + "/output?lines=" + str(lines)
+	var err: int = _output_history_request.request(url)
+	if err != OK:
+		agent_output_history.emit(agent_id, [])
+
+
+func _on_output_history_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var agent_id: String = _output_history_agent_id
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		agent_output_history.emit(agent_id, [])
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	agent_output_history.emit(agent_id, _parse_output_history(parsed, agent_id))
+
+
+## Defensive parse: the /output response shape is undocumented, so this
+## tolerates {output:[...]}, {lines:[...]}, {chunks:[...]}, or a bare top-level
+## array — and each item may be either a chunk dict or a plain output string.
+func _parse_output_history(parsed: Variant, agent_id: String) -> Array:
+	var chunks: Array = []
+	var raw_list: Variant = null
+	if parsed is Array:
+		raw_list = parsed
+	elif parsed is Dictionary:
+		var dict: Dictionary = parsed as Dictionary
+		if dict.get("output", null) is Array:
+			raw_list = dict.get("output")
+		elif dict.get("lines", null) is Array:
+			raw_list = dict.get("lines")
+		elif dict.get("chunks", null) is Array:
+			raw_list = dict.get("chunks")
+	if not raw_list is Array:
+		return chunks
+	for item: Variant in (raw_list as Array):
+		var chunk: BridgeData.AgentOutputChunk = _coerce_output_item(item, agent_id)
+		if chunk != null:
+			chunks.append(chunk)
+	return chunks
+
+
+func _coerce_output_item(item: Variant, agent_id: String) -> BridgeData.AgentOutputChunk:
+	if item is Dictionary:
+		var d: Dictionary = item as Dictionary
+		if d.get("agent_id", "") == "":
+			d = d.duplicate()
+			d["agent_id"] = agent_id
+		return BridgeData.AgentOutputChunk.from_dict(d)
+	if item is String:
+		var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.new()
+		chunk.agent_id = agent_id
+		chunk.payload = item as String
+		return chunk
+	return null
+
+
+func get_agent(agent_id: String) -> BridgeData.AgentData:
+	return _agents.get(agent_id, null)
 
 
 func _enqueue_command(method: String, path: String, body: Dictionary) -> void:
