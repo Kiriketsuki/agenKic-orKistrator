@@ -280,19 +280,22 @@ func (m *MockStore) PublishEvent(ctx context.Context, event Event) error {
 }
 
 // ReadEvents returns up to count StreamEvents published after lastID.
-// Note: unlike Redis XREAD which treats lastID as a lexicographic lower bound,
-// the mock requires lastID to exactly match an existing entry's ID. Cursor IDs
-// from a different mock instance or in Redis format (e.g. "1711234567890-0")
-// will return empty. This is acceptable for unit tests where cursors always
-// come from prior ReadEvents/SubscribeEvents calls in the same test run.
+// Like Redis XREAD, lastID is an EXCLUSIVE LOWER BOUND on the mock's
+// monotonic "mock-N" sequence, not a requirement that an entry with that
+// exact ID still exist. This matters for resume-after-restart / resume-
+// after-trim scenarios (see TrimEvents): a cursor issued before entries were
+// trimmed must still work as a lower bound for whatever remains, exactly as
+// real Redis XREAD does — it never requires the boundary ID to be present.
+// Cursor IDs in a foreign format (e.g. a Redis-style "millis-seq" ID from a
+// different store) fail to parse and yield an empty result, same as before.
 func (m *MockStore) ReadEvents(ctx context.Context, lastID string, count int64) ([]StreamEvent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	result := make([]StreamEvent, 0)
 	if lastID == "0" || lastID == "0-0" {
-		for i, se := range m.streamEvents {
-			if int64(i) >= count {
+		for _, se := range m.streamEvents {
+			if int64(len(result)) >= count {
 				break
 			}
 			result = append(result, StreamEvent{ID: se.ID, Event: se.Event})
@@ -300,21 +303,48 @@ func (m *MockStore) ReadEvents(ctx context.Context, lastID string, count int64) 
 		return result, nil
 	}
 
-	// Find the entry matching lastID and return everything after it.
-	startIdx := -1
-	for i, se := range m.streamEvents {
-		if se.ID == lastID {
-			startIdx = i + 1
-			break
-		}
-	}
-	if startIdx < 0 {
+	lastSeq, ok := parseMockSeq(lastID)
+	if !ok {
 		return result, nil
 	}
-	for i := startIdx; i < len(m.streamEvents) && int64(i-startIdx) < count; i++ {
-		result = append(result, StreamEvent{ID: m.streamEvents[i].ID, Event: m.streamEvents[i].Event})
+	for _, se := range m.streamEvents {
+		seq, ok := parseMockSeq(se.ID)
+		if !ok || seq <= lastSeq {
+			continue
+		}
+		if int64(len(result)) >= count {
+			break
+		}
+		result = append(result, StreamEvent{ID: se.ID, Event: se.Event})
 	}
 	return result, nil
+}
+
+// parseMockSeq extracts the sequence number from a "mock-N" stream entry ID.
+func parseMockSeq(id string) (int64, bool) {
+	var seq int64
+	n, err := fmt.Sscanf(id, "mock-%d", &seq)
+	if err != nil || n != 1 {
+		return 0, false
+	}
+	return seq, true
+}
+
+// TrimEvents drops all but the newest keep stream entries, simulating Redis
+// XTRIM/MAXLEN retention. After trimming, cursors issued against evicted
+// entries no longer match any entry in the store but remain valid exclusive
+// lower bounds (see ReadEvents) — used to test resume-after-trim behavior.
+func (m *MockStore) TrimEvents(keep int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if keep < 0 {
+		keep = 0
+	}
+	if len(m.streamEvents) > keep {
+		trimmed := make([]mockStreamEvent, keep)
+		copy(trimmed, m.streamEvents[len(m.streamEvents)-keep:])
+		m.streamEvents = trimmed
+	}
 }
 
 func (m *MockStore) CreateConsumerGroup(ctx context.Context, group string, startID string) error {
