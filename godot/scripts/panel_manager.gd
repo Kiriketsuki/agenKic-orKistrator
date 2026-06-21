@@ -13,6 +13,13 @@ const MASTER_RATIO_SNAP_POINTS: Array[float] = [0.25, 0.5, 0.75]
 const DIVIDER_WIDTH: float = 8.0
 const DOCK_PREVIEW_WIDTH: float = 72.0
 
+## Singleton panel id for the spell scroll — only one may be open at a time;
+## opening a different agent's scroll retargets this panel instead of
+## spawning a second one.
+const SCROLL_PANEL_ID: String = "spell-scroll"
+const SCROLL_WIDTH_RATIO: float = 0.4
+const SCROLL_SLIDE_DURATION: float = 0.28
+
 var master_ratio: float = MASTER_RATIO_DEFAULT
 var left_tree: DwindleTree = DwindleTree.new("left")
 var right_tree: DwindleTree = DwindleTree.new("right")
@@ -107,6 +114,8 @@ func close_panel(panel_id: String) -> void:
 		_active_panel = null
 	left_tree.remove_panel(panel_id)
 	right_tree.remove_panel(panel_id)
+	# panels_by_id is the sole source of truth for scroll-singleton tracking
+	# (see open_scroll_panel) — erasing here is sufficient to "close" it.
 	panels_by_id.erase(panel_id)
 	panel.queue_free()
 	_refresh_layout()
@@ -161,8 +170,10 @@ func _wire_panel(panel: PanelBase) -> void:
 	panel.mode_changed.connect(func(p: PanelBase, next_mode: String) -> void:
 		if not p.agent_id.is_empty():
 			mode_preferences[p.agent_id] = next_mode
+		PanelContentRouter.mount(p, next_mode, _bridge_manager, _get_agent_data(p.agent_id))
 		_save_layout()
 	)
+	PanelContentRouter.mount(panel, panel.mode, _bridge_manager, _get_agent_data(panel.agent_id))
 
 
 func _bind_divider(divider: ColorRect, side: String) -> void:
@@ -482,8 +493,55 @@ func reset_layout() -> void:
 
 
 func _open_agent_panel(agent_id: String) -> void:
-	var title: String = "Agent %s" % agent_id
-	open_panel("agent:%s" % agent_id, title, agent_id, mode_preferences.get(agent_id, "scroll"))
+	open_scroll_panel(agent_id)
+
+
+## Opens (or retargets) the singleton spell-scroll panel for `agent_id`.
+## Only one scroll is ever open: clicking a different agent while a scroll is
+## already open swaps its content in place instead of opening a second panel.
+func open_scroll_panel(agent_id: String) -> void:
+	var title: String = "%s — Spell Scroll" % agent_id
+	var agent_data: BridgeData.AgentData = _get_agent_data(agent_id)
+	if panels_by_id.has(SCROLL_PANEL_ID):
+		var existing: PanelBase = panels_by_id[SCROLL_PANEL_ID]
+		if existing.agent_id == agent_id:
+			focus_panel(existing)
+			return
+		existing.agent_id = agent_id
+		existing.set_panel_title(title)
+		var view: Node = existing.get_content_root().get_node_or_null("InjectedContent")
+		if view != null and view.has_method("swap_agent"):
+			view.call("swap_agent", agent_data)
+		existing.on_animation_hook(&"rescroll")
+		focus_panel(existing)
+		_save_layout()
+		return
+	var panel: PanelBase = open_panel(SCROLL_PANEL_ID, title, agent_id, "scroll")
+	_place_scroll_panel(panel)
+
+
+## Sizes/places the scroll panel at the right ~40% of the viewport (full
+## height) and slides it in from off the right edge, composing over
+## PanelBase's own materialize fade/scale (already playing from _ready()).
+func _place_scroll_panel(panel: PanelBase) -> void:
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var width: float = maxf(panel.custom_minimum_size.x, viewport_size.x * SCROLL_WIDTH_RATIO)
+	var target_rect: Rect2 = Rect2(Vector2(viewport_size.x - width, 0.0), Vector2(width, viewport_size.y))
+	panel.set_floating_at(target_rect)
+	panel.position = Vector2(viewport_size.x + 24.0, target_rect.position.y)
+	var tween: Tween = create_tween()
+	tween.tween_property(panel, "position:x", target_rect.position.x, SCROLL_SLIDE_DURATION) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+func _get_agent_data(agent_id: String) -> BridgeData.AgentData:
+	if agent_id.is_empty():
+		return null
+	if _agent_list.has(agent_id):
+		return _agent_list[agent_id]
+	if _bridge_manager != null and _bridge_manager.has_method("get_agent"):
+		return _bridge_manager.call("get_agent", agent_id)
+	return null
 
 
 func _toggle_panel_menu() -> void:
