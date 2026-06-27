@@ -35,6 +35,14 @@ var _bridge: Node = null
 var _agent_id: String = ""
 var _signals_connected: bool = false
 var _bob_time: float = 0.0
+## True from the moment a backfill fetch is issued until its response (or a
+## superseding swap_agent()) lands. While true, live output is held in
+## _pending_live_chunks instead of being appended directly, so backfilled
+## (older) history can never be inserted below live (newer) output that
+## raced ahead of it, and the live chunk's quill reveal is never
+## short-circuited by the backfill's instant-reveal.
+var _backfill_pending: bool = false
+var _pending_live_chunks: Array = []
 
 
 func _ready() -> void:
@@ -69,6 +77,7 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_panel = panel
 	_bridge = bridge
 	_restyle_close_button()
+	_disable_mode_toggle()
 	_clear_history()
 	_apply_agent(agent_data)
 	_connect_bridge_signals()
@@ -132,6 +141,22 @@ func _restyle_close_button() -> void:
 	button.add_theme_color_override("font_color", Color(0.55, 0.12, 0.1, 1.0))
 
 
+## The spell scroll is a dedicated panel type, not a generic mode among
+## others — toggling the shared T8 title bar's Mode button away from
+## "scroll" here would persist a non-scroll mode_preferences entry for this
+## agent (PanelManager._wire_panel's mode_changed handler) and silently
+## replace the scroll with the generic placeholder on the next click,
+## for this panel and for any future scroll open for the same agent.
+func _disable_mode_toggle() -> void:
+	if _panel == null:
+		return
+	var button: Button = _panel.get_mode_button()
+	if button == null:
+		return
+	button.visible = false
+	button.disabled = true
+
+
 func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	if agent_data == null:
 		_agent_id = ""
@@ -174,6 +199,7 @@ func _request_backfill() -> void:
 	if _bridge == null or _agent_id.is_empty():
 		return
 	if _bridge.has_method("fetch_agent_output_history"):
+		_backfill_pending = true
 		_bridge.call("fetch_agent_output_history", _agent_id, HISTORY_BACKFILL_LINES)
 
 
@@ -185,6 +211,8 @@ func _clear_history() -> void:
 	_history.visible_characters = 0
 	_quill.visible = false
 	_bob_time = 0.0
+	_backfill_pending = false
+	_pending_live_chunks.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -194,17 +222,38 @@ func _clear_history() -> void:
 func _on_history_backfill(agent_id: String, chunks: Array) -> void:
 	if agent_id != _agent_id:
 		return
+	if not _backfill_pending:
+		# Already superseded by a later swap_agent()/_request_backfill() call
+		# for this same agent id (e.g. rapid re-open) — drop it rather than
+		# risk appending stale history after newer content.
+		return
+	_backfill_pending = false
 	for item: Variant in chunks:
 		var chunk: BridgeData.AgentOutputChunk = item as BridgeData.AgentOutputChunk
 		if chunk == null:
 			continue
 		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
 	# Backfilled history appears instantly — only new live output is quill-written.
+	# Cap the instant reveal at the backfill's own end so it can never race
+	# ahead of and short-circuit a live chunk appended below it.
 	_history.visible_characters = _history.get_total_character_count()
+	# Flush any live output that arrived while the backfill was in flight —
+	# appended now (after, i.e. below, the backfilled history) and left
+	# unrevealed so _process() quill-writes it normally.
+	var pending: Array = _pending_live_chunks
+	_pending_live_chunks = []
+	for chunk: BridgeData.AgentOutputChunk in pending:
+		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
 
 
 func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
 	if chunk == null or chunk.agent_id != _agent_id:
+		return
+	if _backfill_pending:
+		# Hold until the backfill lands so older history can't be inserted
+		# below this newer line, and so this line's quill reveal can't be
+		# short-circuited by the backfill's instant visible_characters set.
+		_pending_live_chunks.append(chunk)
 		return
 	_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
 	# visible_characters is left behind on purpose — _process() advances it.

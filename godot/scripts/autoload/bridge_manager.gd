@@ -348,12 +348,22 @@ func get_agent_output(agent_id: String, lines: int = 50) -> void:
 ## (which is a fire-and-forget write-command-queue entry whose response body
 ## is discarded), this reads and parses the response body and emits
 ## agent_output_history with the result.
+##
+## Only one backfill can be in flight on the shared _output_history_request
+## node at a time. Any previous in-flight request is cancelled first —
+## cancel_request() does NOT fire request_completed in Godot 4, so the
+## stale request's response can never land and be mislabeled with the new
+## agent_id. _output_history_agent_id is only set once we know the new
+## request actually started, so a failed/aborted request() call never
+## stomps the id of a request that is still genuinely in flight.
 func fetch_agent_output_history(agent_id: String, lines: int = 200) -> void:
-	_output_history_agent_id = agent_id
+	_output_history_request.cancel_request()
 	var url: String = base_url + "/api/agents/" + agent_id + "/output?lines=" + str(lines)
 	var err: int = _output_history_request.request(url)
 	if err != OK:
 		agent_output_history.emit(agent_id, [])
+		return
+	_output_history_agent_id = agent_id
 
 
 func _on_output_history_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:

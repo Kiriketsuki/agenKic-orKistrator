@@ -134,6 +134,10 @@ func get_close_button() -> Button:
 	return _close_button
 
 
+func get_mode_button() -> Button:
+	return _mode_button
+
+
 func get_title_bar() -> ColorRect:
 	return _title_bar
 
