@@ -509,6 +509,13 @@ func open_scroll_panel(agent_id: String) -> void:
 			return
 		existing.agent_id = agent_id
 		existing.set_panel_title(title)
+		# Defense in depth against a stale mode_preferences entry (e.g. a
+		# prior mode toggle, or a layout.json persisted before the mode
+		# button was disabled for scroll panels): the singleton scroll
+		# panel must always display "scroll" mode, never the generic
+		# placeholder, regardless of what a previous agent's toggle set.
+		if existing.mode != "scroll":
+			existing.set_mode("scroll")
 		var view: Node = existing.get_content_root().get_node_or_null("InjectedContent")
 		if view != null and view.has_method("swap_agent"):
 			view.call("swap_agent", agent_data)
@@ -517,6 +524,11 @@ func open_scroll_panel(agent_id: String) -> void:
 		_save_layout()
 		return
 	var panel: PanelBase = open_panel(SCROLL_PANEL_ID, title, agent_id, "scroll")
+	if panel.mode != "scroll":
+		# Same defense in depth as above, for the fresh-open path: a stale
+		# mode_preferences["agent_id"] entry must not silently swap this
+		# out for the generic placeholder.
+		panel.set_mode("scroll")
 	_place_scroll_panel(panel)
 
 
@@ -532,6 +544,12 @@ func _place_scroll_panel(panel: PanelBase) -> void:
 	var tween: Tween = create_tween()
 	tween.tween_property(panel, "position:x", target_rect.position.x, SCROLL_SLIDE_DURATION) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	# open_panel() already ran _save_layout() once, but that captured the
+	# panel's pre-placement default rect (before set_floating_at()/the slide
+	# above ran). Re-save once the slide-in tween settles at target_rect so
+	# the persisted layout reflects the actual right-anchored placement
+	# instead of the stale default floating rect.
+	tween.finished.connect(_save_layout)
 
 
 func _get_agent_data(agent_id: String) -> BridgeData.AgentData:
