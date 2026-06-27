@@ -130,6 +130,18 @@ func get_content_root() -> MarginContainer:
 	return _content_root
 
 
+func get_close_button() -> Button:
+	return _close_button
+
+
+func get_mode_button() -> Button:
+	return _mode_button
+
+
+func get_title_bar() -> ColorRect:
+	return _title_bar
+
+
 func set_panel_title(value: String) -> void:
 	panel_title = value
 	if is_inside_tree():
