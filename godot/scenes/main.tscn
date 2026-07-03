@@ -1,0 +1,143 @@
+[gd_scene load_steps=4 format=3 uid="uid://main"]
+
+[ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/panel_manager.gd" id="3"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Tower" type="Node2D" parent="."]
+script = ExtResource("1")
+
+[node name="TowerExterior" type="Node2D" parent="Tower"]
+script = ExtResource("2")
+
+[node name="FloorsContainer" type="Node2D" parent="Tower"]
+
+[node name="Camera" type="Camera2D" parent="Tower"]
+position = Vector2(0, 0)
+zoom = Vector2(1, 1)
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Minimap" type="Control" parent="UILayer"]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -60.0
+offset_bottom = 180.0
+grow_horizontal = 0
+
+[node name="FloorTabs" type="VBoxContainer" parent="UILayer"]
+visible = false
+anchors_preset = 0
+offset_right = 80.0
+offset_bottom = 180.0
+
+[node name="PanelManager" type="Control" parent="UILayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("3")
+
+[node name="Dimmer" type="ColorRect" parent="UILayer/PanelManager"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0, 0, 0, 0.45)
+
+[node name="DockPreviews" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftPreview" type="ColorRect" parent="UILayer/PanelManager/DockPreviews"]
+visible = false
+offset_right = 72.0
+offset_bottom = 1080.0
+mouse_filter = 2
+color = Color(0.55, 0.8, 1, 0.18)
+
+[node name="RightPreview" type="ColorRect" parent="UILayer/PanelManager/DockPreviews"]
+visible = false
+offset_left = 1848.0
+offset_right = 1920.0
+offset_bottom = 1080.0
+mouse_filter = 2
+color = Color(0.55, 0.8, 1, 0.18)
+
+[node name="DockZones" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftZone" type="Control" parent="UILayer/PanelManager/DockZones"]
+mouse_filter = 2
+
+[node name="RightZone" type="Control" parent="UILayer/PanelManager/DockZones"]
+mouse_filter = 2
+
+[node name="FloatingLayer" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Dividers" type="Control" parent="UILayer/PanelManager"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftDivider" type="ColorRect" parent="UILayer/PanelManager/Dividers"]
+visible = false
+offset_right = 8.0
+offset_bottom = 1080.0
+mouse_filter = 0
+color = Color(0.9, 0.95, 1, 0.26)
+
+[node name="RightDivider" type="ColorRect" parent="UILayer/PanelManager/Dividers"]
+visible = false
+offset_right = 8.0
+offset_bottom = 1080.0
+mouse_filter = 0
+color = Color(0.9, 0.95, 1, 0.26)
+
+[node name="PanelMenuButton" type="Button" parent="UILayer/PanelManager"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -124.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 48.0
+grow_horizontal = 0
+text = "Panels"
+
+[node name="PanelMenuPopup" type="PopupPanel" parent="UILayer/PanelManager"]
+initial_position = 1
+size = Vector2i(280, 320)
+
+[node name="PanelList" type="ItemList" parent="UILayer/PanelManager/PanelMenuPopup"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
