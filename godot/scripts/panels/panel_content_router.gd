@@ -6,6 +6,7 @@
 class_name PanelContentRouter
 
 const SPELL_SCROLL_SCENE: PackedScene = preload("res://scenes/spell_scroll_view.tscn")
+const TERMINAL_SCENE: PackedScene = preload("res://scenes/terminal_view.tscn")
 const INJECTED_CONTENT_NAME: String = "InjectedContent"
 const CONTENT_MARGIN_DEFAULT: int = 12
 
@@ -30,8 +31,17 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			content_root.add_child(view)
 			if view.has_method("setup"):
 				view.call("setup", panel, agent_data, bridge)
+		"terminal":
+			if placeholder != null:
+				placeholder.visible = false
+			_set_content_margins(content_root, 0)
+			var terminal_view: Control = TERMINAL_SCENE.instantiate() as Control
+			terminal_view.name = INJECTED_CONTENT_NAME
+			content_root.add_child(terminal_view)
+			if terminal_view.has_method("setup"):
+				terminal_view.call("setup", panel, agent_data, bridge)
 		_:
-			# Terminal mode content lands in T10 — leave the generic placeholder up.
+			# Genuinely unknown mode — fall back to the generic placeholder.
 			_set_content_margins(content_root, CONTENT_MARGIN_DEFAULT)
 			if placeholder != null:
 				placeholder.visible = true
