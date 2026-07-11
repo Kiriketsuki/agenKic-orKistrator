@@ -52,6 +52,11 @@ var _signals_connected: bool = false
 var _pty: Node = null
 var _pty_terminal: Control = null
 var _live_mode: bool = false
+## The exact bound Callable passed to `pty.connect("exited", ...)` for the
+## current `_pty`, kept so `_kill_pty()` can disconnect the same Callable
+## instance (`_on_pty_exited.bind(pty)` is a distinct object each call —
+## `is_connected`/`disconnect` need the matching instance, not a fresh bind).
+var _pty_exited_callable: Callable = Callable()
 
 ## Read-only fallback state.
 var _output_label: RichTextLabel = null
@@ -195,7 +200,8 @@ func _mount_live_body() -> void:
 	# stdin, PTY data_received -> Terminal render) per godot-xterm's PTY API.
 	pty.set("terminal_path", terminal.get_path())
 	if pty.has_signal("exited"):
-		pty.connect("exited", _on_pty_exited)
+		_pty_exited_callable = _on_pty_exited.bind(pty)
+		pty.connect("exited", _pty_exited_callable)
 	_pty = pty
 	_pty_terminal = terminal
 	_live_mode = true
@@ -203,7 +209,7 @@ func _mount_live_body() -> void:
 		"fork", "tmux", PackedStringArray(["attach", "-t", "agent-" + _agent_id]), ".", 80, 24
 	)
 	if fork_error != OK:
-		_on_pty_exited(fork_error, 0)
+		_on_pty_exited(fork_error, 0, pty)
 
 
 func _apply_dark_terminal_theme(terminal: Control) -> void:
@@ -223,15 +229,31 @@ func _apply_dark_terminal_theme(terminal: Control) -> void:
 	terminal.theme = theme
 
 
-func _on_pty_exited(_exit_code: int, _signal_code: int) -> void:
+func _on_pty_exited(_exit_code: int, _signal_code: int, exiting_pty: Node) -> void:
+	# Guard against a stale 'exited' emission from a PTY that has already
+	# been superseded (killed + replaced by swap_agent()/_mount_body()) in
+	# the same frame. Godot only *defers* node deletion via queue_free(), so
+	# a killed PTY's async libuv exit callback can still fire on this signal
+	# after a new PTY has been assigned to _pty. Without this identity
+	# check, that stale callback would tear down the freshly-mounted live
+	# terminal and silently collapse it to the read-only fallback.
+	if exiting_pty != _pty:
+		return
 	_live_mode = false
 	_pty = null
+	_pty_exited_callable = Callable()
 	_pty_terminal = null
 	_mount_read_only_body("No live tmux session for this agent — showing read-only output.")
 
 
 func _kill_pty() -> void:
 	if _pty != null and is_instance_valid(_pty):
+		if (
+			_pty_exited_callable.is_valid()
+			and _pty.has_signal("exited")
+			and _pty.is_connected("exited", _pty_exited_callable)
+		):
+			_pty.disconnect("exited", _pty_exited_callable)
 		if _pty.has_method("kill"):
 			# Signal 15 == SIGTERM == PTY.IPCSIGNAL_SIGTERM. The bare
 			# identifier `PTY` (needed to reference the enum constant
@@ -241,6 +263,7 @@ func _kill_pty() -> void:
 			_pty.call("kill", 15)
 		_pty.queue_free()
 	_pty = null
+	_pty_exited_callable = Callable()
 	if _pty_terminal != null and is_instance_valid(_pty_terminal):
 		_pty_terminal.queue_free()
 	_pty_terminal = null

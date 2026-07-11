@@ -325,8 +325,33 @@ func _handle_hotkeys(event: InputEvent) -> void:
 		_toggle_panel_menu()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("toggle_terminal"):
-		_toggle_active_panel_terminal_mode()
-		get_viewport().set_input_as_handled()
+		# Do not steal Ctrl+T away from a focused live-PTY terminal: a shell,
+		# tmux, or REPL running inside it may itself bind Ctrl+T (e.g. a
+		# remapped tmux prefix). Leave the event unhandled so it falls
+		# through to Control._gui_input on the focused Terminal node instead
+		# of being swallowed here and flipping the panel back to "scroll".
+		if not _focus_owner_is_live_terminal():
+			_toggle_active_panel_terminal_mode()
+			get_viewport().set_input_as_handled()
+
+
+## True when the viewport's current keyboard focus owner is (or is nested
+## inside) a godot-xterm "Terminal" Control — i.e. the user is actively
+## focused on a live PTY terminal and typed keystrokes, including Ctrl+T,
+## should reach it rather than being intercepted as a global hotkey.
+## Walks the ancestor chain because godot-xterm's Terminal may itself be a
+## container whose internal child receives GUI focus.
+func _focus_owner_is_live_terminal() -> bool:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return false
+	var focus_owner: Control = viewport.gui_get_focus_owner()
+	var node: Node = focus_owner
+	while node != null:
+		if node.get_class() == "Terminal":
+			return true
+		node = node.get_parent()
+	return false
 
 
 ## Ctrl+T global toggle — flips the scroll-singleton panel (falling back to
