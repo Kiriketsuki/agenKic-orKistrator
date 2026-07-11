@@ -50,6 +50,12 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 static func _clear_injected_content(content_root: MarginContainer) -> void:
 	var existing: Node = content_root.get_node_or_null(INJECTED_CONTENT_NAME)
 	if existing != null:
+		# Renaming is synchronous (unlike queue_free(), which only defers
+		# actual removal to end-of-frame). Free the name immediately so the
+		# node add_child()'d right after this call keeps the exact name
+		# INJECTED_CONTENT_NAME instead of being auto-renamed away from it
+		# by Godot's sibling-name-collision handling in add_child().
+		existing.name = "%s_Retiring" % INJECTED_CONTENT_NAME
 		existing.queue_free()
 
 
