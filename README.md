@@ -60,3 +60,22 @@ See [`.github/CI-CD-Guide.md`](.github/CI-CD-Guide.md) for full workflow details
 | [`terminal-substrate-spec.md`](terminal-substrate-spec.md) | tmux session management, command injection |
 | [`model-gateway-spec.md`](model-gateway-spec.md) | LiteLLM proxy, Judge-Router, cost tracking |
 | [`pixel-office-ui-spec.md`](pixel-office-ui-spec.md) | Godot 4 pixel-art office, godot-xterm |
+
+## godot-xterm (optional native PTY)
+
+The raw-terminal panel mode's live PTY (Linux/macOS) depends on the
+[godot-xterm](https://github.com/lihop/godot-xterm) GDExtension. It is
+**not committed** to this repo — prebuilt native binaries don't belong in
+source control, and it has no stable v1 release, so we pin to an exact
+commit instead.
+
+To install it locally:
+
+```bash
+godot/addons/install_godot_xterm.sh
+```
+
+See [`godot/addons/VENDOR.md`](godot/addons/VENDOR.md) for the pinned
+version, verification steps, and platform notes. Without it installed (or
+on Windows), the raw terminal panel falls back to a read-only ANSI view —
+the project runs cleanly either way.
