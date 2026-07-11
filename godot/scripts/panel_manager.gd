@@ -324,6 +324,46 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_panel_menu"):
 		_toggle_panel_menu()
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_terminal"):
+		# Do not steal Ctrl+T away from a focused live-PTY terminal: a shell,
+		# tmux, or REPL running inside it may itself bind Ctrl+T (e.g. a
+		# remapped tmux prefix). Leave the event unhandled so it falls
+		# through to Control._gui_input on the focused Terminal node instead
+		# of being swallowed here and flipping the panel back to "scroll".
+		if not _focus_owner_is_live_terminal():
+			_toggle_active_panel_terminal_mode()
+			get_viewport().set_input_as_handled()
+
+
+## True when the viewport's current keyboard focus owner is (or is nested
+## inside) a godot-xterm "Terminal" Control — i.e. the user is actively
+## focused on a live PTY terminal and typed keystrokes, including Ctrl+T,
+## should reach it rather than being intercepted as a global hotkey.
+## Walks the ancestor chain because godot-xterm's Terminal may itself be a
+## container whose internal child receives GUI focus.
+func _focus_owner_is_live_terminal() -> bool:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return false
+	var focus_owner: Control = viewport.gui_get_focus_owner()
+	var node: Node = focus_owner
+	while node != null:
+		if node.get_class() == "Terminal":
+			return true
+		node = node.get_parent()
+	return false
+
+
+## Ctrl+T global toggle — flips the scroll-singleton panel (falling back to
+## whichever panel is currently focused) between "scroll" and "terminal"
+## mode, mirroring the Disenchant/Enchant buttons. Routes through
+## PanelBase.set_mode() -> mode_changed so mounting and mode_preferences
+## persistence happen through the existing _wire_panel plumbing.
+func _toggle_active_panel_terminal_mode() -> void:
+	var panel: PanelBase = panels_by_id.get(SCROLL_PANEL_ID, _active_panel) as PanelBase
+	if panel == null or panel.agent_id.is_empty():
+		return
+	panel.set_mode("terminal" if panel.mode == "scroll" else "scroll")
 
 
 func _on_panel_drag_started(panel: PanelBase) -> void:
@@ -502,6 +542,7 @@ func _open_agent_panel(agent_id: String) -> void:
 func open_scroll_panel(agent_id: String) -> void:
 	var title: String = "%s — Spell Scroll" % agent_id
 	var agent_data: BridgeData.AgentData = _get_agent_data(agent_id)
+	var preferred_mode: String = _validated_mode(mode_preferences.get(agent_id, "scroll"))
 	if panels_by_id.has(SCROLL_PANEL_ID):
 		var existing: PanelBase = panels_by_id[SCROLL_PANEL_ID]
 		if existing.agent_id == agent_id:
@@ -509,27 +550,42 @@ func open_scroll_panel(agent_id: String) -> void:
 			return
 		existing.agent_id = agent_id
 		existing.set_panel_title(title)
-		# Defense in depth against a stale mode_preferences entry (e.g. a
-		# prior mode toggle, or a layout.json persisted before the mode
-		# button was disabled for scroll panels): the singleton scroll
-		# panel must always display "scroll" mode, never the generic
-		# placeholder, regardless of what a previous agent's toggle set.
-		if existing.mode != "scroll":
-			existing.set_mode("scroll")
-		var view: Node = existing.get_content_root().get_node_or_null("InjectedContent")
-		if view != null and view.has_method("swap_agent"):
-			view.call("swap_agent", agent_data)
-		existing.on_animation_hook(&"rescroll")
+		# "terminal" is now a legitimate mode (T10) alongside "scroll", so a
+		# per-agent preference is honored here instead of being force-reset —
+		# validated against {scroll, terminal} so a stray invalid
+		# mode_preferences value still can't blank the panel to the generic
+		# placeholder (see _validated_mode). A mode flip already routes
+		# through PanelContentRouter.mount() (via the mode_changed handler in
+		# _wire_panel), which re-instantiates the view scoped to the new
+		# agent — swap_agent() below only needs to run when the mode stayed
+		# the same and the existing view instance must be retargeted in place.
+		var mode_changed: bool = existing.mode != preferred_mode
+		if mode_changed:
+			existing.set_mode(preferred_mode)
+		else:
+			var view: Node = existing.get_content_root().get_node_or_null("InjectedContent")
+			if view != null and view.has_method("swap_agent"):
+				view.call("swap_agent", agent_data)
+		if preferred_mode == "scroll":
+			existing.on_animation_hook(&"rescroll")
 		focus_panel(existing)
 		_save_layout()
 		return
-	var panel: PanelBase = open_panel(SCROLL_PANEL_ID, title, agent_id, "scroll")
-	if panel.mode != "scroll":
-		# Same defense in depth as above, for the fresh-open path: a stale
-		# mode_preferences["agent_id"] entry must not silently swap this
-		# out for the generic placeholder.
-		panel.set_mode("scroll")
+	var panel: PanelBase = open_panel(SCROLL_PANEL_ID, title, agent_id, preferred_mode)
+	if panel.mode != preferred_mode:
+		# Same validated-preference honoring as above, for the fresh-open path.
+		panel.set_mode(preferred_mode)
 	_place_scroll_panel(panel)
+
+
+## Validates a mode_preferences value against the known mode set, defaulting
+## to "scroll" for anything else (including legacy/garbage values) — the
+## original T9 hazard this guards against, now that "terminal" (T10) is a
+## second legitimate value alongside "scroll".
+func _validated_mode(value: String) -> String:
+	if value == "scroll" or value == "terminal":
+		return value
+	return "scroll"
 
 
 ## Sizes/places the scroll panel at the right ~40% of the viewport (full

@@ -6,6 +6,7 @@
 class_name PanelContentRouter
 
 const SPELL_SCROLL_SCENE: PackedScene = preload("res://scenes/spell_scroll_view.tscn")
+const TERMINAL_SCENE: PackedScene = preload("res://scenes/terminal_view.tscn")
 const INJECTED_CONTENT_NAME: String = "InjectedContent"
 const CONTENT_MARGIN_DEFAULT: int = 12
 
@@ -30,8 +31,17 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			content_root.add_child(view)
 			if view.has_method("setup"):
 				view.call("setup", panel, agent_data, bridge)
+		"terminal":
+			if placeholder != null:
+				placeholder.visible = false
+			_set_content_margins(content_root, 0)
+			var terminal_view: Control = TERMINAL_SCENE.instantiate() as Control
+			terminal_view.name = INJECTED_CONTENT_NAME
+			content_root.add_child(terminal_view)
+			if terminal_view.has_method("setup"):
+				terminal_view.call("setup", panel, agent_data, bridge)
 		_:
-			# Terminal mode content lands in T10 — leave the generic placeholder up.
+			# Genuinely unknown mode — fall back to the generic placeholder.
 			_set_content_margins(content_root, CONTENT_MARGIN_DEFAULT)
 			if placeholder != null:
 				placeholder.visible = true
@@ -40,6 +50,12 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 static func _clear_injected_content(content_root: MarginContainer) -> void:
 	var existing: Node = content_root.get_node_or_null(INJECTED_CONTENT_NAME)
 	if existing != null:
+		# Renaming is synchronous (unlike queue_free(), which only defers
+		# actual removal to end-of-frame). Free the name immediately so the
+		# node add_child()'d right after this call keeps the exact name
+		# INJECTED_CONTENT_NAME instead of being auto-renamed away from it
+		# by Godot's sibling-name-collision handling in add_child().
+		existing.name = "%s_Retiring" % INJECTED_CONTENT_NAME
 		existing.queue_free()
 
 

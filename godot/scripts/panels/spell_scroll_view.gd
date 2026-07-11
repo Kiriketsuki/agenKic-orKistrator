@@ -29,6 +29,7 @@ const PROVIDER_GLYPHS: Dictionary = {
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _history: RichTextLabel = $History
 @onready var _quill: Label = $QuillGlyph
+@onready var _disenchant_button: Button = $Header/DisenchantButton
 
 var _panel: PanelBase = null
 var _bridge: Node = null
@@ -78,6 +79,7 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_bridge = bridge
 	_restyle_close_button()
 	_disable_mode_toggle()
+	_wire_disenchant_button()
 	_clear_history()
 	_apply_agent(agent_data)
 	_connect_bridge_signals()
@@ -155,6 +157,22 @@ func _disable_mode_toggle() -> void:
 		return
 	button.visible = false
 	button.disabled = true
+
+
+## Disenchant is the scroll's dedicated toggle into "terminal" mode — routed
+## through the same PanelBase.set_mode() -> mode_changed plumbing the T8
+## generic Mode button used, so PanelManager._wire_panel's mode_changed
+## handler (mount + persist mode_preferences) applies unchanged.
+func _wire_disenchant_button() -> void:
+	if _panel == null or _disenchant_button == null:
+		return
+	if not _disenchant_button.pressed.is_connected(_on_disenchant_pressed):
+		_disenchant_button.pressed.connect(_on_disenchant_pressed)
+
+
+func _on_disenchant_pressed() -> void:
+	if _panel != null:
+		_panel.set_mode("terminal")
 
 
 func _apply_agent(agent_data: BridgeData.AgentData) -> void:
