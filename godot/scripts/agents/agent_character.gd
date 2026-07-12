@@ -5,6 +5,8 @@ extends Node2D
 class_name AgentCharacter
 
 signal character_clicked(agent_id: String)
+signal character_hovered(agent_id: String)
+signal character_unhovered(agent_id: String)
 
 enum CharacterClass {
 	ALCHEMIST,
@@ -92,6 +94,8 @@ var _active_runes: Array[Node2D] = []
 func _ready() -> void:
 	_class_label.add_theme_font_size_override("font_size", 7)
 	_click_area.input_event.connect(_on_area_input_event)
+	_click_area.mouse_entered.connect(func() -> void: character_hovered.emit(agent_id))
+	_click_area.mouse_exited.connect(func() -> void: character_unhovered.emit(agent_id))
 	_apply_class_visuals()
 	_apply_state_tint()
 

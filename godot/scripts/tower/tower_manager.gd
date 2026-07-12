@@ -2,6 +2,8 @@ extends Node2D
 ## TowerManager — fisheye layout engine, floor ordering, scroll/zoom, signal routing.
 
 signal agent_panel_requested(agent_id: String)
+signal agent_hover_requested(agent_id: String)
+signal agent_unhover_requested(agent_id: String)
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 const FOCUSED_SCALE: float = 1.0
@@ -106,6 +108,12 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.set_meta("floor_name", floor_name)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
+	)
+	instance.agent_hovered.connect(func(agent_id: String) -> void:
+		agent_hover_requested.emit(agent_id)
+	)
+	instance.agent_unhovered.connect(func(agent_id: String) -> void:
+		agent_unhover_requested.emit(agent_id)
 	)
 	_floors_container.add_child(instance)
 	return instance
@@ -351,6 +359,17 @@ func _find_best_edge_for_agent(floor_name: String) -> int:
 			min_count = edge_counts[e]
 			min_edge = e
 	return min_edge
+
+
+## Return the live AgentCharacter node for an agent across all floors, or null
+## if it isn't currently visible (non-active edge, or unknown agent).
+func get_agent_character(agent_id: String) -> AgentCharacter:
+	for floor_node: Node2D in _floors:
+		if floor_node.has_method("get_agent_character"):
+			var char_node: AgentCharacter = floor_node.get_agent_character(agent_id)
+			if char_node != null:
+				return char_node
+	return null
 
 
 func _has_floor(floor_name: String) -> bool:
