@@ -30,6 +30,19 @@ Thumbs.db
 # Council reports
 *-council-*.md
 
+# Godot
+godot/.godot/
+*.import
+*.translation
+
+# godot-xterm GDExtension — vendored install, no prebuilt binaries committed.
+# See godot/addons/VENDOR.md and godot/addons/install_godot_xterm.sh.
+godot/addons/godot_xterm/
+
+# Brainstorm sessions
+.superpowers/
+.brainstorm/
+
 # Claude Code internal
 .claude/worktrees/
 .claude/handoffs/
