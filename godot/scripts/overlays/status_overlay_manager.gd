@@ -85,17 +85,28 @@ func _unhandled_input(event: InputEvent) -> void:
 # TowerManager relay handlers
 # ---------------------------------------------------------------------------
 
+## While the nameplate is pinned (click-anchored, scroll panel open), hovering
+## a *different* agent must not hijack it — the pin owns _agent_id/_pin_pos
+## until the user dismisses it by clicking elsewhere. Re-hovering the pinned
+## agent itself is a harmless no-op (already showing its data).
 func _on_hover_requested(agent_id: String) -> void:
+	if _pinned:
+		if agent_id == _agent_id:
+			_mouse_over_agent = true
+		return
 	_mouse_over_agent = true
 	_show_for_agent(agent_id)
 
 
 func _on_unhover_requested(agent_id: String) -> void:
+	if _pinned:
+		if agent_id == _agent_id:
+			_mouse_over_agent = false
+		return
 	if agent_id != _agent_id:
 		return
 	_mouse_over_agent = false
-	if not _pinned:
-		_dismiss()
+	_dismiss()
 
 
 ## The click->scroll-panel flow (character_clicked -> agent_clicked ->
