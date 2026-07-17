@@ -1,0 +1,8 @@
+{
+  "polygon_sides": 6,
+  "linger_duration_sec": 30,
+  "permanent_floors": [
+    { "name": "main", "label": "Main Hall" },
+    { "name": "archive", "label": "Archive" }
+  ]
+}
