@@ -157,3 +157,18 @@
 - Branch: task/1-task-implement-go-orchestrator-core
 
 ---
+## 2026-07-17 Handoff
+
+### Decisions
+- Backdate all new work Fri-night/weekend (+0800) via filter-branch; no squash — local --no-ff merges pushed to main directly
+- Ultracode template per task: opus spec -> sonnet impl (worktree, merge predecessor) -> 3-lens review (godot-api on opus) -> refute -> fix
+- #82 via proto task_id (path 1) + store cross-validation; httpbridge conflicts resolve to #150 broker version
+
+### Failed Approaches
+- filter-branch on dirty tree (stash gitnexus updates first); zsh assoc-array syntax (use bash scripts); gitnexus MCP blind to worktrees (grep instead)
+
+### Handoff Target
+- Plan file: 2026-07-17-08h42-epic4-phase2-merged-t12-next.md
+- Branch: main @ daa9e8b (T1-T11 + #82/#83/#150 merged, suite green)
+
+---
