@@ -6,6 +6,9 @@ signal agent_registered(agent_data: BridgeData.AgentData)
 signal agent_state_changed(agent_id: String, old_state: String, new_state: String, task_id: String)
 signal agent_deregistered(agent_id: String)
 signal agent_output(chunk: BridgeData.AgentOutputChunk)
+## Emitted once per fetch_agent_output_history() call, with the parsed backfill
+## as an Array[BridgeData.AgentOutputChunk] (empty on any failure/parse miss).
+signal agent_output_history(agent_id: String, chunks: Array)
 signal connection_status_changed(status: String)
 signal command_failed(path: String, code: int)
 signal floor_created(floor_data: BridgeData.FloorData)
@@ -17,6 +20,7 @@ enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
 var _connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var _agent_states: Dictionary = {}
+var _agents: Dictionary = {}
 var _floors: Array[BridgeData.FloorData] = []
 var _sse_client: HTTPClient
 var _sse_buffer: String = ""
@@ -32,6 +36,8 @@ var _inflight_path: String = ""
 var _sync_agents_request: HTTPRequest
 var _sync_floors_request: HTTPRequest
 var _command_request: HTTPRequest
+var _output_history_request: HTTPRequest
+var _output_history_agent_id: String = ""
 
 var _agents_synced: bool = false
 var _floors_synced: bool = false
@@ -53,6 +59,11 @@ func _ready() -> void:
 	add_child(_command_request)
 	_command_request.timeout = 10
 	_command_request.request_completed.connect(_on_command_completed)
+
+	_output_history_request = HTTPRequest.new()
+	add_child(_output_history_request)
+	_output_history_request.timeout = 10
+	_output_history_request.request_completed.connect(_on_output_history_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
 	_start_initial_sync()
@@ -109,11 +120,13 @@ func _on_agents_synced(result: int, code: int, _headers: PackedStringArray, body
 	if not agents_array is Array:
 		_on_initial_sync_failed()
 		return
+	_agents.clear()
 	for item: Variant in (agents_array as Array):
 		if not item is Dictionary:
 			continue
 		var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(item as Dictionary)
 		_agent_states[agent.id] = agent.state
+		_agents[agent.id] = agent
 		agent_registered.emit(agent)
 	_agents_synced = true
 	_check_initial_sync_complete()
@@ -253,18 +266,22 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 		"agent.registered":
 			var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(data)
 			_agent_states[agent.id] = agent.state
+			_agents[agent.id] = agent
 			agent_registered.emit(agent)
 		"agent.state_changed":
 			var agent_id: String = data.get("agent_id", "")
 			var new_state: String = data.get("state", "")
 			var task_id: String = data.get("task_id", "")
 			var old_state: String = _agent_states.get(agent_id, "")
+			if _agents.has(agent_id):
+				_agents[agent_id].state = new_state
 			agent_state_changed.emit(agent_id, old_state, new_state, task_id)
 			_agent_states[agent_id] = new_state
 		"agent.deregistered":
 			var agent_id: String = data.get("agent_id", "")
 			if agent_id != "":
 				_agent_states.erase(agent_id)
+				_agents.erase(agent_id)
 				agent_deregistered.emit(agent_id)
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
@@ -327,6 +344,81 @@ func get_agent_output(agent_id: String, lines: int = 50) -> void:
 	_enqueue_command("GET", "/api/agents/" + agent_id + "/output?lines=" + str(lines), {})
 
 
+## Dedicated GET for scroll-panel backfill — unlike get_agent_output() above
+## (which is a fire-and-forget write-command-queue entry whose response body
+## is discarded), this reads and parses the response body and emits
+## agent_output_history with the result.
+##
+## Only one backfill can be in flight on the shared _output_history_request
+## node at a time. Any previous in-flight request is cancelled first —
+## cancel_request() does NOT fire request_completed in Godot 4, so the
+## stale request's response can never land and be mislabeled with the new
+## agent_id. _output_history_agent_id is only set once we know the new
+## request actually started, so a failed/aborted request() call never
+## stomps the id of a request that is still genuinely in flight.
+func fetch_agent_output_history(agent_id: String, lines: int = 200) -> void:
+	_output_history_request.cancel_request()
+	var url: String = base_url + "/api/agents/" + agent_id + "/output?lines=" + str(lines)
+	var err: int = _output_history_request.request(url)
+	if err != OK:
+		agent_output_history.emit(agent_id, [])
+		return
+	_output_history_agent_id = agent_id
+
+
+func _on_output_history_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var agent_id: String = _output_history_agent_id
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		agent_output_history.emit(agent_id, [])
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	agent_output_history.emit(agent_id, _parse_output_history(parsed, agent_id))
+
+
+## Defensive parse: the /output response shape is undocumented, so this
+## tolerates {output:[...]}, {lines:[...]}, {chunks:[...]}, or a bare top-level
+## array — and each item may be either a chunk dict or a plain output string.
+func _parse_output_history(parsed: Variant, agent_id: String) -> Array:
+	var chunks: Array = []
+	var raw_list: Variant = null
+	if parsed is Array:
+		raw_list = parsed
+	elif parsed is Dictionary:
+		var dict: Dictionary = parsed as Dictionary
+		if dict.get("output", null) is Array:
+			raw_list = dict.get("output")
+		elif dict.get("lines", null) is Array:
+			raw_list = dict.get("lines")
+		elif dict.get("chunks", null) is Array:
+			raw_list = dict.get("chunks")
+	if not raw_list is Array:
+		return chunks
+	for item: Variant in (raw_list as Array):
+		var chunk: BridgeData.AgentOutputChunk = _coerce_output_item(item, agent_id)
+		if chunk != null:
+			chunks.append(chunk)
+	return chunks
+
+
+func _coerce_output_item(item: Variant, agent_id: String) -> BridgeData.AgentOutputChunk:
+	if item is Dictionary:
+		var d: Dictionary = item as Dictionary
+		if d.get("agent_id", "") == "":
+			d = d.duplicate()
+			d["agent_id"] = agent_id
+		return BridgeData.AgentOutputChunk.from_dict(d)
+	if item is String:
+		var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.new()
+		chunk.agent_id = agent_id
+		chunk.payload = item as String
+		return chunk
+	return null
+
+
+func get_agent(agent_id: String) -> BridgeData.AgentData:
+	return _agents.get(agent_id, null)
+
+
 func _enqueue_command(method: String, path: String, body: Dictionary) -> void:
 	_command_queue.append({"method": method, "path": path, "body": body})
 	if _connection_state != ConnectionState.CONNECTED:
@@ -363,3 +455,10 @@ func _on_command_completed(result: int, code: int, _headers: PackedStringArray, 
 		command_failed.emit(_inflight_path, code)
 	_command_in_flight = false
 	_process_next_command()
+
+
+func get_registered_agents() -> Array[BridgeData.AgentData]:
+	var agents: Array[BridgeData.AgentData] = []
+	for agent_id: String in _agents:
+		agents.append(_agents[agent_id])
+	return agents
