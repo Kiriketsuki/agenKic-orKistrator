@@ -5,6 +5,25 @@ var polygon_sides: int = 6
 var linger_duration_sec: float = 30.0
 var permanent_floors: Array[Dictionary] = []
 
+# --- T15 (#124) polygon-morphing tunables ---
+## Active-agent count that saturates active_agents_norm to 1.0.
+var load_capacity: int = 6
+## Rolling window (seconds) over which recent task completions are counted
+## for the honest throughput proxy (see FloorMorph doc-comment).
+var throughput_window_sec: float = 60.0
+## Completions/window that saturates task_throughput_norm to 1.0.
+var throughput_cap: int = 6
+## Side-count clamp — the bucket table itself only ever produces 6..12, this
+## is a config-level sanity clamp around it.
+var min_sides: int = 6
+var max_sides: int = 12
+## Circumradius multiplier range floors "breathe" across as load rises.
+var breathe_min_scale: float = 1.0
+var breathe_max_scale: float = 1.25
+## Deadband (in load units) around a bucket edge before the side count is
+## allowed to flip, to prevent oscillation while load hovers on a boundary.
+var bucket_hysteresis: float = 0.03
+
 
 static func from_file(path: String) -> TowerConfig:
 	var config := TowerConfig.new()
@@ -19,6 +38,14 @@ static func from_file(path: String) -> TowerConfig:
 	var d: Dictionary = parsed as Dictionary
 	config.polygon_sides = d.get("polygon_sides", 6)
 	config.linger_duration_sec = d.get("linger_duration_sec", 30.0)
+	config.load_capacity = d.get("load_capacity", 6)
+	config.throughput_window_sec = d.get("throughput_window_sec", 60.0)
+	config.throughput_cap = d.get("throughput_cap", 6)
+	config.min_sides = d.get("min_sides", 6)
+	config.max_sides = d.get("max_sides", 12)
+	config.breathe_min_scale = d.get("breathe_min_scale", 1.0)
+	config.breathe_max_scale = d.get("breathe_max_scale", 1.25)
+	config.bucket_hysteresis = d.get("bucket_hysteresis", 0.03)
 	var floors_raw: Variant = d.get("permanent_floors", [])
 	if floors_raw is Array:
 		for item: Variant in (floors_raw as Array):
