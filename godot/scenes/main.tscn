@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://main"]
+[gd_scene load_steps=8 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/overlays/status_overlay_manager.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/floor_tabs.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/overlays/agent_context_menu.gd" id="7"]
 
 [node name="Main" type="Node2D"]
 
@@ -163,3 +164,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4")
+
+[node name="AgentContextMenu" type="PopupMenu" parent="OverlayLayer"]
+script = ExtResource("7")
+
+[node name="ReassignSubmenu" type="PopupMenu" parent="OverlayLayer/AgentContextMenu"]

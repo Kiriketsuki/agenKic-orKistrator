@@ -359,6 +359,24 @@ func send_input(agent_id: String, keys: String) -> void:
 	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"keys": keys})
 
 
+## Requeues agent_id's current task with a tier/provider hint (T14 / #119
+## "Reassign task"). `target` is passed straight through as the JSON body —
+## callers set whichever of {"tier": ..., "provider": ...} applies. See
+## httpbridge.ReassignAgentRequest doc comment: this is a persisted hint on
+## the requeued task, not live migration — the assign loop does not honor it
+## yet. Result surfaces via command_succeeded/command_failed (path
+## "/api/agents/{id}/reassign").
+func reassign_agent(agent_id: String, target: Dictionary) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/reassign", target)
+
+
+## Cancels agent_id's current task (T14 / #119 "Cancel task"). Result
+## surfaces via command_succeeded/command_failed (path
+## "/api/agents/{id}/cancel").
+func cancel_agent_task(agent_id: String) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/cancel", {})
+
+
 func get_agent_output(agent_id: String, lines: int = 50) -> void:
 	_enqueue_command("GET", "/api/agents/" + agent_id + "/output?lines=" + str(lines), {})
 
