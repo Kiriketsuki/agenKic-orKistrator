@@ -134,6 +134,60 @@ func TestSupervisor_TryAssignTask_Serializes(t *testing.T) {
 	}
 }
 
+// TestSupervisor_TryAssignTask_PublishesTaskDescription verifies that a
+// quest-board description (#118) submitted via EnqueueTaskWithMeta reaches
+// the task_assigned event's Payload. Before this fix, GetTaskMeta had zero
+// production callers and the description was write-only dead data (council
+// finding — see internal/httpbridge/handlers.go and internal/state/redis.go).
+func TestSupervisor_TryAssignTask_PublishesTaskDescription(t *testing.T) {
+	t.Parallel()
+
+	store := state.NewMockStore()
+	machine := agent.NewMachine(store)
+	policy := supervisor.NewRestartPolicy(
+		supervisor.WithCrashThreshold(10),
+		supervisor.WithCrashWindow(60*time.Second),
+	)
+	sv := supervisor.NewSupervisor(machine, store, policy,
+		supervisor.WithTaskPollInterval(10*time.Millisecond),
+	)
+
+	ctx := context.Background()
+	const agentID = "agent-meta"
+
+	if err := sv.RegisterAgent(ctx, agentID); err != nil {
+		t.Fatalf("RegisterAgent: %v", err)
+	}
+
+	const wantDescription = "scout the eastern ridge"
+	if err := store.EnqueueTaskWithMeta(ctx, "task-with-meta", 1.0, state.TaskMeta{
+		Description: wantDescription,
+	}); err != nil {
+		t.Fatalf("EnqueueTaskWithMeta: %v", err)
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	_ = sv.Run(runCtx)
+
+	events, err := store.ReadEvents(ctx, "0", 100)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	var found bool
+	for _, se := range events {
+		if se.Event.Type == string(agent.EventTaskAssigned) && se.Event.TaskID == "task-with-meta" {
+			found = true
+			if se.Event.Payload != wantDescription {
+				t.Fatalf("event Payload = %q, want %q", se.Event.Payload, wantDescription)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no task_assigned event found for task-with-meta")
+	}
+}
+
 // casConflictStore wraps a StateStore and makes CompareAndSetAgentState
 // always return *StateConflictError, simulating a concurrent writer that
 // changes agent state between read and CAS.

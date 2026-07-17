@@ -2,8 +2,17 @@ extends Node2D
 ## TowerManager — fisheye layout engine, floor ordering, scroll/zoom, signal routing.
 
 signal agent_panel_requested(agent_id: String)
+signal agent_context_menu_requested(agent_id: String, screen_position: Vector2)
 signal agent_hover_requested(agent_id: String)
 signal agent_unhover_requested(agent_id: String)
+signal floor_focus_changed(index: int)
+signal floors_changed()
+## Fires when an agent's *state* changes (idle/working/reporting/etc) without
+## any change to floor membership or agent_count — e.g. minimap's activity
+## coloring needs this, but floor_tabs' name+count badges do not, so it is
+## kept separate from floors_changed to avoid a full tab-strip rebuild on
+## every state transition (see _on_agent_state_changed).
+signal agent_activity_changed()
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 const FOCUSED_SCALE: float = 1.0
@@ -24,6 +33,7 @@ var _focused_index: int = 0
 var _agent_assignments: Dictionary = {}  # agent_id → {floor: String, edge: int}
 var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
+var _overscroll_tween: Tween = null
 var _is_overscrolling: bool = false
 var _input_queue: Array[int] = []
 var _floor_spacing: float = 50.0
@@ -85,6 +95,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()
+	elif event is InputEventKey:
+		var k: InputEventKey = event as InputEventKey
+		if k.pressed and not k.echo and not k.ctrl_pressed and not k.alt_pressed and not k.meta_pressed \
+				and k.keycode >= KEY_1 and k.keycode <= KEY_9:
+			jump_to_floor(k.keycode - KEY_1)
+			get_viewport().set_input_as_handled()
 
 
 func _spawn_permanent_floors() -> void:
@@ -108,6 +124,9 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.set_meta("floor_name", floor_name)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
+	)
+	instance.agent_right_clicked.connect(func(agent_id: String) -> void:
+		agent_context_menu_requested.emit(agent_id, get_viewport().get_mouse_position())
 	)
 	instance.agent_hovered.connect(func(agent_id: String) -> void:
 		agent_hover_requested.emit(agent_id)
@@ -174,11 +193,16 @@ func _scroll_focus(direction: int) -> void:
 func _do_scroll_tween() -> void:
 	if _scroll_tween:
 		_scroll_tween.kill()
+	if _overscroll_tween:
+		_overscroll_tween.kill()
+		_overscroll_tween = null
+	_is_overscrolling = false
 	_scroll_tween = create_tween()
 	var target_y: float = _focused_index * -_floor_spacing
 	_scroll_tween.tween_property(_camera, "position:y", target_y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_scroll_tween.tween_callback(_on_scroll_tween_finished)
 	_apply_fisheye_layout()
+	floor_focus_changed.emit(_focused_index)
 
 
 func _on_scroll_tween_finished() -> void:
@@ -193,10 +217,56 @@ func _elastic_overscroll(direction: int) -> void:
 	_is_overscrolling = true
 	var original_y: float = _focused_index * -_floor_spacing
 	var overshoot_y: float = original_y + (direction * _floor_spacing * -0.5)
-	var tween: Tween = create_tween()
-	tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_callback(func() -> void: _is_overscrolling = false)
+	if _overscroll_tween:
+		_overscroll_tween.kill()
+	_overscroll_tween = create_tween()
+	_overscroll_tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_callback(func() -> void: _is_overscrolling = false)
+
+
+## Jumps focus directly to `index` (clamped to valid range), reusing the same
+## camera-tween + fisheye path as W/S scroll so minimap/tab clicks and number
+## keys stay perfectly in sync with manual scrolling.
+func jump_to_floor(index: int) -> void:
+	if _floors.is_empty():
+		return
+	var target: int = clampi(index, 0, _floors.size() - 1)
+	_input_queue.clear()
+	_is_overscrolling = false
+	if target == _focused_index:
+		return
+	_focused_index = target
+	_do_scroll_tween()
+
+
+## Number of floors currently in the tower.
+func get_floor_count() -> int:
+	return _floors.size()
+
+
+## Index of the currently focused floor.
+func get_focus_index() -> int:
+	return _focused_index
+
+
+## Ordered bottom→top snapshot of floor data for the minimap/floor-tabs UI.
+func get_floor_infos() -> Array[Dictionary]:
+	var infos: Array[Dictionary] = []
+	for i: int in range(_floors.size()):
+		var floor_node: Node2D = _floors[i]
+		var label: String = floor_node.floor_label if floor_node.floor_label != "" else floor_node.floor_name
+		var agent_count: int = floor_node.get_agent_count() if floor_node.has_method("get_agent_count") else 0
+		var active_count: int = floor_node.get_active_count() if floor_node.has_method("get_active_count") else 0
+		infos.append({
+			"index": i,
+			"name": floor_node.get_meta("floor_name", ""),
+			"label": label,
+			"agent_count": agent_count,
+			"active_count": active_count,
+			"is_permanent": floor_node.is_permanent,
+		})
+	return infos
 
 
 func _zoom(amount: float) -> void:
@@ -244,6 +314,7 @@ func _on_floor_created(floor_data: BridgeData.FloorData) -> void:
 	_apply_fisheye_layout()
 	_update_tower_frame()
 	_sync_tower_exterior()
+	floors_changed.emit()
 
 
 func _on_floor_removed(floor_name: String) -> void:
@@ -253,11 +324,22 @@ func _on_floor_removed(floor_name: String) -> void:
 				return
 			floor_node.begin_linger(_config.linger_duration_sec)
 			floor_node.tree_exiting.connect(func() -> void:
+				# Preserve which floor was actually focused across the erase —
+				# clamping the raw index would silently reassign focus to
+				# whatever floor now sits at that numeric slot once a floor
+				# below the focus is removed and the array shifts.
+				var focused_floor: Node2D = _floors[_focused_index] if _focused_index < _floors.size() else null
 				_floors.erase(floor_node)
-				_focused_index = clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
+				if focused_floor != null and focused_floor != floor_node:
+					var new_index: int = _floors.find(focused_floor)
+					_focused_index = new_index if new_index != -1 else clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
+				else:
+					_focused_index = clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
 				_layout_floors()
 				_update_tower_frame()
 				_apply_fisheye_layout()
+				floors_changed.emit()
+				floor_focus_changed.emit(_focused_index)
 			)
 			return
 
@@ -280,6 +362,7 @@ func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: St
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
 			floor_node.update_agent_state(agent_id, new_state)
+			agent_activity_changed.emit()
 			return
 
 
@@ -300,11 +383,13 @@ func _on_agent_deregistered(agent_id: String) -> void:
 					if is_instance_valid(floor_node):
 						floor_node.remove_agent_slot(agent_id)
 					_agent_assignments.erase(agent_id)
+					floors_changed.emit()
 				)
 			else:
 				# Agent is on a non-active edge — remove immediately.
 				floor_node.remove_agent_slot(agent_id)
 				_agent_assignments.erase(agent_id)
+				floors_changed.emit()
 			return
 	_agent_assignments.erase(agent_id)
 
@@ -340,6 +425,7 @@ func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int,
 			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
+			floors_changed.emit()
 			return
 
 
