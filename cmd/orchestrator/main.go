@@ -86,6 +86,11 @@ func main() {
 	if sub, subOK := sv.Substrate(); subOK {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithSubstrate(sub))
 	}
+	// Same registry passed to supervisor.WithCompletionRegistry and
+	// dag.NewBlockingSubmitter above, so a cancel via the HTTP bridge can
+	// unblock a DAG node waiting on that exact task (T14 / #119, council
+	// finding #2 — see httpbridge.WithCompletionRegistry doc comment).
+	bridgeOpts = append(bridgeOpts, httpbridge.WithCompletionRegistry(registry))
 	if apiKey := os.Getenv("BRIDGE_API_KEY"); apiKey != "" {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))
 		log.Println("HTTP bridge: bearer-token auth enabled")

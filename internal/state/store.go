@@ -39,12 +39,22 @@ type TaskMeta struct {
 	Description string
 	Project     string
 	Floor       string
+	// Tier and Provider are reassignment hints written by the T14 (#119)
+	// "Reassign task" context-menu action. Like Project/Floor above, they are
+	// persisted here for future consumption but are NOT currently read by the
+	// supervisor assign loop, which still dequeues strictly by taskID+priority
+	// and hands the task to whichever agent becomes free next. Setting these
+	// fields records operator intent; it does not steer which agent or
+	// provider actually picks up the requeued task.
+	Tier     string
+	Provider string
 }
 
 // IsZero reports whether every field of the metadata is empty, in which case
 // implementations may skip persisting it.
 func (m TaskMeta) IsZero() bool {
-	return m.Description == "" && m.Project == "" && m.Floor == ""
+	return m.Description == "" && m.Project == "" && m.Floor == "" &&
+		m.Tier == "" && m.Provider == ""
 }
 
 // Event represents an entry published to the event stream.
