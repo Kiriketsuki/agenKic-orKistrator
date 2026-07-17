@@ -40,17 +40,44 @@ static func _bucket_index_for_sides(sides: int) -> int:
 	return idx if idx != -1 else 0
 
 
+## Snaps an arbitrary integer side count to the nearest member of _SIDES.
+## Council finding (#124): floor_scene.gd clamps side_count_for_load_hysteresis's
+## result to the configured [_min_sides, _max_sides] range, but that clamp can
+## land on a value that is not itself a _SIDES member (e.g. a misconfigured
+## max_sides of 9) — _bucket_index_for_sides() would then silently fall back
+## to index 0 on the NEXT call instead of erroring, breaking convergence.
+## This makes the clamp path total: it always returns a real _SIDES member.
+## Ties resolve to the lower candidate (first match found while scanning
+## _SIDES in ascending order).
+static func nearest_valid_side_count(sides: int) -> int:
+	var best: int = _SIDES[0]
+	var best_diff: int = absi(sides - best)
+	for candidate: int in _SIDES:
+		var diff: int = absi(sides - candidate)
+		if diff < best_diff:
+			best_diff = diff
+			best = candidate
+	return best
+
+
 ## Same bucket mapping as side_count_for_load, but with a deadband around the
 ## bucket edge adjacent to `current_sides` so a load hovering on a boundary
 ## does not oscillate the side count every call. Moves at most one bucket per
-## call — composite_load changes are event-driven (agent state transitions),
-## so this converges within a couple of calls rather than needing to jump
-## multiple buckets in a single frame.
+## call when the target is adjacent — composite_load changes are usually
+## event-driven (agent state transitions) and converge within a couple of
+## calls that way. When the target is MORE than one bucket away (e.g. the
+## periodic decay sweep finally pruning a stale completion ring, 0.9 -> 0.1),
+## hysteresis only matters at the single boundary actually being crossed in a
+## gradual climb/fall, not a discontinuous jump — so this converges directly
+## to the target bucket instead of crawling one bucket per call (council
+## finding, #124).
 static func side_count_for_load_hysteresis(load: float, current_sides: int, hysteresis: float) -> int:
 	var current_idx: int = _bucket_index_for_sides(current_sides)
 	var raw_idx: int = _bucket_index_for_sides(side_count_for_load(load))
 	if raw_idx == current_idx:
 		return current_sides
+	if absi(raw_idx - current_idx) > 1:
+		return _SIDES[raw_idx]
 	if raw_idx > current_idx:
 		var boundary: float = _THRESHOLDS[current_idx]
 		if load >= boundary + hysteresis:
