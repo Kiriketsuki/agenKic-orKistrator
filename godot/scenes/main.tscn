@@ -1,9 +1,11 @@
-[gd_scene load_steps=5 format=3 uid="uid://main"]
+[gd_scene load_steps=7 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/panel_manager.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/overlays/status_overlay_manager.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/ui/floor_tabs.gd" id="6"]
 
 [node name="Main" type="Node2D"]
 
@@ -28,14 +30,17 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -60.0
-offset_bottom = 180.0
+offset_top = 64.0
+offset_bottom = 260.0
 grow_horizontal = 0
+script = ExtResource("5")
 
 [node name="FloorTabs" type="VBoxContainer" parent="UILayer"]
 visible = false
 anchors_preset = 0
 offset_right = 80.0
 offset_bottom = 180.0
+script = ExtResource("6")
 
 [node name="PanelManager" type="Control" parent="UILayer"]
 anchors_preset = 15
