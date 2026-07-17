@@ -19,6 +19,8 @@ func _init() -> void:
 	var failures: Array[String] = []
 	_run_bucket_cases(failures)
 	_run_hysteresis_cases(failures)
+	_run_hysteresis_multi_bucket_cases(failures)
+	_run_nearest_valid_side_count_cases(failures)
 	_run_resample_boundary_cases(failures)
 	_run_lerp_endpoint_cases(failures)
 	_run_breathe_cases(failures)
@@ -62,6 +64,45 @@ func _run_hysteresis_cases(failures: Array[String]) -> void:
 	var flipped_back: int = FloorMorph.side_count_for_load_hysteresis(0.16, 7, 0.03)
 	if flipped_back != 6:
 		failures.append("hysteresis: expected flip back below lower deadband, got %d" % flipped_back)
+
+
+## Council finding (#124) — a load jump spanning more than one bucket (e.g.
+## the periodic decay sweep finally pruning a stale ring) must converge
+## directly to the target bucket in a single call, not crawl one bucket at a
+## time.
+func _run_hysteresis_multi_bucket_cases(failures: Array[String]) -> void:
+	# 12 -> 6 is a 4-bucket drop (0.05 load, current bucket is the top one).
+	var dropped: int = FloorMorph.side_count_for_load_hysteresis(0.05, 12, 0.03)
+	if dropped != 6:
+		failures.append("hysteresis multi-bucket: expected direct drop to 6, got %d" % dropped)
+	# 6 -> 12 is a 4-bucket climb (0.95 load, current bucket is the bottom one).
+	var climbed: int = FloorMorph.side_count_for_load_hysteresis(0.95, 6, 0.03)
+	if climbed != 12:
+		failures.append("hysteresis multi-bucket: expected direct climb to 12, got %d" % climbed)
+	# Adjacent-bucket case must still respect the deadband (regression guard
+	# for the >1 branch not swallowing the adjacent case).
+	var held_adjacent: int = FloorMorph.side_count_for_load_hysteresis(0.21, 6, 0.03)
+	if held_adjacent != 6:
+		failures.append("hysteresis multi-bucket: expected adjacent case to still respect deadband, got %d" % held_adjacent)
+
+
+## Council finding (#124) — nearest_valid_side_count() must always return a
+## real _SIDES member ([6, 7, 8, 10, 12]), even for inputs that a misconfigured
+## min_sides/max_sides clamp could produce.
+func _run_nearest_valid_side_count_cases(failures: Array[String]) -> void:
+	var cases: Array = [
+		[6, 6], [7, 7], [8, 8], [10, 10], [12, 12],
+		[9, 8],    # equidistant from 8 and 10 — ties resolve to the lower one
+		[11, 10],  # equidistant from 10 and 12 — ties resolve to the lower one
+		[0, 6], [-5, 6],
+		[20, 12], [100, 12],
+	]
+	for case: Array in cases:
+		var input_sides: int = case[0]
+		var expected: int = case[1]
+		var actual: int = FloorMorph.nearest_valid_side_count(input_sides)
+		if actual != expected:
+			failures.append("nearest_valid_side_count(%d): expected %d got %d" % [input_sides, expected, actual])
 
 
 func _run_resample_boundary_cases(failures: Array[String]) -> void:

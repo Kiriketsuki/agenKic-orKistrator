@@ -23,6 +23,12 @@ var breathe_max_scale: float = 1.25
 ## Deadband (in load units) around a bucket edge before the side count is
 ## allowed to flip, to prevent oscillation while load hovers on a boundary.
 var bucket_hysteresis: float = 0.03
+## Interval (seconds) between TowerManager's periodic composite_load sweeps.
+## composite_load is otherwise only recomputed on agent-event callbacks
+## (register/state-change/deregister), so a floor's completion ring — and
+## therefore its polygon — never decays once activity stops; this periodic
+## sweep is what lets a loaded floor shrink back down on its own.
+var load_recompute_interval_sec: float = 5.0
 
 
 static func from_file(path: String) -> TowerConfig:
@@ -46,6 +52,7 @@ static func from_file(path: String) -> TowerConfig:
 	config.breathe_min_scale = d.get("breathe_min_scale", 1.0)
 	config.breathe_max_scale = d.get("breathe_max_scale", 1.25)
 	config.bucket_hysteresis = d.get("bucket_hysteresis", 0.03)
+	config.load_recompute_interval_sec = d.get("load_recompute_interval_sec", 5.0)
 	var floors_raw: Variant = d.get("permanent_floors", [])
 	if floors_raw is Array:
 		for item: Variant in (floors_raw as Array):
