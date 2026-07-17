@@ -436,6 +436,8 @@ func (r *RedisStore) EnqueueTaskWithMeta(ctx context.Context, taskID string, pri
 				"description": meta.Description,
 				"project":     meta.Project,
 				"floor":       meta.Floor,
+				"tier":        meta.Tier,
+				"provider":    meta.Provider,
 			})
 			pipe.Expire(ctx, r.taskMetaKey(taskID), taskMetaTTL)
 		}
@@ -458,6 +460,8 @@ func (r *RedisStore) GetTaskMeta(ctx context.Context, taskID string) (TaskMeta, 
 		Description: res["description"],
 		Project:     res["project"],
 		Floor:       res["floor"],
+		Tier:        res["tier"],
+		Provider:    res["provider"],
 	}, nil
 }
 

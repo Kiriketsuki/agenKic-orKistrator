@@ -171,6 +171,8 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 			Description: "commission a quest",
 			Project:     "agenKic-orKistrator",
 			Floor:       "floor-3",
+			Tier:        "sonnet",
+			Provider:    "gemini",
 		}
 		if err := store.EnqueueTaskWithMeta(ctx, "task-meta-rt", 5.0, want); err != nil {
 			t.Fatalf("EnqueueTaskWithMeta: %v", err)
