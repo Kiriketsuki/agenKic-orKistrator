@@ -2,6 +2,10 @@ extends Node2D
 ## FloorScene — a single floor in the tower. Manages edge rotation,
 ## AgentCharacter spawning, and the ephemeral lifecycle state machine.
 
+signal agent_clicked(agent_id: String)
+signal agent_hovered(agent_id: String)
+signal agent_unhovered(agent_id: String)
+
 const AGENT_CHARACTER_SCENE: PackedScene = preload("res://scenes/agent_character.tscn")
 
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
@@ -13,6 +17,8 @@ enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
 var _state: FloorState = FloorState.ACTIVE
 var _active_edge: int = 0
+var _floor_width: float = 280.0
+var _floor_height: float = 40.0
 ## Each entry: {agent_id, edge_index, character_class, state}
 var _agent_slots: Array[Dictionary] = []
 var _linger_timer: float = 0.0
@@ -64,6 +70,14 @@ func reactivate() -> void:
 	_state = FloorState.ACTIVE
 	_linger_timer = 0.0
 	modulate.a = 1.0
+
+
+func set_floor_dimensions(width: float, height: float) -> void:
+	_floor_width = width
+	_floor_height = height
+	if is_inside_tree():
+		_rebuild_background()
+		_rebuild_interior()
 
 
 func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
@@ -122,13 +136,11 @@ func set_show_interior(visible_flag: bool) -> void:
 
 
 func _rebuild_background() -> void:
-	var w: float = 280.0
-	var h: float = 40.0
 	_background.polygon = PackedVector2Array([
-		Vector2(-w / 2.0, -h / 2.0),
-		Vector2(w / 2.0, -h / 2.0),
-		Vector2(w / 2.0, h / 2.0),
-		Vector2(-w / 2.0, h / 2.0),
+		Vector2(-_floor_width / 2.0, -_floor_height / 2.0),
+		Vector2(_floor_width / 2.0, -_floor_height / 2.0),
+		Vector2(_floor_width / 2.0, _floor_height / 2.0),
+		Vector2(-_floor_width / 2.0, _floor_height / 2.0),
 	])
 	_background.color = Color(0.18, 0.22, 0.18, 1.0)  # dark stone green
 
@@ -142,7 +154,7 @@ func _rebuild_interior() -> void:
 			edge_agents.append(slot)
 	if edge_agents.is_empty():
 		return
-	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, 280.0)
+	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _floor_width)
 	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), edge_width)
 	# Offset converts EdgeLayout's top-left corner to AgentCharacter's center origin.
 	var center_offset: Vector2 = Vector2(EdgeLayout.DESK_WIDTH / 2.0, EdgeLayout.DESK_HEIGHT / 2.0)
@@ -155,3 +167,12 @@ func _rebuild_interior() -> void:
 		char_node.set_character_class(slot.get("character_class", "apprentice"))
 		char_node.set_animation_state(slot.get("state", "idle"))
 		char_node.set_provider(slot.get("provider", ""))
+		char_node.character_clicked.connect(func(agent_id: String) -> void:
+			agent_clicked.emit(agent_id)
+		)
+		char_node.character_hovered.connect(func(agent_id: String) -> void:
+			agent_hovered.emit(agent_id)
+		)
+		char_node.character_unhovered.connect(func(agent_id: String) -> void:
+			agent_unhovered.emit(agent_id)
+		)
