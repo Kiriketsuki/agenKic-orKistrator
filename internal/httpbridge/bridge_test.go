@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
+
+// errFakeEnqueue is injected via MockStore.SetEnqueueTaskError to simulate a
+// transient store failure for TestReassignAgent_EnqueueFailure_TaskNotLost.
+var errFakeEnqueue = errors.New("fake enqueue failure")
 
 // stubDAGEngine is a minimal ipc.DAGEngine implementation that records the
 // last spec it was asked to execute, for assertions on node construction.
@@ -502,6 +509,71 @@ func TestCancelAgent_NoSubstrate_StillDetaches(t *testing.T) {
 	}
 }
 
+// TestCancelAgent_SignalsCompletionRegistry verifies the T14 council finding
+// #2 fix: cancelling an agent whose current task a
+// dag.BlockingSubmitter.Wait is blocked on must unblock that wait via
+// CompletionRegistry.Complete, rather than stranding it forever.
+func TestCancelAgent_SignalsCompletionRegistry(t *testing.T) {
+	store := state.NewMockStore()
+	registry := supervisor.NewCompletionRegistry()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithCompletionRegistry(registry))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		waitErrCh <- registry.Wait(waitCtx, "task-1")
+	}()
+
+	// Give the goroutine a moment to register as a waiter before cancelling.
+	time.Sleep(20 * time.Millisecond)
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case err := <-waitErrCh:
+		if err != nil {
+			t.Fatalf("expected Wait to return nil (unblocked by cancel), got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("registry.Wait was never unblocked by cancel — DAG node would hang forever")
+	}
+}
+
+// TestCancelAgent_NoCompletionRegistry_StillWorks verifies the
+// completionRegistry field is genuinely optional — cancel must not panic or
+// otherwise misbehave when no registry was wired in (the common case for
+// deployments/tests that never call WithCompletionRegistry).
+func TestCancelAgent_NoCompletionRegistry_StillWorks(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // ── Reassign agent task (T14 / #119) ────────────────────────────────────────
 
 func TestReassignAgent_UnknownAgent(t *testing.T) {
@@ -621,6 +693,43 @@ func TestReassignAgent_Success(t *testing.T) {
 	}
 	if fields.CurrentTaskID != "" {
 		t.Errorf("expected CurrentTaskID cleared after reassign, got %q", fields.CurrentTaskID)
+	}
+}
+
+// TestReassignAgent_EnqueueFailure_TaskNotLost verifies the T14 council
+// finding #3 fix: when EnqueueTaskWithMeta fails, the task must still be
+// attached to the agent (CurrentTaskID intact) rather than orphaned —
+// EnqueueTaskWithMeta now runs BEFORE ClearCurrentTask.
+func TestReassignAgent_EnqueueFailure_TaskNotLost(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:               "working",
+		CurrentTaskID:       "task-1",
+		CurrentTaskPriority: 3.0,
+	})
+	store.SetEnqueueTaskError(errFakeEnqueue)
+
+	body, _ := json.Marshal(httpbridge.ReassignAgentRequest{Provider: "gemini"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/reassign", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on enqueue failure, got %d: %s", w.Code, w.Body.String())
+	}
+
+	fields, err := store.GetAgentFields(ctx, "agent-1")
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.CurrentTaskID != "task-1" {
+		t.Errorf("expected task-1 to remain attached to agent-1 after failed enqueue (task must not be lost), got CurrentTaskID=%q", fields.CurrentTaskID)
+	}
+	if fields.State != "working" {
+		t.Errorf("expected agent state unchanged (working) after failed enqueue, got %q", fields.State)
 	}
 }
 
