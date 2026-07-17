@@ -44,6 +44,24 @@ type SendInputRequest struct {
 	Keys string `json:"keys"`
 }
 
+// ReassignAgentRequest is the JSON body for POST /api/agents/{id}/reassign
+// (T14 / #119). At least one of Tier or Provider must be set.
+//
+// Semantics: the Bridge has no Supervisor or agent.Machine reference and no
+// provider/tier field anywhere in state.AgentFields, so "reassignment" here
+// is NOT live migration of a running agent to a different provider. It is
+// implemented as: detach the task from the current agent, then re-enqueue it
+// with Tier/Provider recorded as a hint on state.TaskMeta. The supervisor's
+// assign loop still dequeues strictly by taskID+priority and hands the task
+// to whichever agent becomes free next — it does not read or honor this
+// hint (matching the pre-existing, documented behavior of TaskMeta.Project
+// and TaskMeta.Floor). See handleReassignAgent for the full precondition and
+// state-transition contract.
+type ReassignAgentRequest struct {
+	Tier     string `json:"tier"`
+	Provider string `json:"provider"`
+}
+
 // ── Response types ───────────────────────────────────────────────────────────
 
 // AgentJSON is the JSON representation of an agent.

@@ -77,6 +77,8 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b.mux.HandleFunc("POST /api/tasks", b.handleSubmitTask)
 	b.mux.HandleFunc("POST /api/dags", b.handleSubmitDAG)
 	b.mux.HandleFunc("POST /api/agents/{id}/input", b.handleSendInput)
+	b.mux.HandleFunc("POST /api/agents/{id}/cancel", b.handleCancelAgent)
+	b.mux.HandleFunc("POST /api/agents/{id}/reassign", b.handleReassignAgent)
 
 	// SSE stream
 	b.mux.HandleFunc("GET /events/stream", b.handleSSE)
