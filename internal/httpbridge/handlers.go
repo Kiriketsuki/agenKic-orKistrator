@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
@@ -509,4 +510,66 @@ func (b *Bridge) settleToIdle(ctx context.Context, w http.ResponseWriter, agentI
 		Code:  "aborted",
 	})
 	return true
+}
+
+// Fantasy names cycled by handleSpawnAgent when the request omits one.
+var spawnNames = []string{
+	"Emberwick", "Thornquill", "Moonshard", "Grimtome", "Silverbough",
+	"Ashveil", "Runeholt", "Duskmantle", "Brightforge", "Stormvellum",
+}
+
+var spawnCounter atomic.Int64
+
+// handleSpawnAgent launches a simulated in-process worker agent (demo
+// scaffolding). Returns 501 unless an AgentSpawner was wired in.
+func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
+	if b.spawner == nil {
+		writeJSON(w, http.StatusNotImplemented, ErrorResponse{
+			Error: "agent spawner not available",
+			Code:  "not_implemented",
+		})
+		return
+	}
+
+	var req SpawnAgentRequest
+	if r.Body != nil {
+		// Empty body is fine — everything is defaultable.
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	n := spawnCounter.Add(1)
+	switch req.Kind {
+	case "":
+		req.Kind = "sim"
+	case "sim", "claude", "codex", "opencode":
+	default:
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "kind must be one of: sim, claude, codex, opencode",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+	if req.Name == "" {
+		req.Name = spawnNames[int(n-1)%len(spawnNames)]
+	}
+	switch req.Tier {
+	case "haiku", "sonnet", "opus":
+	default:
+		req.Tier = []string{"haiku", "sonnet", "opus"}[int(n)%3]
+	}
+
+	agentID, err := b.spawner(req.Kind, req.Name, req.Tier)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, ErrorResponse{
+			Error: err.Error(),
+			Code:  "spawn_failed",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, SpawnAgentResponse{
+		AgentID: agentID,
+		Kind:    req.Kind,
+		Name:    req.Name,
+		Tier:    req.Tier,
+	})
 }

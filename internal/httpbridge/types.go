@@ -127,3 +127,21 @@ type SSEFloorRemoved struct {
 	Name   string `json:"name"`
 	Cursor string `json:"cursor,omitempty"`
 }
+
+// SpawnAgentRequest is the JSON body for POST /api/agents/spawn. All fields
+// are optional — the server picks a fantasy name and rotates tiers.
+type SpawnAgentRequest struct {
+	// Kind selects the worker implementation: "sim" (default), "claude",
+	// "codex", or "opencode".
+	Kind string `json:"kind,omitempty"`
+	Name string `json:"name,omitempty"`
+	Tier string `json:"tier,omitempty"`
+}
+
+// SpawnAgentResponse echoes what was actually spawned.
+type SpawnAgentResponse struct {
+	AgentID string `json:"agent_id"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Tier    string `json:"tier"`
+}

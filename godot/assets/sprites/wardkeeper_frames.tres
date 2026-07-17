@@ -1,0 +1,171 @@
+[gd_resource type="SpriteFrames" load_steps=22 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/sprites/wardkeeper.png" id="1_tex"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_idle_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(0, 0, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_idle_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(16, 0, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_idle_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 0, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_idle_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(48, 0, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_walking_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(0, 20, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_walking_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(16, 20, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_walking_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 20, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_walking_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(48, 20, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_working_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(0, 40, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_working_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(16, 40, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_working_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 40, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_working_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(48, 40, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_reporting_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(0, 60, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_reporting_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(16, 60, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_reporting_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 60, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_reporting_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(48, 60, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_stunned_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(0, 80, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_stunned_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(16, 80, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_stunned_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 80, 16, 20)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_stunned_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(48, 80, 16, 20)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_idle_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_idle_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_idle_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_idle_3")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 4.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_walking_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_walking_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_walking_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_walking_3")
+}],
+"loop": true,
+"name": &"walking",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_working_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_working_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_working_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_working_3")
+}],
+"loop": true,
+"name": &"working",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_reporting_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_reporting_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_reporting_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_reporting_3")
+}],
+"loop": true,
+"name": &"reporting",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_stunned_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_stunned_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_stunned_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_stunned_3")
+}],
+"loop": true,
+"name": &"stunned",
+"speed": 6.0
+}]

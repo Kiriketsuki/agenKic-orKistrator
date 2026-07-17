@@ -37,6 +37,37 @@ const CLASS_COLORS: Dictionary = {
 	CharacterClass.APPRENTICE: Color(0.65, 0.65, 0.75, 1.0),
 }
 
+# T22 design-pack sheets: 16x20 cells, 4 columns x 5 rows, row order matches
+# AnimState (idle, walking, working, reporting, stunned). See
+# assets/asset_manifest.json.
+const CLASS_SHEETS: Dictionary = {
+	CharacterClass.ALCHEMIST:  preload("res://assets/sprites/alchemist.png"),
+	CharacterClass.SCRIBE:     preload("res://assets/sprites/scribe.png"),
+	CharacterClass.ARCHMAGE:   preload("res://assets/sprites/archmage.png"),
+	CharacterClass.WARDKEEPER: preload("res://assets/sprites/wardkeeper.png"),
+	CharacterClass.LIBRARIAN:  preload("res://assets/sprites/librarian.png"),
+	CharacterClass.ENCHANTER:  preload("res://assets/sprites/enchanter.png"),
+	CharacterClass.APPRENTICE: preload("res://assets/sprites/apprentice.png"),
+}
+
+const SHEET_FRAME_SIZE: Vector2i = Vector2i(16, 20)
+const SHEET_COLUMNS: int = 4
+const SHEET_ANIMS: Array = [
+	["idle", 4.0], ["walking", 8.0], ["working", 8.0],
+	["reporting", 6.0], ["stunned", 6.0],
+]
+
+const ANIM_BY_STATE: Dictionary = {
+	AnimState.IDLE:      "idle",
+	AnimState.WALKING:   "walking",
+	AnimState.WORKING:   "working",
+	AnimState.REPORTING: "reporting",
+	AnimState.STUNNED:   "stunned",
+}
+
+## SpriteFrames per class, built once and shared by every character instance.
+static var _frames_cache: Dictionary = {}
+
 const CLASS_LABELS: Dictionary = {
 	CharacterClass.ALCHEMIST:  "ALC",
 	CharacterClass.SCRIBE:     "SCR",
@@ -86,9 +117,8 @@ var _pulse_time: float = 0.0
 var _provider: String = ""
 var _active_runes: Array[Node2D] = []
 
-@onready var _body: ColorRect = $Body
+@onready var _body: AnimatedSprite2D = $Body
 @onready var _class_label: Label = $ClassLabel
-@onready var _animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var _click_area: Area2D = $ClickArea
 
 
@@ -155,7 +185,7 @@ func receive_output(chunk: BridgeData.AgentOutputChunk) -> void:
 			oldest.accelerate_fade()
 	var rune: FloatingRune = FLOATING_RUNE_SCENE.instantiate() as FloatingRune
 	add_child(rune)
-	rune.position = Vector2(0.0, -14.0)
+	rune.position = Vector2(0.0, -34.0)
 	rune.setup(result[&"text"], result[&"keywords"], provider)
 	_active_runes.append(rune)
 	rune.tree_exiting.connect(func() -> void:
@@ -179,13 +209,42 @@ func play_exit_animation() -> void:
 # ---------------------------------------------------------------------------
 
 func _apply_class_visuals() -> void:
-	_body.color = CLASS_COLORS[_character_class]
+	_body.sprite_frames = _frames_for_class(_character_class)
+	_body.play(ANIM_BY_STATE[_anim_state])
 	_class_label.text = CLASS_LABELS[_character_class]
 
 
 func _apply_state_tint() -> void:
 	if _anim_state != AnimState.WORKING:
 		_body.modulate = STATE_TINTS[_anim_state]
+	if _body.sprite_frames != null:
+		_body.play(ANIM_BY_STATE[_anim_state])
+
+
+## Builds (or returns cached) SpriteFrames for a class sheet: one animation
+## per AnimState row, 4 frames per row, per-state fps from the manifest.
+static func _frames_for_class(char_class: CharacterClass) -> SpriteFrames:
+	if _frames_cache.has(char_class):
+		return _frames_cache[char_class]
+	var sheet: Texture2D = CLASS_SHEETS[char_class]
+	var frames := SpriteFrames.new()
+	frames.remove_animation("default")
+	for row: int in range(SHEET_ANIMS.size()):
+		var anim_name: String = SHEET_ANIMS[row][0]
+		var fps: float = SHEET_ANIMS[row][1]
+		frames.add_animation(anim_name)
+		frames.set_animation_speed(anim_name, fps)
+		frames.set_animation_loop(anim_name, true)
+		for col: int in range(SHEET_COLUMNS):
+			var atlas := AtlasTexture.new()
+			atlas.atlas = sheet
+			atlas.region = Rect2(
+				col * SHEET_FRAME_SIZE.x, row * SHEET_FRAME_SIZE.y,
+				SHEET_FRAME_SIZE.x, SHEET_FRAME_SIZE.y
+			)
+			frames.add_frame(anim_name, atlas)
+	_frames_cache[char_class] = frames
+	return frames
 
 
 func _on_area_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> void:

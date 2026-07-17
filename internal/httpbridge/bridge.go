@@ -32,6 +32,11 @@ type Bridge struct {
 	// three components agree on what "this task is done" means.
 	completionRegistry *supervisor.CompletionRegistry
 
+	// spawner is optional; nil means POST /api/agents/spawn returns 501.
+	// Wired from main via WithAgentSpawner — spawns a simulated in-process
+	// worker agent (demo scaffolding, not a real external agent).
+	spawner AgentSpawner
+
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
 	brokerInterval time.Duration
 
@@ -65,6 +70,16 @@ func WithSubstrate(s terminal.Substrate) BridgeOption {
 // signalling completion from the Bridge.
 func WithCompletionRegistry(r *supervisor.CompletionRegistry) BridgeOption {
 	return func(b *Bridge) { b.completionRegistry = r }
+}
+
+// AgentSpawner launches a new worker agent of the given kind ("sim",
+// "claude", "codex", "opencode") and returns its agent ID.
+type AgentSpawner func(kind, name, tier string) (string, error)
+
+// WithAgentSpawner enables POST /api/agents/spawn, letting the UI summon
+// simulated worker agents. Without it the endpoint returns 501.
+func WithAgentSpawner(s AgentSpawner) BridgeOption {
+	return func(b *Bridge) { b.spawner = s }
 }
 
 // WithBrokerInterval overrides the SSE broker's poll interval (default
@@ -103,6 +118,7 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b.mux.HandleFunc("POST /api/agents/{id}/input", b.handleSendInput)
 	b.mux.HandleFunc("POST /api/agents/{id}/cancel", b.handleCancelAgent)
 	b.mux.HandleFunc("POST /api/agents/{id}/reassign", b.handleReassignAgent)
+	b.mux.HandleFunc("POST /api/agents/spawn", b.handleSpawnAgent)
 
 	// SSE stream
 	b.mux.HandleFunc("GET /events/stream", b.handleSSE)

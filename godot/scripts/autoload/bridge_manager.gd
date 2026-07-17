@@ -363,6 +363,17 @@ func submit_task(description: String, priority: float, floor: String = "", proje
 	})
 
 
+## Summons a new worker agent. `kind` is one of: "sim", "claude", "codex",
+## "opencode". Name/tier may be empty — the server picks defaults. Result
+## surfaces via command_succeeded/command_failed (path "/api/agents/spawn").
+func spawn_agent(kind: String, agent_name: String = "", tier: String = "") -> void:
+	_enqueue_command("POST", "/api/agents/spawn", {
+		"kind": kind,
+		"name": agent_name,
+		"tier": tier,
+	})
+
+
 func submit_dag(nodes: Array, edges: Array) -> void:
 	_enqueue_command("POST", "/api/dags", {"nodes": nodes, "edges": edges})
 

@@ -351,7 +351,17 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if floor_name.is_empty() or not _has_floor(floor_name):
 		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
-	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class, agent_data.provider)
+	# The orchestrator does not persist character_class yet, so every agent
+	# arrives as the default "apprentice". Derive a stable class from the
+	# agent ID so the tower shows visual variety until the server carries it.
+	var char_class: String = agent_data.character_class
+	if char_class == "apprentice":
+		var classes: Array[String] = [
+			"alchemist", "scribe", "archmage", "wardkeeper",
+			"librarian", "enchanter", "apprentice",
+		]
+		char_class = classes[absi(agent_data.id.hash()) % classes.size()]
+	assign_agent_to_edge(agent_data.id, floor_name, edge, char_class, agent_data.provider)
 
 
 func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:
@@ -429,6 +439,11 @@ func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int,
 			return
 
 
+## Agents per edge before spilling onto the next edge. Keeps new spawns on
+## the currently visible edge so they appear on screen immediately.
+const PREFERRED_EDGE_CAPACITY: int = 5
+
+
 func _find_best_edge_for_agent(floor_name: String) -> int:
 	var edge_counts: Dictionary = {}
 	for i: int in range(_config.polygon_sides):
@@ -438,8 +453,16 @@ func _find_best_edge_for_agent(floor_name: String) -> int:
 		if assignment.get("floor", "") == floor_name:
 			var e: int = assignment.get("edge", 0)
 			edge_counts[e] = edge_counts.get(e, 0) + 1
-	var min_edge: int = 0
-	var min_count: int = 999
+	# Prefer the edge the player is looking at until it fills up.
+	var active_edge: int = 0
+	for floor_node: Node2D in _floors:
+		if floor_node.get_meta("floor_name", "") == floor_name:
+			active_edge = floor_node.get_active_edge()
+			break
+	if edge_counts.get(active_edge, 0) < PREFERRED_EDGE_CAPACITY:
+		return active_edge
+	var min_edge: int = active_edge
+	var min_count: int = edge_counts.get(active_edge, 0)
 	for e: int in edge_counts:
 		if edge_counts[e] < min_count:
 			min_count = edge_counts[e]

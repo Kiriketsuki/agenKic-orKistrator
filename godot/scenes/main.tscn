@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://main"]
+[gd_scene load_steps=10 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -7,8 +7,23 @@
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/floor_tabs.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/overlays/agent_context_menu.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/ui/summon_bar.gd" id="8"]
+[ext_resource type="Texture2D" path="res://assets/tiles/sky.png" id="9"]
 
 [node name="Main" type="Node2D"]
+
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -10
+
+[node name="Sky" type="TextureRect" parent="BackgroundLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("9")
+stretch_mode = 6
 
 [node name="Tower" type="Node2D" parent="."]
 script = ExtResource("1")
@@ -24,6 +39,14 @@ zoom = Vector2(1, 1)
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 layer = 10
+
+[node name="SummonBar" type="HBoxContainer" parent="UILayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 700.0
+offset_bottom = 48.0
+theme_override_constants/separation = 8
+script = ExtResource("8")
 
 [node name="Minimap" type="Control" parent="UILayer"]
 visible = false

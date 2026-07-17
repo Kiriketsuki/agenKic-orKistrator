@@ -17,6 +17,8 @@ import (
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/health"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/cliagent"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/simagent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
@@ -91,6 +93,32 @@ func main() {
 	// unblock a DAG node waiting on that exact task (T14 / #119, council
 	// finding #2 — see httpbridge.WithCompletionRegistry doc comment).
 	bridgeOpts = append(bridgeOpts, httpbridge.WithCompletionRegistry(registry))
+	// Demo scaffolding: let the Godot UI summon simulated in-process worker
+	// agents via POST /api/agents/spawn. The spawner dials our own gRPC
+	// endpoint so sim agents exercise the exact same API as external ones.
+	loopbackAddr := addr
+	if loopbackAddr[0] == ':' {
+		loopbackAddr = "127.0.0.1" + loopbackAddr
+	}
+	// CLI agents resolve their assigned task's prompt straight from the
+	// store (they run in-process, so no extra RPC surface is needed).
+	promptFn := func(pctx context.Context, agentID string) (string, string, error) {
+		fields, err := store.GetAgentFields(pctx, agentID)
+		if err != nil {
+			return "", "", err
+		}
+		meta, err := store.GetTaskMeta(pctx, fields.CurrentTaskID)
+		if err != nil {
+			return fields.CurrentTaskID, "", err
+		}
+		return fields.CurrentTaskID, meta.Description, nil
+	}
+	bridgeOpts = append(bridgeOpts, httpbridge.WithAgentSpawner(func(kind, name, tier string) (string, error) {
+		if kind == "sim" {
+			return simagent.Spawn(ctx, loopbackAddr, name, tier)
+		}
+		return cliagent.Spawn(ctx, loopbackAddr, kind, name, tier, promptFn)
+	}))
 	if apiKey := os.Getenv("BRIDGE_API_KEY"); apiKey != "" {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))
 		log.Println("HTTP bridge: bearer-token auth enabled")
