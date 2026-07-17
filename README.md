@@ -1,6 +1,6 @@
 # agenKic-orKistrator
 
-![Version](https://img.shields.io/badge/version-26.1.0.0-blue)
+![Version](https://img.shields.io/badge/version-26.2.0.0-blue)
 ![Go](https://img.shields.io/badge/go-1.23+-00ADD8?logo=go)
 ![Godot](https://img.shields.io/badge/godot-4.x-478CBF?logo=godotengine)
 ![Tests](https://img.shields.io/badge/tests-none%20yet-lightgrey)
