@@ -6,6 +6,12 @@ signal agent_hover_requested(agent_id: String)
 signal agent_unhover_requested(agent_id: String)
 signal floor_focus_changed(index: int)
 signal floors_changed()
+## Fires when an agent's *state* changes (idle/working/reporting/etc) without
+## any change to floor membership or agent_count — e.g. minimap's activity
+## coloring needs this, but floor_tabs' name+count badges do not, so it is
+## kept separate from floors_changed to avoid a full tab-strip rebuild on
+## every state transition (see _on_agent_state_changed).
+signal agent_activity_changed()
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 const FOCUSED_SCALE: float = 1.0
@@ -26,6 +32,7 @@ var _focused_index: int = 0
 var _agent_assignments: Dictionary = {}  # agent_id → {floor: String, edge: int}
 var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
+var _overscroll_tween: Tween = null
 var _is_overscrolling: bool = false
 var _input_queue: Array[int] = []
 var _floor_spacing: float = 50.0
@@ -182,6 +189,10 @@ func _scroll_focus(direction: int) -> void:
 func _do_scroll_tween() -> void:
 	if _scroll_tween:
 		_scroll_tween.kill()
+	if _overscroll_tween:
+		_overscroll_tween.kill()
+		_overscroll_tween = null
+	_is_overscrolling = false
 	_scroll_tween = create_tween()
 	var target_y: float = _focused_index * -_floor_spacing
 	_scroll_tween.tween_property(_camera, "position:y", target_y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -202,10 +213,12 @@ func _elastic_overscroll(direction: int) -> void:
 	_is_overscrolling = true
 	var original_y: float = _focused_index * -_floor_spacing
 	var overshoot_y: float = original_y + (direction * _floor_spacing * -0.5)
-	var tween: Tween = create_tween()
-	tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_callback(func() -> void: _is_overscrolling = false)
+	if _overscroll_tween:
+		_overscroll_tween.kill()
+	_overscroll_tween = create_tween()
+	_overscroll_tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_callback(func() -> void: _is_overscrolling = false)
 
 
 ## Jumps focus directly to `index` (clamped to valid range), reusing the same
@@ -307,8 +320,17 @@ func _on_floor_removed(floor_name: String) -> void:
 				return
 			floor_node.begin_linger(_config.linger_duration_sec)
 			floor_node.tree_exiting.connect(func() -> void:
+				# Preserve which floor was actually focused across the erase —
+				# clamping the raw index would silently reassign focus to
+				# whatever floor now sits at that numeric slot once a floor
+				# below the focus is removed and the array shifts.
+				var focused_floor: Node2D = _floors[_focused_index] if _focused_index < _floors.size() else null
 				_floors.erase(floor_node)
-				_focused_index = clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
+				if focused_floor != null and focused_floor != floor_node:
+					var new_index: int = _floors.find(focused_floor)
+					_focused_index = new_index if new_index != -1 else clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
+				else:
+					_focused_index = clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
 				_layout_floors()
 				_update_tower_frame()
 				_apply_fisheye_layout()
@@ -336,7 +358,7 @@ func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: St
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
 			floor_node.update_agent_state(agent_id, new_state)
-			floors_changed.emit()
+			agent_activity_changed.emit()
 			return
 
 

@@ -17,6 +17,7 @@ var _tabs_by_index: Dictionary = {}  # index -> PanelContainer
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip_contents = true
 	_tower = get_node_or_null("../../Tower")
 	if _tower:
 		if _tower.has_signal("floors_changed"):
@@ -31,9 +32,26 @@ func _input(event: InputEvent) -> void:
 	# Deliberately _input (not _unhandled_input): Godot's GUI focus traversal
 	# consumes Tab (ui_focus_next) before _unhandled_input ever runs, so the
 	# toggle must win here first.
+	# Guard: if a Control currently owns keyboard focus (a LineEdit doing its
+	# own Tab-traversal, or a live godot-xterm Terminal that wants Tab for
+	# shell autocompletion), do not steal Tab from it — mirrors
+	# panel_manager.gd's _focus_owner_is_live_terminal() guard on toggle_terminal.
 	if event.is_action_pressed("toggle_floor_tabs"):
+		if _focus_owner_present():
+			return
 		visible = not visible
 		get_viewport().set_input_as_handled()
+
+
+## True when the viewport's current keyboard focus owner is some Control —
+## i.e. the user is actively focused on a LineEdit, live PTY terminal, or any
+## other focusable widget that should receive Tab itself rather than have it
+## intercepted here as a global hotkey.
+func _focus_owner_present() -> bool:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return false
+	return viewport.gui_get_focus_owner() != null
 
 
 func _rebuild() -> void:
@@ -54,6 +72,13 @@ func _build_tab(info: Dictionary) -> PanelContainer:
 	var tab: PanelContainer = PanelContainer.new()
 	tab.focus_mode = Control.FOCUS_NONE
 	tab.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Expand-fill + a small minimum lets the VBoxContainer distribute the
+	# strip's available height evenly across however many floors exist —
+	# mirrors minimap.gd's `cell_h = size.y / count` rescale-to-fit-any-count
+	# behavior instead of hardcoding a fixed per-tab height that would
+	# overflow the strip (and go unreachable) once floor count grows.
+	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tab.custom_minimum_size = Vector2(0.0, 14.0)
 	tab.add_theme_stylebox_override("panel", _make_tab_style(false))
 	tab.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton:
