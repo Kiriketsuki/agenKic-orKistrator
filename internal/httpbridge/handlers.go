@@ -5,8 +5,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/google/uuid"
 )
 
 // handleListAgents returns all registered agents with their full state.
@@ -101,6 +104,10 @@ func (b *Bridge) handleListFloors(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSubmitTask enqueues a task via the store.
+//
+// TaskID is optional — a description-only submission (the quest-board "quick
+// quest" flow, #118) generates a server-side UUID. At least one of TaskID or
+// Description must be present; a fully-empty body is rejected.
 func (b *Bridge) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req SubmitTaskRequest
@@ -111,20 +118,31 @@ func (b *Bridge) handleSubmitTask(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if req.TaskID == "" {
+
+	taskID := strings.TrimSpace(req.TaskID)
+	description := strings.TrimSpace(req.Description)
+	if taskID == "" && description == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "task_id is required",
+			Error: "description is required",
 			Code:  "invalid_argument",
 		})
 		return
 	}
+	if taskID == "" {
+		taskID = uuid.New().String()
+	}
 
-	if err := b.store.EnqueueTask(r.Context(), req.TaskID, req.Priority); err != nil {
+	meta := state.TaskMeta{
+		Description: description,
+		Project:     strings.TrimSpace(req.Project),
+		Floor:       strings.TrimSpace(req.Floor),
+	}
+	if err := b.store.EnqueueTaskWithMeta(r.Context(), taskID, req.Priority, meta); err != nil {
 		writeError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{"task_id": req.TaskID})
+	writeJSON(w, http.StatusCreated, map[string]string{"task_id": taskID})
 }
 
 // handleSubmitDAG submits a DAG for execution.
@@ -152,10 +170,15 @@ func (b *Bridge) handleSubmitDAG(w http.ResponseWriter, r *http.Request) {
 		Edges: make([]*pb.DAGEdge, 0, len(req.Edges)),
 	}
 	for _, n := range req.Nodes {
+		taskID := strings.TrimSpace(n.TaskID)
+		if taskID == "" {
+			taskID = uuid.New().String()
+		}
 		spec.Nodes = append(spec.Nodes, &pb.DAGNode{
 			NodeId: n.NodeID,
 			Task: &pb.TaskSpec{
-				TaskId:   n.TaskID,
+				TaskId:   taskID,
+				Prompt:   n.Description,
 				Priority: n.Priority,
 			},
 		})
