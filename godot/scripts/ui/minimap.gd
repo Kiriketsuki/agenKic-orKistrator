@@ -23,6 +23,8 @@ func _ready() -> void:
 			_tower.floor_focus_changed.connect(func(_index: int) -> void: queue_redraw())
 		if _tower.has_signal("floors_changed"):
 			_tower.floors_changed.connect(queue_redraw)
+		if _tower.has_signal("agent_activity_changed"):
+			_tower.agent_activity_changed.connect(queue_redraw)
 	visibility_changed.connect(queue_redraw)
 
 
