@@ -358,10 +358,19 @@ func _on_single_submit_pressed() -> void:
 	var project: String = _project_edit.text.strip_edges()
 	var priority: float = _selected_priority(_priority_option)
 	var quest_id: String = _quest_id_edit.text.strip_edges()
+	if _connection_status != "connected":
+		# BridgeManager._enqueue_command only sends the request (and thus only
+		# ever fires command_succeeded/command_failed) once _connection_state
+		# is CONNECTED — while offline it just appends to a queue that is
+		# flushed on reconnect. Locking _submitting/the seals here would leave
+		# the quest board frozen indefinitely if reconnection never completes
+		# in this session. So: queue the command but don't wait on an ack.
+		_show_status("Quest queued — orchestrator offline, will submit on reconnect", INK_COLOR)
+		_bridge.call("submit_task", description, priority, floor_name, project, quest_id)
+		return
 	_submitting = true
 	_set_seals_disabled(true)
-	var offline_note: String = _offline_suffix()
-	_show_status("Sealing the quest..." + offline_note, INK_COLOR)
+	_show_status("Sealing the quest...", INK_COLOR)
 	_bridge.call("submit_task", description, priority, floor_name, project, quest_id)
 
 
@@ -512,13 +521,28 @@ func _rebuild_edge_list_ui() -> void:
 func _on_chain_submit_pressed() -> void:
 	if _submitting:
 		return
+	if _chain_rows.is_empty():
+		_show_status("Add at least one task with a description.", ERROR_COLOR)
+		return
+	# Validate BEFORE building the payload. The previous behavior silently
+	# dropped any row with a blank description (and any edge touching it),
+	# so the DAG actually POSTed could silently diverge from the one the
+	# user built and confirmed on screen (#118 council finding). Block
+	# submission instead and name the offending rows.
+	var missing_ids: PackedStringArray = []
+	for row: Dictionary in _chain_rows:
+		var desc_edit: LineEdit = row.get("desc_edit", null)
+		var description: String = desc_edit.text.strip_edges() if desc_edit != null else ""
+		if description == "":
+			missing_ids.append(String(row.get("node_id", "")))
+	if not missing_ids.is_empty():
+		_show_status("Give %s a description before sealing the quest chain." % ", ".join(missing_ids), ERROR_COLOR)
+		return
 	var nodes: Array = []
 	var seen_ids: Dictionary = {}
 	for row: Dictionary in _chain_rows:
 		var desc_edit: LineEdit = row.get("desc_edit", null)
 		var description: String = desc_edit.text.strip_edges() if desc_edit != null else ""
-		if description == "":
-			continue
 		var node_id: String = String(row.get("node_id", ""))
 		var priority_option: OptionButton = row.get("priority_option", null)
 		var priority: float = _selected_priority(priority_option) if priority_option != null else PRIORITY_NORMAL
@@ -529,9 +553,6 @@ func _on_chain_submit_pressed() -> void:
 			"description": description,
 		})
 		seen_ids[node_id] = true
-	if nodes.is_empty():
-		_show_status("Add at least one task with a description.", ERROR_COLOR)
-		return
 	var edges: Array = []
 	for edge: Dictionary in _chain_edges:
 		var from_id: String = String(edge.get("from", ""))
@@ -539,15 +560,20 @@ func _on_chain_submit_pressed() -> void:
 		if from_id == to_id:
 			continue
 		if not seen_ids.has(from_id) or not seen_ids.has(to_id):
-			continue # Node was removed after the edge was created — drop it.
+			continue # Defense in depth — _remove_task_row already prunes edges.
 		edges.append({"from": from_id, "to": to_id})
 	if _bridge == null or not _bridge.has_method("submit_dag"):
 		_show_status("Quest rejected — orchestrator bridge unavailable", ERROR_COLOR)
 		return
+	if _connection_status != "connected":
+		# See _on_single_submit_pressed for why offline submits must not lock
+		# _submitting/the seals — no ack ever arrives until reconnect.
+		_show_status("Quest chain queued — orchestrator offline, will submit on reconnect", INK_COLOR)
+		_bridge.call("submit_dag", nodes, edges)
+		return
 	_submitting = true
 	_set_seals_disabled(true)
-	var offline_note: String = _offline_suffix()
-	_show_status("Sealing the quest chain..." + offline_note, INK_COLOR)
+	_show_status("Sealing the quest chain...", INK_COLOR)
 	_bridge.call("submit_dag", nodes, edges)
 
 
@@ -596,9 +622,3 @@ func _style_text_edit(edit: TextEdit) -> void:
 	edit.add_theme_stylebox_override("normal", style)
 	edit.add_theme_stylebox_override("focus", style)
 	edit.add_theme_color_override("font_color", INK_COLOR)
-
-
-func _offline_suffix() -> String:
-	if _connection_status == "connected":
-		return ""
-	return " (orchestrator offline — quest queued)"

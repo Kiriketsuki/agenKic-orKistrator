@@ -44,12 +44,15 @@ func _draw() -> void:
 	var radius: float = minf(size.x, size.y) * 0.5
 	var pressed_offset: float = 0.0
 	var fill_color: Color = SEAL_COLOR
-	# button_pressed reflects the held-down state for a momentary (non-toggle)
-	# Button while the mouse button is down — not just true for toggle_mode
-	# buttons — so this alone covers the "being pressed right now" case.
+	# NOTE: `button_pressed` only reflects the held-down state when
+	# toggle_mode is true (Godot 4 BaseButton: set_pressed() early-returns for
+	# non-toggle buttons, so status.pressed never updates for a momentary
+	# Button). SingleSeal/ChainSeal are plain, non-toggle Buttons, so the
+	# pressed visual must key off is_pressed() instead, which BaseButton
+	# derives from press_attempt/pressing_inside for momentary buttons too.
 	if disabled:
 		fill_color = SEAL_COLOR.darkened(0.35)
-	elif button_pressed:
+	elif is_pressed():
 		fill_color = SEAL_COLOR_PRESSED
 		pressed_offset = 1.0
 		radius -= 2.0
