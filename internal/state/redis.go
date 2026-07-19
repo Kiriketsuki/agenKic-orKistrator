@@ -21,6 +21,13 @@ const (
 	queueKey  = "task_queue"
 
 	agentSetKey = "agents"
+
+	// taskMetaTTL bounds the lifetime of a task:<id>:meta hash. Nothing in the
+	// current pipeline deletes this hash on dequeue/completion (see
+	// tryAssignTask's best-effort GetTaskMeta read), so without an expiry every
+	// quest submitted with metadata would leak a permanent Redis hash. 24h is
+	// generous relative to expected queue-wait times.
+	taskMetaTTL = 24 * time.Hour
 )
 
 // RedisStore implements StateStore using Redis.
@@ -430,6 +437,7 @@ func (r *RedisStore) EnqueueTaskWithMeta(ctx context.Context, taskID string, pri
 				"project":     meta.Project,
 				"floor":       meta.Floor,
 			})
+			pipe.Expire(ctx, r.taskMetaKey(taskID), taskMetaTTL)
 		}
 		return nil
 	})

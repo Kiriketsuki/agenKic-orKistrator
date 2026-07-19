@@ -441,10 +441,23 @@ func (sv *Supervisor) tryAssignTask(ctx context.Context) {
 
 	mu.Unlock()
 
+	// Best-effort: surface the quest-board description (#118) on the
+	// assignment event so it is not write-only dead data (council finding —
+	// GetTaskMeta previously had zero production callers). This does not
+	// block or affect the assignment itself; a lookup failure only means the
+	// event carries no description, never a re-enqueue or state change.
+	var description string
+	if meta, mErr := sv.store.GetTaskMeta(ctx, taskID); mErr != nil {
+		log.Printf("supervisor: task %s — GetTaskMeta failed (agent %s): %v", taskID, agentID, mErr)
+	} else {
+		description = meta.Description
+	}
+
 	_ = sv.store.PublishEvent(ctx, state.Event{
 		Type:      string(agent.EventTaskAssigned),
 		AgentID:   snap.AgentID,
 		TaskID:    taskID,
+		Payload:   description,
 		Timestamp: time.Now().UnixMilli(),
 	})
 }
