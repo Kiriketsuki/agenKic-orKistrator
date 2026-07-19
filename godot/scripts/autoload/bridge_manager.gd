@@ -10,7 +10,15 @@ signal agent_output(chunk: BridgeData.AgentOutputChunk)
 ## as an Array[BridgeData.AgentOutputChunk] (empty on any failure/parse miss).
 signal agent_output_history(agent_id: String, chunks: Array)
 signal connection_status_changed(status: String)
-signal command_failed(path: String, code: int)
+## Emitted when a queued write command (submit_task, submit_dag, ...) fails —
+## either a transport failure or a non-2xx HTTP response. `reason` is the
+## server's `error` field when the body could be parsed, or a generic
+## fallback message otherwise (see _extract_error_reason).
+signal command_failed(path: String, code: int, reason: String)
+## Emitted when a queued write command succeeds (2xx). `response_body` is the
+## raw JSON response body as a string; consumers (e.g. the quest board) parse
+## the fields they care about (task_id, dag_execution_id, ...) themselves.
+signal command_succeeded(path: String, code: int, response_body: String)
 signal floor_created(floor_data: BridgeData.FloorData)
 signal floor_removed(floor_name: String)
 
@@ -328,8 +336,19 @@ func _start_reconnect() -> void:
 
 # --- Write Commands ---
 
-func submit_task(task_id: String, priority: float) -> void:
-	_enqueue_command("POST", "/api/tasks", {"task_id": task_id, "priority": priority})
+## Submits a single quest-board task (#118). `description` is the only
+## required field — `task_id` may be left blank to let the server generate
+## one. `priority` follows DequeueTask's ZPOPMIN semantics: LOWER numeric
+## values are dequeued FIRST, so callers mapping a High/Normal/Low picker
+## must map High -> a low number (e.g. 1), not a high one.
+func submit_task(description: String, priority: float, floor: String = "", project: String = "", task_id: String = "") -> void:
+	_enqueue_command("POST", "/api/tasks", {
+		"task_id": task_id,
+		"priority": priority,
+		"description": description,
+		"floor": floor,
+		"project": project,
+	})
 
 
 func submit_dag(nodes: Array, edges: Array) -> void:
@@ -449,12 +468,29 @@ func _process_next_command() -> void:
 	)
 
 
-func _on_command_completed(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+func _on_command_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var body_str: String = body.get_string_from_utf8()
 	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
 		push_warning("BridgeManager: command failed (result=%d, code=%d, path=%s)" % [result, code, _inflight_path])
-		command_failed.emit(_inflight_path, code)
+		command_failed.emit(_inflight_path, code, _extract_error_reason(body_str, result, code))
+	else:
+		command_succeeded.emit(_inflight_path, code, body_str)
 	_command_in_flight = false
 	_process_next_command()
+
+
+## Best-effort extraction of a human-readable failure reason from a JSON
+## error body ({"error": "...", "code": "..."}), falling back to a generic
+## message when the body is empty/unparseable or the request never reached
+## the server (transport-level failure).
+func _extract_error_reason(body_str: String, result: int, code: int) -> String:
+	if result != HTTPRequest.RESULT_SUCCESS:
+		return "connection failed (result=%d)" % result
+	if body_str != "":
+		var parsed: Variant = JSON.parse_string(body_str)
+		if parsed is Dictionary and (parsed as Dictionary).get("error", "") != "":
+			return str((parsed as Dictionary)["error"])
+	return "request failed (code=%d)" % code
 
 
 func get_registered_agents() -> Array[BridgeData.AgentData]:
