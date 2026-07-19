@@ -30,6 +30,23 @@ type StreamEvent struct {
 	Event Event
 }
 
+// TaskMeta holds optional descriptive metadata for a submitted task —
+// captured by the quest-board UI (T13 / #118) but not yet consumed by the
+// supervisor assign loop, which still dequeues by taskID+priority only.
+// Persisted separately from the priority queue so EnqueueTask's signature
+// (and its 8 existing call sites) stays untouched.
+type TaskMeta struct {
+	Description string
+	Project     string
+	Floor       string
+}
+
+// IsZero reports whether every field of the metadata is empty, in which case
+// implementations may skip persisting it.
+func (m TaskMeta) IsZero() bool {
+	return m.Description == "" && m.Project == "" && m.Floor == ""
+}
+
 // Event represents an entry published to the event stream.
 type Event struct {
 	Type    string
@@ -106,7 +123,17 @@ type StateStore interface {
 	ClearCurrentTask(ctx context.Context, agentID string) error
 
 	// ── Task queue (Sorted Set / priority queue) ──────────────────────────────
+	// EnqueueTask is sugar for EnqueueTaskWithMeta with a zero TaskMeta.
 	EnqueueTask(ctx context.Context, taskID string, priority float64) error
+	// EnqueueTaskWithMeta enqueues taskID at priority (lower score dequeues
+	// first, see DequeueTask) and persists meta (description/project/floor)
+	// alongside it when meta is non-zero. Implementations skip the metadata
+	// write entirely for a zero TaskMeta to avoid needless storage churn.
+	EnqueueTaskWithMeta(ctx context.Context, taskID string, priority float64, meta TaskMeta) error
+	// GetTaskMeta returns the metadata previously stored via
+	// EnqueueTaskWithMeta. Returns a zero TaskMeta (not an error) when no
+	// metadata was ever recorded for taskID.
+	GetTaskMeta(ctx context.Context, taskID string) (TaskMeta, error)
 	DequeueTask(ctx context.Context) (string, float64, error)
 	QueueLength(ctx context.Context) (int64, error)
 

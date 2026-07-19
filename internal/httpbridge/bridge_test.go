@@ -8,10 +8,30 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
+
+// stubDAGEngine is a minimal ipc.DAGEngine implementation that records the
+// last spec it was asked to execute, for assertions on node construction.
+type stubDAGEngine struct {
+	lastSpec *pb.DAGSpec
+	execID   string
+}
+
+func (s *stubDAGEngine) Execute(_ context.Context, spec *pb.DAGSpec) (string, error) {
+	s.lastSpec = spec
+	if s.execID == "" {
+		s.execID = "exec-1"
+	}
+	return s.execID, nil
+}
+
+func (s *stubDAGEngine) Status(_ context.Context, _ string) (*pb.GetDAGStatusResponse, error) {
+	return &pb.GetDAGStatusResponse{}, nil
+}
 
 // stubSubstrate is a minimal terminal.Substrate implementation for testing
 // handlers that require a non-nil substrate.
@@ -125,6 +145,33 @@ func TestSubmitTask_Valid(t *testing.T) {
 }
 
 func TestSubmitTask_MissingID(t *testing.T) {
+	// TaskID may be omitted as long as Description is present — the server
+	// generates a task_id and returns it. See #118.
+	bridge, _ := newTestBridge(t)
+
+	body, _ := json.Marshal(httpbridge.SubmitTaskRequest{
+		Priority:    1.0,
+		Description: "scout the eastern ridge",
+	})
+	req := httptest.NewRequest("POST", "/api/tasks", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["task_id"] == "" {
+		t.Fatal("expected a generated task_id, got empty string")
+	}
+}
+
+func TestSubmitTask_EmptyBody(t *testing.T) {
+	// Neither task_id nor description supplied — must be rejected.
 	bridge, _ := newTestBridge(t)
 
 	body, _ := json.Marshal(httpbridge.SubmitTaskRequest{Priority: 1.0})
@@ -134,6 +181,39 @@ func TestSubmitTask_MissingID(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubmitTask_WithMeta(t *testing.T) {
+	bridge, store := newTestBridge(t)
+
+	body, _ := json.Marshal(httpbridge.SubmitTaskRequest{
+		TaskID:      "task-meta-1",
+		Priority:    1.0,
+		Description: "clear the goblin warren",
+		Project:     "agenKic-orKistrator",
+		Floor:       "floor-2",
+	})
+	req := httptest.NewRequest("POST", "/api/tasks", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	meta, err := store.GetTaskMeta(context.Background(), "task-meta-1")
+	if err != nil {
+		t.Fatalf("GetTaskMeta: %v", err)
+	}
+	if meta.Description != "clear the goblin warren" {
+		t.Errorf("expected description to roundtrip, got %q", meta.Description)
+	}
+	if meta.Project != "agenKic-orKistrator" {
+		t.Errorf("expected project to roundtrip, got %q", meta.Project)
+	}
+	if meta.Floor != "floor-2" {
+		t.Errorf("expected floor to roundtrip, got %q", meta.Floor)
 	}
 }
 
@@ -199,6 +279,49 @@ func TestSubmitDAG_NilEngine(t *testing.T) {
 	// Handler returns 501 Not Implemented when DAG engine is nil.
 	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("expected 501, got %d", w.Code)
+	}
+}
+
+func TestSubmitDAG_DescriptionMapsToPrompt(t *testing.T) {
+	store := state.NewMockStore()
+	engine := &stubDAGEngine{}
+	bridge := httpbridge.NewBridge(":0", store, engine)
+
+	body, _ := json.Marshal(httpbridge.SubmitDAGRequest{
+		Nodes: []httpbridge.DAGNodeJSON{
+			{NodeID: "n1", Description: "gather herbs"},
+			{NodeID: "n2", TaskID: "t2", Description: "brew potion"},
+		},
+		Edges: []httpbridge.DAGEdgeJSON{{From: "n1", To: "n2"}},
+	})
+	req := httptest.NewRequest("POST", "/api/dags", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if engine.lastSpec == nil {
+		t.Fatal("expected DAG engine to receive a spec")
+	}
+	if len(engine.lastSpec.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(engine.lastSpec.Nodes))
+	}
+
+	n1 := engine.lastSpec.Nodes[0]
+	if n1.Task.Prompt != "gather herbs" {
+		t.Errorf("expected node n1 prompt %q, got %q", "gather herbs", n1.Task.Prompt)
+	}
+	if n1.Task.TaskId == "" {
+		t.Error("expected node n1 to receive a generated task_id")
+	}
+
+	n2 := engine.lastSpec.Nodes[1]
+	if n2.Task.Prompt != "brew potion" {
+		t.Errorf("expected node n2 prompt %q, got %q", "brew potion", n2.Task.Prompt)
+	}
+	if n2.Task.TaskId != "t2" {
+		t.Errorf("expected node n2 to keep explicit task_id %q, got %q", "t2", n2.Task.TaskId)
 	}
 }
 
