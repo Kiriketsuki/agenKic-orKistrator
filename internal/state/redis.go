@@ -21,6 +21,13 @@ const (
 	queueKey  = "task_queue"
 
 	agentSetKey = "agents"
+
+	// taskMetaTTL bounds the lifetime of a task:<id>:meta hash. Nothing in the
+	// current pipeline deletes this hash on dequeue/completion (see
+	// tryAssignTask's best-effort GetTaskMeta read), so without an expiry every
+	// quest submitted with metadata would leak a permanent Redis hash. 24h is
+	// generous relative to expected queue-wait times.
+	taskMetaTTL = 24 * time.Hour
 )
 
 // RedisStore implements StateStore using Redis.
@@ -411,14 +418,47 @@ func (r *RedisStore) AckEvent(ctx context.Context, group string, ids ...string) 
 // ── Task queue ────────────────────────────────────────────────────────────────
 
 func (r *RedisStore) EnqueueTask(ctx context.Context, taskID string, priority float64) error {
-	err := r.client.ZAdd(ctx, r.key(queueKey), redis.Z{
-		Score:  priority,
-		Member: taskID,
-	}).Err()
+	return r.EnqueueTaskWithMeta(ctx, taskID, priority, TaskMeta{})
+}
+
+func (r *RedisStore) taskMetaKey(taskID string) string {
+	return r.key("task:", taskID, ":meta")
+}
+
+func (r *RedisStore) EnqueueTaskWithMeta(ctx context.Context, taskID string, priority float64, meta TaskMeta) error {
+	_, err := r.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.ZAdd(ctx, r.key(queueKey), redis.Z{
+			Score:  priority,
+			Member: taskID,
+		})
+		if !meta.IsZero() {
+			pipe.HSet(ctx, r.taskMetaKey(taskID), map[string]interface{}{
+				"description": meta.Description,
+				"project":     meta.Project,
+				"floor":       meta.Floor,
+			})
+			pipe.Expire(ctx, r.taskMetaKey(taskID), taskMetaTTL)
+		}
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("EnqueueTask %s: %w", taskID, err)
 	}
 	return nil
+}
+
+// GetTaskMeta returns the metadata stored for taskID, or a zero TaskMeta
+// (not an error) when no metadata hash exists.
+func (r *RedisStore) GetTaskMeta(ctx context.Context, taskID string) (TaskMeta, error) {
+	res, err := r.client.HGetAll(ctx, r.taskMetaKey(taskID)).Result()
+	if err != nil {
+		return TaskMeta{}, fmt.Errorf("GetTaskMeta %s: %w", taskID, err)
+	}
+	return TaskMeta{
+		Description: res["description"],
+		Project:     res["project"],
+		Floor:       res["floor"],
+	}, nil
 }
 
 func (r *RedisStore) DequeueTask(ctx context.Context) (string, float64, error) {

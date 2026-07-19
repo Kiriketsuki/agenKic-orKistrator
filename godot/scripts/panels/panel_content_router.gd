@@ -7,6 +7,7 @@ class_name PanelContentRouter
 
 const SPELL_SCROLL_SCENE: PackedScene = preload("res://scenes/spell_scroll_view.tscn")
 const TERMINAL_SCENE: PackedScene = preload("res://scenes/terminal_view.tscn")
+const QUEST_BOARD_SCENE: PackedScene = preload("res://scenes/quest_board_view.tscn")
 const INJECTED_CONTENT_NAME: String = "InjectedContent"
 const CONTENT_MARGIN_DEFAULT: int = 12
 
@@ -40,6 +41,17 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			content_root.add_child(terminal_view)
 			if terminal_view.has_method("setup"):
 				terminal_view.call("setup", panel, agent_data, bridge)
+		"quest":
+			if placeholder != null:
+				placeholder.visible = false
+			_set_content_margins(content_root, 0)
+			var quest_view: Control = QUEST_BOARD_SCENE.instantiate() as Control
+			quest_view.name = INJECTED_CONTENT_NAME
+			content_root.add_child(quest_view)
+			if quest_view.has_method("setup"):
+				# agent_data is always null for the quest board — it is not
+				# agent-scoped (see PanelManager.open_quest_board()).
+				quest_view.call("setup", panel, agent_data, bridge)
 		_:
 			# Genuinely unknown mode — fall back to the generic placeholder.
 			_set_content_margins(content_root, CONTENT_MARGIN_DEFAULT)

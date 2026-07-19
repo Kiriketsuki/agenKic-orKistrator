@@ -166,6 +166,38 @@ func RunStateStoreConformance(t *testing.T, store state.StateStore) {
 		}
 	})
 
+	t.Run("EnqueueTaskWithMeta/GetTaskMeta roundtrip", func(t *testing.T) {
+		want := state.TaskMeta{
+			Description: "commission a quest",
+			Project:     "agenKic-orKistrator",
+			Floor:       "floor-3",
+		}
+		if err := store.EnqueueTaskWithMeta(ctx, "task-meta-rt", 5.0, want); err != nil {
+			t.Fatalf("EnqueueTaskWithMeta: %v", err)
+		}
+		got, err := store.GetTaskMeta(ctx, "task-meta-rt")
+		if err != nil {
+			t.Fatalf("GetTaskMeta: %v", err)
+		}
+		if got != want {
+			t.Fatalf("want meta %+v, got %+v", want, got)
+		}
+		// Clean up the queue entry.
+		if _, _, err := store.DequeueTask(ctx); err != nil {
+			t.Fatalf("DequeueTask cleanup: %v", err)
+		}
+	})
+
+	t.Run("GetTaskMeta for unknown task returns zero value, no error", func(t *testing.T) {
+		got, err := store.GetTaskMeta(ctx, "task-meta-never-enqueued")
+		if err != nil {
+			t.Fatalf("GetTaskMeta: %v", err)
+		}
+		if got != (state.TaskMeta{}) {
+			t.Fatalf("want zero TaskMeta, got %+v", got)
+		}
+	})
+
 	t.Run("DequeueTask on empty queue returns ErrQueueEmpty", func(t *testing.T) {
 		// Drain any leftover tasks from previous sub-tests.
 		for {
