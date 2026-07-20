@@ -31,6 +31,16 @@ var _config: TowerConfig
 var _floors: Array[Node2D] = []  # ordered bottom to top
 var _focused_index: int = 0
 var _agent_assignments: Dictionary = {}  # agent_id → {floor: String, edge: int}
+## T15 (#124) — per-floor ring of recent-completion unix timestamps, used for
+## the honest task_throughput_norm proxy. Keyed by floor_name. See
+## FloorMorph's doc-comment for the full honest-metric rationale: this is a
+## client-observed "completions per window" signal, not tokens/sec, because
+## no real cost data reaches the client (or the orchestrator's store) today.
+var _floor_completion_rings: Dictionary = {}
+## T15 (#124) council finding — periodic sweep so composite_load (and
+## therefore polygon side count) decays even when no new agent event fires.
+## Only floors with a non-empty completion ring are touched each tick.
+var _load_recompute_timer: Timer = null
 var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
 var _overscroll_tween: Tween = null
@@ -56,6 +66,11 @@ func _ready() -> void:
 	_update_tower_frame()
 	_apply_fisheye_layout()
 	_sync_tower_exterior()
+	_load_recompute_timer = Timer.new()
+	_load_recompute_timer.wait_time = maxf(_config.load_recompute_interval_sec, 0.1)
+	_load_recompute_timer.autostart = true
+	_load_recompute_timer.timeout.connect(_on_load_recompute_timer_timeout)
+	add_child(_load_recompute_timer)
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -122,6 +137,12 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.is_permanent = permanent
 	instance.polygon_sides = _config.polygon_sides
 	instance.set_meta("floor_name", floor_name)
+	if instance.has_method("configure_load_params"):
+		instance.configure_load_params(
+			_config.min_sides, _config.max_sides,
+			_config.breathe_min_scale, _config.breathe_max_scale,
+			_config.bucket_hysteresis
+		)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
 	)
@@ -258,6 +279,10 @@ func get_floor_infos() -> Array[Dictionary]:
 		var label: String = floor_node.floor_label if floor_node.floor_label != "" else floor_node.floor_name
 		var agent_count: int = floor_node.get_agent_count() if floor_node.has_method("get_agent_count") else 0
 		var active_count: int = floor_node.get_active_count() if floor_node.has_method("get_active_count") else 0
+		# T15 (#124) — additive-only keys; existing consumers (minimap.gd,
+		# floor_tabs.gd, quest_board_view.gd) all read via Dictionary.get with
+		# defaults, so these are safe to add without touching those files.
+		var composite_load: float = floor_node.get_composite_load() if floor_node.has_method("get_composite_load") else 0.0
 		infos.append({
 			"index": i,
 			"name": floor_node.get_meta("floor_name", ""),
@@ -265,6 +290,8 @@ func get_floor_infos() -> Array[Dictionary]:
 			"agent_count": agent_count,
 			"active_count": active_count,
 			"is_permanent": floor_node.is_permanent,
+			"composite_load": composite_load,
+			"polygon_sides": floor_node.polygon_sides,
 		})
 	return infos
 
@@ -279,9 +306,15 @@ func _rotate_focused_edge(direction: int) -> void:
 		return
 	var floor_node: Node2D = _floors[_focused_index]
 	var current_edge: int = floor_node.get_active_edge()
-	var new_edge: int = (current_edge + direction) % _config.polygon_sides
+	# T15 (#124) council finding — floor_node.polygon_sides is now dynamic
+	# (6..12, driven by composite_load) rather than the static _config value,
+	# so rotation must wrap against the focused floor's own current side
+	# count. Wrapping against _config.polygon_sides (always 6) would make
+	# edges above index 5 unreachable once this floor has morphed larger.
+	var sides: int = floor_node.polygon_sides
+	var new_edge: int = (current_edge + direction) % sides
 	if new_edge < 0:
-		new_edge += _config.polygon_sides
+		new_edge += sides
 	var old_x: float = floor_node.position.x
 	var slide_offset: float = maxf(_master_region.size.x * 0.18, 320.0) * (-direction)
 	var tween: Tween = create_tween()
@@ -330,6 +363,7 @@ func _on_floor_removed(floor_name: String) -> void:
 				# below the focus is removed and the array shifts.
 				var focused_floor: Node2D = _floors[_focused_index] if _focused_index < _floors.size() else null
 				_floors.erase(floor_node)
+				_floor_completion_rings.erase(floor_name)
 				if focused_floor != null and focused_floor != floor_node:
 					var new_index: int = _floors.find(focused_floor)
 					_focused_index = new_index if new_index != -1 else clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
@@ -362,6 +396,29 @@ func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: St
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
 			floor_node.update_agent_state(agent_id, new_state)
+			# T15 (#124) honest throughput proxy — a transition into "idle" is
+			# treated as an observed completion. This is a client-observed
+			# state-machine signal, not a real cost/throughput metric; see
+			# FloorMorph's doc-comment for why token_cost_norm is dropped
+			# entirely rather than faked from this.
+			#
+			# KNOWN LIMITATION (council finding, #124) — a task_cancelled SSE
+			# event maps onto this exact same {state:"idle", no TaskID} shape
+			# (see internal/httpbridge/sse.go case "task_cancelled": it reuses
+			# SSEAgentStateChanged with State "idle" precisely so no new
+			# frontend handler is needed). The client has no signal that lets
+			# it tell a genuine completion apart from a cancellation here, so
+			# a cancelled task is counted as a completion and can inflate
+			# task_throughput_norm. Fixing this honestly would require the
+			# orchestrator to emit a distinct event type — out of scope for a
+			# client-only fix, and not worth inventing partial plumbing (e.g.
+			# subtracting only client-initiated /cancel calls via
+			# BridgeManager.command_succeeded would race the SSE event and
+			# only cover cancels issued from this client, not other clients
+			# or reassigns). Documented and accepted as-is.
+			if new_state == "idle":
+				_record_floor_completion(floor_name)
+			_recompute_floor_load(floor_name)
 			agent_activity_changed.emit()
 			return
 
@@ -382,6 +439,7 @@ func _on_agent_deregistered(agent_id: String) -> void:
 				timer.timeout.connect(func() -> void:
 					if is_instance_valid(floor_node):
 						floor_node.remove_agent_slot(agent_id)
+						_recompute_floor_load(floor_name)
 					_agent_assignments.erase(agent_id)
 					floors_changed.emit()
 				)
@@ -389,6 +447,7 @@ func _on_agent_deregistered(agent_id: String) -> void:
 				# Agent is on a non-active edge — remove immediately.
 				floor_node.remove_agent_slot(agent_id)
 				_agent_assignments.erase(agent_id)
+				_recompute_floor_load(floor_name)
 				floors_changed.emit()
 			return
 	_agent_assignments.erase(agent_id)
@@ -425,8 +484,73 @@ func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int,
 			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
+			_recompute_floor_load(floor_name)
 			floors_changed.emit()
 			return
+
+
+# --- T15 (#124) — composite_load aggregation ---
+#
+# HONEST-MINIMAL, per the T14 precedent: composite_load = w_active *
+# active_agents_norm + w_thru * task_throughput_norm, with token_cost_norm
+# dropped (no data source anywhere in the orchestrator — see
+# FloorMorph's doc-comment) and the remaining weights renormalized from the
+# spec's 0.4/0.3/0.3 to 0.4/(0.4+0.3) and 0.3/(0.4+0.3).
+const _LOAD_WEIGHT_ACTIVE: float = 0.4 / 0.7
+const _LOAD_WEIGHT_THROUGHPUT: float = 0.3 / 0.7
+
+
+## Appends a completion timestamp to floor_name's rolling ring and prunes
+## anything older than the configured throughput window.
+func _record_floor_completion(floor_name: String) -> void:
+	var now: float = Time.get_unix_time_from_system()
+	var ring: Array = _floor_completion_rings.get(floor_name, [])
+	ring.append(now)
+	_floor_completion_rings[floor_name] = _prune_completion_ring(ring, now)
+
+
+func _prune_completion_ring(ring: Array, now: float) -> Array:
+	var window: float = _config.throughput_window_sec
+	return ring.filter(func(ts: float) -> bool: return now - ts <= window)
+
+
+## T15 (#124) council finding — composite_load is otherwise only recomputed
+## from _recompute_floor_load() calls triggered by agent register/state-change
+## /deregister events, so a floor's throughput_norm (and therefore its
+## polygon side count) never decays on its own once activity stops: the ring
+## just sits there, still non-empty, with nothing left to prune it. This
+## periodic sweep re-prunes and recomputes only floors with a non-empty ring
+## — idle floors that have already fully decayed (empty ring) are skipped so
+## this stays cheap even with many floors.
+func _on_load_recompute_timer_timeout() -> void:
+	for floor_name: String in _floor_completion_rings.keys():
+		var ring: Array = _floor_completion_rings.get(floor_name, [])
+		if not ring.is_empty():
+			_recompute_floor_load(floor_name)
+
+
+## Recomputes and pushes composite_load for a single floor from data that is
+## actually available client-side today (see the honest-minimal note above).
+## Only the named floor is touched — cheap enough to call on every agent
+## register/state-change/deregister/reassign without batching.
+func _recompute_floor_load(floor_name: String) -> void:
+	var floor_node: Node2D = null
+	for candidate: Node2D in _floors:
+		if candidate.get_meta("floor_name", "") == floor_name:
+			floor_node = candidate
+			break
+	if floor_node == null or not floor_node.has_method("set_composite_load"):
+		return
+	var now: float = Time.get_unix_time_from_system()
+	var ring: Array = _prune_completion_ring(_floor_completion_rings.get(floor_name, []), now)
+	_floor_completion_rings[floor_name] = ring
+
+	var active_count: int = floor_node.get_active_count() if floor_node.has_method("get_active_count") else 0
+	var active_norm: float = clampf(float(active_count) / maxf(float(_config.load_capacity), 1.0), 0.0, 1.0)
+	var throughput_norm: float = clampf(float(ring.size()) / maxf(float(_config.throughput_cap), 1.0), 0.0, 1.0)
+
+	var composite_load: float = _LOAD_WEIGHT_ACTIVE * active_norm + _LOAD_WEIGHT_THROUGHPUT * throughput_norm
+	floor_node.set_composite_load(composite_load)
 
 
 func _find_best_edge_for_agent(floor_name: String) -> int:
