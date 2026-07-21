@@ -1,8 +1,42 @@
 {
   "polygon_sides": 6,
   "linger_duration_sec": 30,
+  "load_capacity": 6,
+  "throughput_window_sec": 60,
+  "throughput_cap": 6,
+  "min_sides": 6,
+  "max_sides": 12,
+  "breathe_min_scale": 1.0,
+  "breathe_max_scale": 1.25,
+  "bucket_hysteresis": 0.03,
+  "load_recompute_interval_sec": 5,
   "permanent_floors": [
     { "name": "main", "label": "Main Hall" },
     { "name": "archive", "label": "Archive" }
-  ]
+  ],
+
+  "_t16_power_level_note": "PLACEHOLDER pending a real server-side tier signal (see palette_math.gd doc-comment). default_power_level applies to every agent; class_power_levels is an OPTIONAL demo scaffold that spreads the 5 named bands across classes so a live tower visibly demonstrates the palette-swap shader until SSEAgentRegistered carries a real tier field.",
+  "default_power_level": 0.4,
+  "class_power_levels": {
+    "alchemist": 0.1,
+    "scribe": 0.35,
+    "archmage": 0.6,
+    "wardkeeper": 0.8,
+    "librarian": 1.0,
+    "enchanter": 0.5,
+    "apprentice": 0.2
+  },
+
+  "_t16_providers_note": "Color stops for the palette-swap shader's per-provider LUT (procedural GradientTexture1D, see provider_palette.gd). Seeded IDENTICAL to floating_rune.gd PROVIDER_COLORS as a shared reference; floating_rune.gd is NOT refactored to read this config this task (avoids regressing rune tinting) — TODO future unification.",
+  "lut_strength": 0.85,
+  "_t17_particles_note": "T17 (#127) tier particle effects. max_particles_per_agent is the sole budget-cap knob (acceptance #5), threaded once-per-floor (global, not per-agent) via FloorScene.configure_particle_budget(). Each provider block's optional particle_style selects a procedural shape family (dot/spark/shard/ring — see particle_textures.gd); 'rune'/'leaf' (Claude/OpenAI) intentionally fall back to 'dot' today — bespoke glyph/leaf art is deferred to T22. Particle COLOR reuses the same stops above via ProviderPalette.get_accent_color() — no second color table. New provider = one block here, zero code (acceptance #4).",
+  "max_particles_per_agent": 24,
+  "providers": {
+    "claude":   { "stops": ["#2A1F08", "#D4AF37", "#FFF3C8"], "particle_style": "dot" },
+    "gemini":   { "stops": ["#0C2233", "#5A9BD5", "#E4F2FF"], "particle_style": "shard" },
+    "openai":   { "stops": ["#00291F", "#00BFA5", "#C9FFF3"], "particle_style": "dot" },
+    "ollama":   { "stops": ["#3A1800", "#F4851E", "#FFE3C2"], "particle_style": "spark" },
+    "deepseek": { "stops": ["#1E0E33", "#8B5CF6", "#EBDDFF"], "particle_style": "ring" },
+    "unknown":  { "stops": ["#1A1A1A", "#888888", "#DDDDDD"], "particle_style": "dot" }
+  }
 }
