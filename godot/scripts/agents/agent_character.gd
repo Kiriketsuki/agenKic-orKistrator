@@ -91,6 +91,24 @@ const MAX_RUNES: int = 5
 ## the shader's own header comment for the full pipeline.
 const PALETTE_SHADER: Shader = preload("res://shaders/palette_swap.gdshader")
 
+## T17 (#127) — HONEST-MINIMAL renderer justification: project.godot sets
+## rendering_method="gl_compatibility" (and .mobile). In Godot 4.2 the
+## Compatibility/GLES3-limited backend does NOT process GPU particles —
+## GPUParticles2D support for the Compatibility renderer only landed in
+## Godot 4.3. Issue #127 names GPUParticles2D, but under this repo's
+## configured 4.2 Compatibility renderer a GPUParticles2D node would emit
+## and draw NOTHING, failing every behavioral acceptance criterion while
+## satisfying only the literal class name. CPUParticles2D is CPU-simulated,
+## works on every backend, is a full per-instance Node2D (sidestepping T16's
+## one-ShaderMaterial-per-agent canvas_item constraint above — each agent
+## freely configures its own emitters), and exposes every property these
+## sparse tier effects need. See particle_math.gd / particle_textures.gd for
+## the pure math and procedural-texture halves of this feature.
+## Default per-agent particle budget (acceptance #5) — overwritten by
+## set_particle_budget() once TowerManager threads tower.json's
+## max_particles_per_agent through FloorScene.configure_particle_budget().
+const DEFAULT_PARTICLE_BUDGET: int = 24
+
 ## Set by the owner (FloorScene) before add_child so it is ready in _ready().
 var agent_id: String = ""
 
@@ -101,11 +119,14 @@ var _provider: String = ""
 var _active_runes: Array[Node2D] = []
 var _power_level: float = 0.0
 var _shader_material: ShaderMaterial = null
+var _particle_budget: int = DEFAULT_PARTICLE_BUDGET
 
 @onready var _body: ColorRect = $Body
 @onready var _class_label: Label = $ClassLabel
 @onready var _animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var _click_area: Area2D = $ClickArea
+@onready var _effect_particles: CPUParticles2D = $EffectParticles
+@onready var _ambient_particles: CPUParticles2D = $AmbientParticles
 
 
 func _ready() -> void:
@@ -125,6 +146,7 @@ func _ready() -> void:
 	_apply_state_tint()
 	_apply_provider_visuals()
 	_push_power_uniforms()
+	_apply_particles()
 
 
 func _process(delta: float) -> void:
@@ -163,6 +185,7 @@ func get_anim_state() -> AnimState:
 func set_provider(p: String) -> void:
 	_provider = p
 	_apply_provider_visuals()
+	_apply_particles()
 
 
 ## T16 (#125) — HONEST-MINIMAL: `p` is sourced by the caller (TowerManager)
@@ -173,6 +196,18 @@ func set_provider(p: String) -> void:
 func set_power_level(p: float) -> void:
 	_power_level = clampf(p, 0.0, 1.0)
 	_push_power_uniforms()
+	_apply_particles()
+
+
+## T17 (#127) acceptance #5 — global per-agent particle budget cap, threaded
+## once-per-floor by FloorScene._rebuild_interior() (see
+## FloorScene.configure_particle_budget()) BEFORE set_power_level() so the
+## budget is already in place when particles first configure. Not a
+## per-agent slot value like power_level — every agent on a floor currently
+## shares the same cap.
+func set_particle_budget(budget: int) -> void:
+	_particle_budget = maxi(budget, 0)
+	_apply_particles()
 
 
 func receive_output(chunk: BridgeData.AgentOutputChunk) -> void:
@@ -261,6 +296,111 @@ func _push_power_uniforms() -> void:
 	var effects: Dictionary = PaletteMath.effects_for(_power_level)
 	for key: String in effects.keys():
 		_shader_material.set_shader_parameter(key, effects[key])
+
+
+## T17 (#127) — configures $EffectParticles (primary tier visual:
+## sparkle -> orbit -> trail) and $AmbientParticles (Legendary-only additive
+## shimmer) from ParticleMath.params_for(_power_level, _particle_budget) plus
+## provider theming (ProviderPalette.get_accent_color/get_particle_style +
+## ParticleTextures). Null-guarded on both @onready refs — mirrors
+## _apply_provider_visuals()/_push_power_uniforms()'s pre-tree guard, since
+## set_provider()/set_power_level()/set_particle_budget() may all be called
+## by the owner (FloorScene) before add_child() finishes wiring @onready.
+## Does NOT touch _body.modulate or the WORKING pulse in _process() — CPU
+## particles are independent CanvasItem children, and this node's own
+## modulate (set by play_exit_animation()'s fade tween) propagates to them
+## automatically, so no separate particle teardown/fade is needed.
+func _apply_particles() -> void:
+	if _effect_particles == null or _ambient_particles == null:
+		return
+	var params: Dictionary = ParticleMath.params_for(_power_level, _particle_budget)
+	var style: String = ProviderPalette.get_particle_style(_provider)
+	var accent: Color = ProviderPalette.get_accent_color(_provider)
+
+	var emitting: bool = params["emitting"]
+	_effect_particles.emitting = emitting
+	if emitting:
+		# CPUParticles2D.amount must stay >= 1 (0 is invalid) and reassigning
+		# it restarts the system — safe here since tier changes are
+		# config-rare, not per-frame.
+		_effect_particles.amount = maxi(1, int(params["amount"]))
+		_effect_particles.lifetime = maxf(0.05, float(params["lifetime"]))
+		_effect_particles.texture = ParticleTextures.get_texture(style)
+		_effect_particles.color = accent
+		_configure_tier_shape(params["tier"], float(params["orbit_radius"]), float(params["orbit_speed"]), float(params["plume_velocity"]))
+
+	var ambient_enabled: bool = params["ambient_enabled"]
+	_ambient_particles.emitting = ambient_enabled
+	if ambient_enabled:
+		_ambient_particles.amount = maxi(1, int(params["ambient_amount"]))
+		# Sparse, large, very-low-alpha, slow-rising motes (additive blend,
+		# see agent_character.tscn's CanvasItemMaterial) — an honest shimmer
+		# layer, NOT screen-space distortion (gl_compatibility can't cheaply
+		# warp per-agent via BackBufferCopy). Reads as heat-shimmer/aura.
+		_ambient_particles.lifetime = 2.5
+		_ambient_particles.texture = ParticleTextures.get_texture("dot")
+		_ambient_particles.color = Color(accent.r, accent.g, accent.b, 0.18)
+		_ambient_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+		_ambient_particles.emission_sphere_radius = 14.0
+		_ambient_particles.direction = Vector2(0.0, -1.0)
+		_ambient_particles.spread = 30.0
+		_ambient_particles.initial_velocity_min = 3.0
+		_ambient_particles.initial_velocity_max = 6.0
+		_ambient_particles.gravity = Vector2(0.0, -2.0)
+		_ambient_particles.scale_amount_min = 1.2
+		_ambient_particles.scale_amount_max = 2.0
+
+
+## Per-tier CPUParticles2D shape/velocity configuration for $EffectParticles.
+## Only called while emitting == true (see _apply_particles()).
+func _configure_tier_shape(tier: int, orbit_radius: float, orbit_speed: float, plume_velocity: float) -> void:
+	match tier:
+		ParticleMath.Tier.SPARKLE:
+			# Sparse sparkles: point-emit, drift gently upward.
+			_effect_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINT
+			_effect_particles.direction = Vector2(0.0, -1.0)
+			_effect_particles.spread = 60.0
+			_effect_particles.initial_velocity_min = 4.0
+			_effect_particles.initial_velocity_max = 10.0
+			_effect_particles.gravity = Vector2(0.0, -6.0)
+			_effect_particles.orbit_velocity_min = 0.0
+			_effect_particles.orbit_velocity_max = 0.0
+			_effect_particles.scale_amount_min = 0.5
+			_effect_particles.scale_amount_max = 1.0
+		ParticleMath.Tier.ORBIT:
+			# Orbiting motes: ring-ish spawn, near-zero linear velocity,
+			# orbit_velocity does the work.
+			_effect_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+			_effect_particles.emission_sphere_radius = orbit_radius
+			_effect_particles.direction = Vector2(0.0, 0.0)
+			_effect_particles.spread = 0.0
+			_effect_particles.initial_velocity_min = 0.0
+			_effect_particles.initial_velocity_max = 0.0
+			_effect_particles.gravity = Vector2.ZERO
+			_effect_particles.orbit_velocity_min = orbit_speed
+			_effect_particles.orbit_velocity_max = orbit_speed
+			_effect_particles.scale_amount_min = 0.8
+			_effect_particles.scale_amount_max = 1.2
+		ParticleMath.Tier.TRAIL:
+			# Trail realized as a directional emission plume (dense,
+			# short-lived, directional velocity) rather than a literal motion
+			# trail — honest-minimal for a mostly-stationary desk agent (see
+			# ParticleMath.lifetime_for()'s doc-comment). Orbiting motes
+			# layer on top (orbit_velocity) for the "ambient distortion"
+			# co-occurring visual richness at the top of the curve.
+			_effect_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+			_effect_particles.emission_sphere_radius = orbit_radius
+			_effect_particles.direction = Vector2(-1.0, -0.4)
+			_effect_particles.spread = 45.0
+			_effect_particles.initial_velocity_min = plume_velocity * 0.6
+			_effect_particles.initial_velocity_max = plume_velocity
+			_effect_particles.gravity = Vector2.ZERO
+			_effect_particles.orbit_velocity_min = orbit_speed
+			_effect_particles.orbit_velocity_max = orbit_speed
+			_effect_particles.scale_amount_min = 0.9
+			_effect_particles.scale_amount_max = 1.4
+		_:
+			pass
 
 
 func _on_area_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> void:
