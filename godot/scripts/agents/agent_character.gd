@@ -27,12 +27,20 @@ enum AnimState {
 	STUNNED,
 }
 
+# T16 (#125 review finding 2) — LIBRARIAN was originally Color(0.65, 0.4,
+# 0.15, 1.0), luminance ~0.4463, only ~0.002 away from ARCHMAGE's ~0.4442.
+# palette_swap.gdshader keys its provider_lut lookup by luminance(styled),
+# so the two classes would sample near-identical colors under EVERY
+# provider LUT, collapsing part of the class x provider variant matrix
+# (acceptance #4). Darkened here to widen the luminance gap while keeping
+# LIBRARIAN's brown/tan identity — see
+# tests/palette_math_test.gd:_run_class_through_provider_lut_distinctness_case.
 const CLASS_COLORS: Dictionary = {
 	CharacterClass.ALCHEMIST:  Color(0.85, 0.55, 0.0,  1.0),
 	CharacterClass.SCRIBE:     Color(0.35, 0.6,  0.95, 1.0),
 	CharacterClass.ARCHMAGE:   Color(0.75, 0.2,  0.9,  1.0),
 	CharacterClass.WARDKEEPER: Color(0.25, 0.75, 0.3,  1.0),
-	CharacterClass.LIBRARIAN:  Color(0.65, 0.4,  0.15, 1.0),
+	CharacterClass.LIBRARIAN:  Color(0.55, 0.32, 0.08, 1.0),
 	CharacterClass.ENCHANTER:  Color(0.1,  0.85, 0.8,  1.0),
 	CharacterClass.APPRENTICE: Color(0.65, 0.65, 0.75, 1.0),
 }
