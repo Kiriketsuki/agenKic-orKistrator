@@ -30,6 +30,23 @@ var bucket_hysteresis: float = 0.03
 ## sweep is what lets a loaded floor shrink back down on its own.
 var load_recompute_interval_sec: float = 5.0
 
+# --- T16 (#125) palette-swap shader tunables ---
+## HONEST-MINIMAL placeholder power level applied to every agent — no real
+## per-agent tier signal reaches the client yet (see palette_math.gd).
+var default_power_level: float = 0.4
+## OPTIONAL demo scaffolding: character_class -> power_level override, used
+## only to visually spread the 5 named bands across classes on a live tower
+## until a real server-side tier field exists. Empty by default.
+var class_power_levels: Dictionary = {}
+## Blend strength toward a known provider's LUT hue-remap (0..1). Unknown/
+## empty provider always uses lut_mix=0 regardless of this value — see
+## provider_palette.gd.
+var lut_strength: float = 0.85
+## provider name -> {"stops": [hex, hex, hex]} used to build each provider's
+## GradientTexture1D LUT (see provider_palette.gd). Seeded from
+## floating_rune.gd's PROVIDER_COLORS as a shared reference.
+var providers: Dictionary = {}
+
 
 static func from_file(path: String) -> TowerConfig:
 	var config := TowerConfig.new()
@@ -53,9 +70,17 @@ static func from_file(path: String) -> TowerConfig:
 	config.breathe_max_scale = d.get("breathe_max_scale", 1.25)
 	config.bucket_hysteresis = d.get("bucket_hysteresis", 0.03)
 	config.load_recompute_interval_sec = d.get("load_recompute_interval_sec", 5.0)
+	config.default_power_level = d.get("default_power_level", 0.4)
+	config.lut_strength = d.get("lut_strength", 0.85)
 	var floors_raw: Variant = d.get("permanent_floors", [])
 	if floors_raw is Array:
 		for item: Variant in (floors_raw as Array):
 			if item is Dictionary:
 				config.permanent_floors.append(item as Dictionary)
+	var class_power_raw: Variant = d.get("class_power_levels", {})
+	if class_power_raw is Dictionary:
+		config.class_power_levels = class_power_raw as Dictionary
+	var providers_raw: Variant = d.get("providers", {})
+	if providers_raw is Dictionary:
+		config.providers = providers_raw as Dictionary
 	return config
