@@ -25,8 +25,13 @@ class_name ParticleMath
 ## both clamp against a caller-supplied `budget` (tower.json
 ## max_particles_per_agent, threaded once-per-floor — see
 ## floor_scene.configure_particle_budget()). Ambient gets a small fraction of
-## the same global budget via AMBIENT_CAP_CONST so total per-agent particle
-## count stays bounded and documented, never a second unbounded knob.
+## the REMAINING budget (via AMBIENT_CAP_CONST and params_for()'s `reserved`
+## thread-through) so amount + ambient_amount together stay <= budget as a
+## true combined per-agent ceiling — never two independent clamps against
+## the same full budget that could together exceed it. A budget of 0 (or
+## a tier whose amount clamps to 0) disables emission outright via
+## params_for()'s emitting/ambient_enabled gating — never silently floored
+## up to 1 particle.
 
 enum Tier { NONE, SPARKLE, ORBIT, TRAIL }
 
@@ -149,28 +154,44 @@ static func ambient_enabled_for(power: float) -> bool:
 	return clampf(power, 0.0, 1.0) >= PaletteMath.BANDS["legendary"]
 
 
-## Budget-capped ambient particle count — always the lesser of
-## AMBIENT_CAP_CONST and the shared per-agent budget, so ambient never blows
-## past the same global cap the primary emitter respects.
-static func ambient_amount_for(power: float, budget: int) -> int:
+## Budget-capped ambient particle count — the lesser of AMBIENT_CAP_CONST and
+## whatever remains of the shared per-agent budget AFTER `reserved` (the
+## primary $EffectParticles amount already drawn from that same budget) is
+## subtracted. `reserved` defaults to 0 so existing single-emitter callers/
+## tests (asserting ambient alone never exceeds a raw budget) keep working
+## unchanged. params_for() below is the only caller that threads a non-zero
+## `reserved`, which is what keeps amount + ambient_amount <= budget as a
+## true combined ceiling (acceptance #5) instead of two independent clamps
+## against the same full budget that could together exceed it.
+static func ambient_amount_for(power: float, budget: int, reserved: int = 0) -> int:
 	if not ambient_enabled_for(power):
 		return 0
-	return mini(AMBIENT_CAP_CONST, maxi(budget, 0))
+	var remaining: int = maxi(budget, 0) - maxi(reserved, 0)
+	return mini(AMBIENT_CAP_CONST, maxi(remaining, 0))
 
 
 ## Convenience bundle of every derived param for a given (power_level,
 ## budget) pair, mirroring PaletteMath.effects_for(). Used by
 ## agent_character.gd._apply_particles() to configure both emitters in one
 ## call, and by particle_math_test.gd to assert cross-tier distinctness.
+##
+## `emitting`/`ambient_enabled` are gated on BOTH the tier (emitting_for()/
+## ambient_enabled_for()) AND the budget-clamped amount being > 0 — a
+## max_particles_per_agent of 0 (a legitimate "disable particles" config
+## value, see tower.json's doc-comment) must silently disable emission
+## rather than the node layer flooring amount up to 1 just to satisfy
+## CPUParticles2D's amount>=1 API constraint.
 static func params_for(power: float, budget: int) -> Dictionary:
+	var amount: int = emission_amount_for(power, budget)
+	var ambient_amount: int = ambient_amount_for(power, budget, amount)
 	return {
 		"tier": tier_for(power),
-		"emitting": emitting_for(power),
-		"amount": emission_amount_for(power, budget),
+		"emitting": emitting_for(power) and amount > 0,
+		"amount": amount,
 		"lifetime": lifetime_for(power),
 		"orbit_radius": orbit_radius_for(power),
 		"orbit_speed": orbit_speed_for(power),
 		"plume_velocity": plume_velocity_for(power),
-		"ambient_enabled": ambient_enabled_for(power),
-		"ambient_amount": ambient_amount_for(power, budget),
+		"ambient_enabled": ambient_enabled_for(power) and ambient_amount > 0,
+		"ambient_amount": ambient_amount,
 	}

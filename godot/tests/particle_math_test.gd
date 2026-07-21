@@ -13,7 +13,11 @@
 #        band table) and particles scale with power level (none -> sparse ->
 #        orbiting -> trail), including exact-boundary and just-below cases.
 #   #5    — budget-cap enforcement: emission_amount_for()/ambient_amount_for()
-#        never exceed the caller-supplied budget, at any power level.
+#        never exceed the caller-supplied budget, at any power level, AND
+#        params_for()'s combined amount + ambient_amount never exceeds the
+#        budget either (they must share, not double-spend, the cap) — plus
+#        a budget of 0 must gate emitting/ambient_enabled to false rather
+#        than the node layer flooring amount back up to 1.
 #   NONE tier (Novice/Adept) never emits (Adept's glow is shader-only, T16).
 #   Amounts/lifetimes scale monotonically WITHIN a tier as power rises.
 #   Ambient shimmer is enabled ONLY at Legendary (paired with TRAIL).
@@ -33,6 +37,8 @@ func _init() -> void:
 	_run_tier_threshold_cases(failures)
 	_run_none_tier_emits_nothing_case(failures)
 	_run_budget_cap_cases(failures)
+	_run_combined_budget_cap_case(failures)
+	_run_zero_budget_disables_emission_case(failures)
 	_run_within_tier_monotonic_cases(failures)
 	_run_ambient_only_legendary_case(failures)
 	_run_params_for_keys_case(failures)
@@ -113,6 +119,53 @@ func _run_budget_cap_cases(failures: Array[String]) -> void:
 		failures.append("emission_amount_for(1.0, -5) expected 0 for negative budget")
 	if ParticleMath.ambient_amount_for(1.0, -5) != 0:
 		failures.append("ambient_amount_for(1.0, -5) expected 0 for negative budget")
+
+
+## Acceptance #5 (review finding #3) — amount + ambient_amount together must
+## never exceed the configured budget. Both are drawn from the SAME
+## max_particles_per_agent knob, so clamping each independently against the
+## full budget (rather than against what's left after the other's claim)
+## silently let a Legendary agent draw up to budget_effect_cap(20) + 6.
+func _run_combined_budget_cap_case(failures: Array[String]) -> void:
+	var budgets: Array[int] = [0, 1, 4, 6, 10, 20, 24, 26, 1000]
+	for budget: int in budgets:
+		var params: Dictionary = ParticleMath.params_for(1.0, budget)
+		var total: int = int(params["amount"]) + int(params["ambient_amount"])
+		if total > budget:
+			failures.append(
+				"params_for(1.0, %d): amount(%d) + ambient_amount(%d) = %d exceeded budget" %
+				[budget, params["amount"], params["ambient_amount"], total]
+			)
+	# The T17 review's concrete repro: tower.json's shipped default of 24
+	# must yield exactly amount=20, ambient=4 (not 20+6=26).
+	var shipped_default: Dictionary = ParticleMath.params_for(1.0, 24)
+	if int(shipped_default["amount"]) != 20 or int(shipped_default["ambient_amount"]) != 4:
+		failures.append(
+			"params_for(1.0, 24) expected amount=20, ambient_amount=4, got amount=%d, ambient_amount=%d" %
+			[shipped_default["amount"], shipped_default["ambient_amount"]]
+		)
+
+
+## Acceptance #5 (review finding #1) — a budget of 0 is a legitimate
+## "disable particles" config value (tower.json's max_particles_per_agent
+## doc-comment calls it the sole budget-cap knob) and must gate emitting/
+## ambient_enabled to false, not leave the node layer to floor amount up to
+## 1 and emit anyway.
+func _run_zero_budget_disables_emission_case(failures: Array[String]) -> void:
+	var powers: Array[float] = [0.7, 0.9, 1.0]
+	for p: float in powers:
+		var params: Dictionary = ParticleMath.params_for(p, 0)
+		if params["emitting"]:
+			failures.append("params_for(%f, 0): emitting expected false, got true" % p)
+		if int(params["amount"]) != 0:
+			failures.append("params_for(%f, 0): amount expected 0, got %d" % [p, params["amount"]])
+	var legendary_params: Dictionary = ParticleMath.params_for(1.0, 0)
+	if legendary_params["ambient_enabled"]:
+		failures.append("params_for(1.0, 0): ambient_enabled expected false, got true")
+	if int(legendary_params["ambient_amount"]) != 0:
+		failures.append(
+			"params_for(1.0, 0): ambient_amount expected 0, got %d" % legendary_params["ambient_amount"]
+		)
 
 
 ## Within a tier, amount/lifetime must be monotonically non-decreasing as

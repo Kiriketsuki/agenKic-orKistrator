@@ -25,7 +25,7 @@ vertical_alignment = 1
 text = "APP"
 
 [node name="EffectParticles" type="CPUParticles2D" parent="."]
-z_index = -1
+z_index = 1
 emitting = false
 amount = 1
 one_shot = false
@@ -33,7 +33,7 @@ local_coords = true
 
 [node name="AmbientParticles" type="CPUParticles2D" parent="."]
 material = SubResource("CanvasItemMaterial_1")
-z_index = -1
+z_index = 1
 emitting = false
 amount = 1
 one_shot = false
