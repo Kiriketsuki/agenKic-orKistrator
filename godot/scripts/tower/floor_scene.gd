@@ -307,7 +307,7 @@ func _on_morph_finished() -> void:
 		set_floor_dimensions(w, h)
 
 
-func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
+func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice", provider: String = "", power_level: float = 0.0) -> void:
 	for slot: Dictionary in _agent_slots:
 		if slot["agent_id"] == agent_id:
 			return
@@ -317,6 +317,7 @@ func add_agent_slot(agent_id: String, edge_index: int, character_class: String =
 		"character_class": character_class,
 		"state": "idle",
 		"provider": provider,
+		"power_level": power_level,
 	})
 	if edge_index == _active_edge:
 		_rebuild_interior()
@@ -424,6 +425,7 @@ func _rebuild_interior() -> void:
 		char_node.set_character_class(slot.get("character_class", "apprentice"))
 		char_node.set_animation_state(slot.get("state", "idle"))
 		char_node.set_provider(slot.get("provider", ""))
+		char_node.set_power_level(slot.get("power_level", 0.0))
 		char_node.character_clicked.connect(func(agent_id: String) -> void:
 			agent_clicked.emit(agent_id)
 		)
