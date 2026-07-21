@@ -385,7 +385,13 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if floor_name.is_empty() or not _has_floor(floor_name):
 		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
-	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class, agent_data.provider)
+	# T16 (#125) HONEST-MINIMAL power level — see palette_math.gd doc-comment.
+	# No real per-agent tier signal reaches the client yet; class_power_levels
+	# is an optional config demo scaffold, falling back to default_power_level.
+	var power_level: float = _config.class_power_levels.get(
+		agent_data.character_class, _config.default_power_level
+	)
+	assign_agent_to_edge(agent_data.id, floor_name, edge, agent_data.character_class, agent_data.provider, power_level)
 
 
 func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:
@@ -477,11 +483,11 @@ func _on_connection_status_changed(status: String) -> void:
 
 # --- Agent Assignment ---
 
-func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
+func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice", provider: String = "", power_level: float = 0.0) -> void:
 	_agent_assignments[agent_id] = {"floor": floor_name, "edge": edge_index}
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
-			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider)
+			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider, power_level)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
 			_recompute_floor_load(floor_name)
