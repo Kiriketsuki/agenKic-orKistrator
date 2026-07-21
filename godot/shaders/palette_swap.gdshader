@@ -81,8 +81,18 @@ vec3 hue_rotate(vec3 c, float amount) {
 
 
 void fragment() {
-	vec4 texel = texture(TEXTURE, UV);
-	vec3 base = texel.rgb * class_color.rgb;
+	// T16 FIX (#125 review finding 1): in Godot 4.2 canvas_item shaders there
+	// is no separate MODULATE builtin (added in 4.3) — the incoming COLOR at
+	// the start of fragment() is already pre-populated by the engine as
+	// TEXTURE-sample * modulate. All color math below is therefore built
+	// directly from COLOR.rgb rather than re-sampling TEXTURE a second time
+	// and multiplying by COLOR.rgb again at the end — that double-counted
+	// the texel (texel^2), which was invisible only because the placeholder
+	// ColorRect's default TEXTURE is an opaque white 1x1 (texel==1, so
+	// texel^2==texel). A real T22 sprite frame's non-white texel would have
+	// been silently squared/darkened by the old code. TEXTURE is therefore
+	// not re-sampled here at all — COLOR already carries it.
+	vec3 base = COLOR.rgb * class_color.rgb;
 
 	// Saturation: mix between the luminance-gray version and the full-color
 	// base. saturation < 1.0 mutes (Novice), > 1.0 oversaturates (Master+).
@@ -118,6 +128,12 @@ void fragment() {
 	float pulse = 0.6 + 0.4 * sin(TIME * pulse_speed);
 	vec3 emissive = vec3(1.0) * glow_amount * pulse * 0.35;
 
-	COLOR.rgb = (final_color + emissive) * COLOR.rgb;
-	COLOR.a = texel.a * COLOR.a;
+	// `base` (and therefore everything derived from it) already carries the
+	// incoming COLOR — i.e. texel * modulate — exactly once, so the result
+	// is assigned directly with no further multiplication by COLOR.rgb.
+	COLOR.rgb = final_color + emissive;
+	// COLOR.a is left as the engine's default (TEXTURE alpha * modulate
+	// alpha) — reassigning it from a fresh TEXTURE sample here would
+	// double-count TEXTURE alpha the same way the old rgb path
+	// double-counted the texel color.
 }

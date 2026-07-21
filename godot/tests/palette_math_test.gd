@@ -19,6 +19,19 @@
 #        palette_swap.gdshader's header comment for the full pipeline; this
 #        test asserts each axis is independently distinct, which is what
 #        makes the product of the three axes distinct).
+#   #4 CROSS TERM — the per-axis checks above cannot catch two CLASS_COLORS
+#        that converge to (near-)identical luminance, which is the actual
+#        key the shader uses to sample provider_lut (`float key =
+#        luminance(styled); texture(provider_lut, vec2(key, 0.5))`, see
+#        palette_swap.gdshader fragment()). Two classes with near-equal
+#        luminance would sample near-identical colors under EVERY provider,
+#        silently collapsing part of the 7 x 5 variant matrix even though
+#        both per-axis checks above still pass. This test computes
+#        luminance(class_color) for all 7 classes exactly as the shader
+#        does and asserts (a) no two classes are closer than a minimum
+#        luminance gap, and (b) every class, run through every provider's
+#        LUT at its own luminance key, is still pairwise-distinct from
+#        every other class under that same provider.
 #
 # Exits 1 on any failure so it can be wired into CI later.
 
@@ -31,6 +44,7 @@ func _init() -> void:
 	_run_glow_monotonic_smooth_case(failures)
 	_run_class_color_distinctness_case(failures)
 	_run_provider_lut_distinctness_case(failures)
+	_run_class_through_provider_lut_distinctness_case(failures)
 	if failures.is_empty():
 		print("palette_math_test: all cases passed")
 		quit(0)
@@ -137,3 +151,73 @@ func _run_provider_lut_distinctness_case(failures: Array[String]) -> void:
 		failures.append("provider_palette: get_lut_mix('') expected 0.0")
 	if is_equal_approx(ProviderPalette.get_lut_mix("claude"), 0.0):
 		failures.append("provider_palette: get_lut_mix('claude') expected nonzero (recognized provider)")
+
+
+## Acceptance #4 CROSS TERM (review finding 2) — the per-axis checks above
+## (raw CLASS_COLORS pairwise-distinct; LUT samples pairwise-distinct at a
+## FIXED key) cannot catch two classes whose *luminance* converges, even
+## though luminance(class_color) is exactly the key the shader uses to
+## sample provider_lut (see palette_swap.gdshader fragment(): `float key =
+## clamp(luminance(styled), 0.0, 1.0); texture(provider_lut, vec2(key, 0.5))`).
+## The saturation mix step (`mix(vec3(base_luma), base, saturation)`) is a
+## luminance-preserving blend at saturation == 1.0, so at power_level == 0
+## (saturation ~= 0.55, still centered on base_luma) styled's luminance
+## tracks class_color's luminance closely — this test uses class_color's
+## raw luminance directly as a conservative proxy for that shader key.
+func _run_class_through_provider_lut_distinctness_case(failures: Array[String]) -> void:
+	var providers: Array[String] = ["claude", "gemini", "openai", "ollama", "deepseek"]
+	var class_ids: Array = AgentCharacter.CLASS_COLORS.keys()
+	var class_names: Array = []
+	for class_id: int in class_ids:
+		class_names.append(AgentCharacter.CLASS_LABELS.get(class_id, str(class_id)))
+
+	# (a) No two classes may sit closer than this in luminance — closer than
+	# this and every provider's LUT (sampled at that near-identical key)
+	# will return near-identical colors for both classes, regardless of how
+	# distinct the LUTs or the raw class RGB values are individually. 0.01
+	# is set just above the ~0.002 ARCHMAGE/LIBRARIAN collision this test
+	# was written to catch (see class doc-comment fix in agent_character.gd)
+	# — tight enough to fail on a true near-duplicate, loose enough not to
+	# demand redesigning the other hand-picked class colors, some of which
+	# sit ~0.012-0.016 apart by luminance already (e.g. ALCHEMIST/SCRIBE,
+	# SCRIBE/WARDKEEPER) without being visually indistinguishable.
+	var luma_min_gap: float = 0.01
+	var lumas: Array[float] = []
+	for class_id: int in class_ids:
+		lumas.append(_luminance(AgentCharacter.CLASS_COLORS[class_id] as Color))
+	for i: int in range(class_ids.size()):
+		for j: int in range(i + 1, class_ids.size()):
+			var gap: float = absf(lumas[i] - lumas[j])
+			if gap < luma_min_gap:
+				failures.append(
+					("class luminance collision: %s (luma=%.4f) and %s (luma=%.4f) differ by " +
+					"only %.4f (< %.4f) — the shader keys provider_lut lookup by luminance, " +
+					"so these two classes would render as near-identical colors under every " +
+					"provider LUT") %
+					[class_names[i], lumas[i], class_names[j], lumas[j], gap, luma_min_gap]
+				)
+
+	# (b) Directly reproduce the shader's lookup: for every provider, sample
+	# its LUT at each class's own luminance key and require the 7 resulting
+	# colors to be pairwise distinct under that provider.
+	for provider: String in providers:
+		var tex: GradientTexture1D = ProviderPalette.get_lut(provider) as GradientTexture1D
+		if tex == null:
+			continue
+		var swapped: Array[Color] = []
+		for luma: float in lumas:
+			swapped.append(tex.gradient.sample(clampf(luma, 0.0, 1.0)))
+		for i: int in range(swapped.size()):
+			for j: int in range(i + 1, swapped.size()):
+				if swapped[i].is_equal_approx(swapped[j]):
+					failures.append(
+						"class x provider LUT distinctness: %s and %s sample identically through provider '%s' at their own luminance keys" %
+						[class_names[i], class_names[j], provider]
+					)
+
+
+## Rec. 601-ish perceptual luminance, mirroring palette_swap.gdshader's
+## luminance() function exactly so this test keys the LUT the same way the
+## shader does.
+func _luminance(c: Color) -> float:
+	return c.r * 0.299 + c.g * 0.587 + c.b * 0.114
