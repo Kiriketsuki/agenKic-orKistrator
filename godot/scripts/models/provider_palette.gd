@@ -27,6 +27,15 @@ const CONFIG_PATH: String = "res://config/tower.json"
 const _LUT_WIDTH: int = 256
 const _FALLBACK_STOPS: PackedStringArray = ["#1A1A1A", "#888888", "#DDDDDD"]
 
+## T17 (#127) — offset into the provider's gradient sampled for particle
+## accent color. tower.json stops run dark -> mid -> light, so a
+## near-the-bright-end offset gives a vivid, legible-against-dark-background
+## particle tint without being flat white. Reuses the SAME gradient built for
+## the palette-swap LUT (get_lut) — no second color table.
+const _ACCENT_OFFSET: float = 0.75
+const _DEFAULT_PARTICLE_STYLE: String = "dot"
+const _NEUTRAL_ACCENT: Color = Color(0.7, 0.7, 0.7, 1.0)
+
 static var _config: TowerConfig = null
 static var _lut_cache: Dictionary = {}
 
@@ -53,6 +62,34 @@ static func get_lut_mix(provider: String) -> float:
 	if not (cfg.providers as Dictionary).has(provider):
 		return 0.0
 	return cfg.lut_strength
+
+
+## T17 (#127) — particle accent color for `provider`. Samples the SAME
+## cached gradient built for the palette-swap LUT at a bright offset
+## (_ACCENT_OFFSET), so the color source stays singular (tower.json stops).
+## Unknown/empty provider -> neutral grey, mirroring get_lut()'s fallback.
+static func get_accent_color(provider: String) -> Color:
+	var key: String = provider if not provider.is_empty() else "unknown"
+	if key == "unknown":
+		return _NEUTRAL_ACCENT
+	var tex: GradientTexture1D = get_lut(key) as GradientTexture1D
+	if tex == null or tex.gradient == null:
+		return _NEUTRAL_ACCENT
+	return tex.gradient.sample(_ACCENT_OFFSET)
+
+
+## T17 (#127) — procedural particle shape family for `provider` (see
+## particle_textures.gd doc-comment for the shape catalog). Reads
+## tower.json's providers[provider].particle_style; defaults to "dot" for an
+## unrecognized/missing provider or a provider block with no style set.
+static func get_particle_style(provider: String) -> String:
+	if provider.is_empty():
+		return _DEFAULT_PARTICLE_STYLE
+	var cfg: TowerConfig = _ensure_config()
+	var entry: Variant = (cfg.providers as Dictionary).get(provider, null)
+	if entry is Dictionary and (entry as Dictionary).get("particle_style", null) is String:
+		return (entry as Dictionary)["particle_style"]
+	return _DEFAULT_PARTICLE_STYLE
 
 
 static func _stops_for(provider: String) -> PackedStringArray:
