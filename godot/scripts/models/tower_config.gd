@@ -42,10 +42,18 @@ var class_power_levels: Dictionary = {}
 ## empty provider always uses lut_mix=0 regardless of this value — see
 ## provider_palette.gd.
 var lut_strength: float = 0.85
-## provider name -> {"stops": [hex, hex, hex]} used to build each provider's
-## GradientTexture1D LUT (see provider_palette.gd). Seeded from
+## provider name -> {"stops": [hex, hex, hex], "particle_style": "..."} used
+## to build each provider's GradientTexture1D LUT (see provider_palette.gd)
+## and (T17/#127) its particle accent color + shape style. Seeded from
 ## floating_rune.gd's PROVIDER_COLORS as a shared reference.
 var providers: Dictionary = {}
+
+# --- T17 (#127) tier particle effects tunables ---
+## Global per-agent particle budget cap (acceptance #5) — threaded
+## once-per-floor via TowerManager._create_floor ->
+## FloorScene.configure_particle_budget(), NOT per-agent (see
+## particle_math.gd / agent_character.gd doc-comments).
+var max_particles_per_agent: int = 24
 
 
 static func from_file(path: String) -> TowerConfig:
@@ -72,6 +80,7 @@ static func from_file(path: String) -> TowerConfig:
 	config.load_recompute_interval_sec = d.get("load_recompute_interval_sec", 5.0)
 	config.default_power_level = d.get("default_power_level", 0.4)
 	config.lut_strength = d.get("lut_strength", 0.85)
+	config.max_particles_per_agent = d.get("max_particles_per_agent", 24)
 	var floors_raw: Variant = d.get("permanent_floors", [])
 	if floors_raw is Array:
 		for item: Variant in (floors_raw as Array):
