@@ -143,6 +143,11 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 			_config.breathe_min_scale, _config.breathe_max_scale,
 			_config.bucket_hysteresis
 		)
+	# T17 (#127) acceptance #5 — threads the global particle budget cap once
+	# per floor (not per agent — see FloorScene.configure_particle_budget()
+	# doc-comment).
+	if instance.has_method("configure_particle_budget"):
+		instance.configure_particle_budget(_config.max_particles_per_agent)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
 	)
