@@ -74,6 +74,11 @@ var _max_sides: int = 12
 var _breathe_min_scale: float = 1.0
 var _breathe_max_scale: float = 1.25
 var _bucket_hysteresis: float = 0.03
+## T17 (#127) — global per-agent particle budget cap (acceptance #5), pushed
+## by TowerManager._create_floor() via configure_particle_budget(). Default
+## matches TowerConfig.max_particles_per_agent's default so a floor works
+## sanely if never configured (e.g. in isolated tests).
+var _particle_budget: int = 24
 
 @onready var _background: Polygon2D = $Background
 @onready var _edge_glow: Line2D = $EdgeGlow
@@ -180,6 +185,15 @@ func configure_load_params(min_sides: int, max_sides: int, breathe_min_scale: fl
 	_breathe_min_scale = breathe_min_scale
 	_breathe_max_scale = breathe_max_scale
 	_bucket_hysteresis = bucket_hysteresis
+
+
+## T17 (#127) — pushes the global per-agent particle budget cap (tower.json
+## max_particles_per_agent) from TowerManager into this floor. Called once
+## per floor at creation (mirroring configure_load_params()'s pre-tree
+## contract), NOT per-agent — every agent slot on this floor shares the same
+## cap (see particle_math.gd doc-comment).
+func configure_particle_budget(max_per_agent: int) -> void:
+	_particle_budget = max_per_agent
 
 
 ## T15 (#124) entry point — called by TowerManager whenever this floor's
@@ -425,6 +439,10 @@ func _rebuild_interior() -> void:
 		char_node.set_character_class(slot.get("character_class", "apprentice"))
 		char_node.set_animation_state(slot.get("state", "idle"))
 		char_node.set_provider(slot.get("provider", ""))
+		# T17 (#127) — budget must land before power_level so particles
+		# configure against the correct cap on first apply (see
+		# AgentCharacter.set_particle_budget() doc-comment).
+		char_node.set_particle_budget(_particle_budget)
 		char_node.set_power_level(slot.get("power_level", 0.0))
 		char_node.character_clicked.connect(func(agent_id: String) -> void:
 			agent_clicked.emit(agent_id)
