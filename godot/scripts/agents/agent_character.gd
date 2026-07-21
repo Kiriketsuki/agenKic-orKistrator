@@ -320,10 +320,14 @@ func _apply_particles() -> void:
 	var emitting: bool = params["emitting"]
 	_effect_particles.emitting = emitting
 	if emitting:
-		# CPUParticles2D.amount must stay >= 1 (0 is invalid) and reassigning
-		# it restarts the system — safe here since tier changes are
+		# ParticleMath.params_for() gates `emitting` on amount > 0 (budget-cap
+		# aware — see particle_math.gd doc-comment), so amount is guaranteed
+		# >= 1 here already; CPUParticles2D.amount must stay >= 1 (0 is
+		# invalid), which this gating satisfies without ever flooring a
+		# budget-clamped-to-0 amount back up to 1. Reassigning amount
+		# restarts the system — safe here since tier changes are
 		# config-rare, not per-frame.
-		_effect_particles.amount = maxi(1, int(params["amount"]))
+		_effect_particles.amount = int(params["amount"])
 		_effect_particles.lifetime = maxf(0.05, float(params["lifetime"]))
 		_effect_particles.texture = ParticleTextures.get_texture(style)
 		_effect_particles.color = accent
@@ -332,7 +336,9 @@ func _apply_particles() -> void:
 	var ambient_enabled: bool = params["ambient_enabled"]
 	_ambient_particles.emitting = ambient_enabled
 	if ambient_enabled:
-		_ambient_particles.amount = maxi(1, int(params["ambient_amount"]))
+		# Same budget-aware gating as $EffectParticles above — ambient_amount
+		# is guaranteed >= 1 whenever ambient_enabled is true.
+		_ambient_particles.amount = int(params["ambient_amount"])
 		# Sparse, large, very-low-alpha, slow-rising motes (additive blend,
 		# see agent_character.tscn's CanvasItemMaterial) — an honest shimmer
 		# layer, NOT screen-space distortion (gl_compatibility can't cheaply
