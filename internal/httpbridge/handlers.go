@@ -1,7 +1,9 @@
 package httpbridge
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -234,4 +236,237 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleCancelAgent cancels the agent's current task (T14 / #119).
+//
+// Semantics (honest-minimal — see TaskMeta.Tier/Provider doc comment for the
+// companion reassign endpoint's caveat): the Bridge holds only a StateStore
+// and an optional terminal.Substrate — no Supervisor and no agent.Machine
+// reference — so this cannot drive the agent state machine's
+// EventAgentFailed transition (the only machine-modeled path to a terminal
+// state, which the UI would render as "crashed"). Cancellation is instead
+// performed directly against the store:
+//
+//  1. best-effort PTY interrupt (Ctrl-C, "\x03") via the terminal substrate,
+//     if one is configured. This is logged-only on failure and is NOT the
+//     mechanism this endpoint depends on for correctness — the store detach
+//     in step 2 is.
+//  2. ClearCurrentTask detaches the task from the agent unconditionally.
+//  3. If the agent's last-observed state was not already idle,
+//     CompareAndSetAgentState drives it from that state to idle. Losing the
+//     compare-and-swap race (a concurrent supervisor transition) is
+//     tolerated: a re-read that finds the agent already idle is treated as
+//     success (the store's end state already matches this endpoint's
+//     promise); any other observed state is reported as 409 "aborted" so the
+//     caller can retry.
+//  4. A "task_cancelled" event is published so SSE subscribers see the
+//     agent's idle transition live (mapped to agent.state_changed by
+//     mapStoreEvent — no new SSE event type or frontend handler needed).
+//
+// This bypasses the supervisor's per-agent mutex entirely (the Bridge has no
+// way to take it), so a narrow race with a concurrent
+// tryAssignTask/completeAgent is possible — e.g. a transient idle-with-
+// stale-CurrentTaskID state, or a duplicate re-enqueue if a crash fires
+// between the GetAgentFields read and ClearCurrentTask. These mirror races
+// the supervisor already tolerates and self-heals via heartbeat; this
+// endpoint does not introduce a new class of them.
+func (b *Bridge) handleCancelAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agentID := r.PathValue("id")
+
+	fields, err := b.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if fields.CurrentTaskID == "" {
+		writeJSON(w, http.StatusConflict, ErrorResponse{
+			Error: "agent has no active task",
+			Code:  "failed_precondition",
+		})
+		return
+	}
+
+	prevState := fields.State
+	taskID := fields.CurrentTaskID
+
+	if b.substrate != nil {
+		if serr := b.substrate.SendCommand(ctx, "agent-"+agentID, "\x03"); serr != nil {
+			log.Printf("httpbridge: cancel agent %s: best-effort PTY interrupt failed: %v", agentID, serr)
+		}
+	}
+
+	if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if prevState != state.AgentStateIdle {
+		if aborted := b.settleToIdle(ctx, w, agentID, prevState); aborted {
+			return
+		}
+	}
+
+	if err := b.store.PublishEvent(ctx, state.Event{
+		Type:    "task_cancelled",
+		AgentID: agentID,
+		TaskID:  taskID,
+	}); err != nil {
+		log.Printf("httpbridge: cancel agent %s: PublishEvent: %v", agentID, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"agent_id":  agentID,
+		"task_id":   taskID,
+		"cancelled": true,
+	})
+}
+
+// handleReassignAgent requeues the agent's current task with a tier/provider
+// hint (T14 / #119).
+//
+// Semantics: there is no provider/tier field anywhere in state.AgentFields
+// and the supervisor's assign loop dequeues strictly by taskID+priority,
+// ignoring TaskMeta entirely when picking which agent services a task. This
+// endpoint is therefore NOT live migration of a running agent to a different
+// provider or tier — nothing here can force the requeued task onto a
+// different agent, and it is frequently the very same agent that ends up
+// picking it back up. What actually happens:
+//
+//  1. The agent's current task's existing metadata (description/project/
+//     floor) is read via GetTaskMeta so it survives the requeue.
+//  2. Best-effort PTY interrupt, exactly as in handleCancelAgent.
+//  3. ClearCurrentTask detaches the task from the agent BEFORE the requeue,
+//     so a concurrent crash-triggered re-enqueue (e.g. supervisor heartbeat
+//     timeout) cannot race this handler into enqueuing the same task twice.
+//  4. EnqueueTaskWithMeta re-enqueues the task at its original priority, with
+//     Tier/Provider persisted into TaskMeta — a hint that is stored but,
+//     like TaskMeta.Project/Floor, not consumed by the assign loop today.
+//  5. The agent is settled back to idle (same CAS-with-tolerant-reread
+//     handling as cancel) and a "task_cancelled" event is published so SSE
+//     subscribers observe the idle transition live.
+//
+// Overstating this as live provider/tier reassignment would be fantasy
+// plumbing; callers must treat the response as "requeued with a hint",
+// nothing more.
+func (b *Bridge) handleReassignAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agentID := r.PathValue("id")
+
+	fields, err := b.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if fields.CurrentTaskID == "" {
+		writeJSON(w, http.StatusConflict, ErrorResponse{
+			Error: "agent has no active task",
+			Code:  "failed_precondition",
+		})
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req ReassignAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "invalid request body",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+	tier := strings.TrimSpace(req.Tier)
+	provider := strings.TrimSpace(req.Provider)
+	if tier == "" && provider == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "tier or provider is required",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+
+	prevState := fields.State
+	taskID := fields.CurrentTaskID
+	priority := fields.CurrentTaskPriority
+
+	existingMeta, err := b.store.GetTaskMeta(ctx, taskID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if b.substrate != nil {
+		if serr := b.substrate.SendCommand(ctx, "agent-"+agentID, "\x03"); serr != nil {
+			log.Printf("httpbridge: reassign agent %s: best-effort PTY interrupt failed: %v", agentID, serr)
+		}
+	}
+
+	if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	newMeta := state.TaskMeta{
+		Description: existingMeta.Description,
+		Project:     existingMeta.Project,
+		Floor:       existingMeta.Floor,
+		Tier:        tier,
+		Provider:    provider,
+	}
+	if err := b.store.EnqueueTaskWithMeta(ctx, taskID, priority, newMeta); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if prevState != state.AgentStateIdle {
+		if aborted := b.settleToIdle(ctx, w, agentID, prevState); aborted {
+			return
+		}
+	}
+
+	if err := b.store.PublishEvent(ctx, state.Event{
+		Type:    "task_cancelled",
+		AgentID: agentID,
+		TaskID:  taskID,
+	}); err != nil {
+		log.Printf("httpbridge: reassign agent %s: PublishEvent: %v", agentID, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"agent_id": agentID,
+		"task_id":  taskID,
+		"tier":     tier,
+		"provider": provider,
+		"requeued": true,
+	})
+}
+
+// settleToIdle drives agentID from prevState to state.AgentStateIdle via
+// CompareAndSetAgentState, tolerating a lost race against a concurrent
+// transition IF that transition already landed the agent on idle (the
+// store's end state then already satisfies this endpoint's contract). Any
+// other observed state, or a non-conflict error, writes an error response
+// and returns aborted=true so the caller must stop processing.
+func (b *Bridge) settleToIdle(ctx context.Context, w http.ResponseWriter, agentID, prevState string) (aborted bool) {
+	err := b.store.CompareAndSetAgentState(ctx, agentID, prevState, state.AgentStateIdle)
+	if err == nil {
+		return false
+	}
+
+	var conflict *state.StateConflictError
+	if !errors.As(err, &conflict) {
+		writeError(w, err)
+		return true
+	}
+
+	current, readErr := b.store.GetAgentState(ctx, agentID)
+	if readErr == nil && current == state.AgentStateIdle {
+		return false
+	}
+	writeJSON(w, http.StatusConflict, ErrorResponse{
+		Error: "agent state changed concurrently; retry",
+		Code:  "aborted",
+	})
+	return true
 }

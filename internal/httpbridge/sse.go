@@ -229,6 +229,21 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 			Cursor:    cursor,
 		}
 
+	case "task_cancelled":
+		// Published by handleCancelAgent/handleReassignAgent (T14 / #119) once
+		// the task has been detached from the agent and the agent's state has
+		// been driven back to idle in the store. There is no dedicated
+		// "task.cancelled" SSE type — this maps onto the same
+		// agent.state_changed shape the UI already handles, so BridgeManager
+		// picks up the idle transition with no new frontend event handler.
+		return "agent.state_changed", SSEAgentStateChanged{
+			AgentID:   e.AgentID,
+			State:     "idle",
+			TaskID:    e.TaskID,
+			Timestamp: e.Timestamp,
+			Cursor:    cursor,
+		}
+
 	case "output_chunk":
 		return "agent.output", SSEAgentOutput{
 			AgentID:   e.AgentID,

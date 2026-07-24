@@ -54,6 +54,21 @@ func (s *stubSubstrate) SplitPane(_ context.Context, _ string, _ terminal.Direct
 	return terminal.Pane{}, nil
 }
 
+// recordingSubstrate wraps stubSubstrate but records every SendCommand call
+// (session, cmd) for assertions on the best-effort PTY interrupt sent by
+// handleCancelAgent/handleReassignAgent (T14 / #119).
+type recordingSubstrate struct {
+	stubSubstrate
+	sentSession string
+	sentCmd     string
+}
+
+func (s *recordingSubstrate) SendCommand(_ context.Context, session string, cmd string) error {
+	s.sentSession = session
+	s.sentCmd = cmd
+	return nil
+}
+
 // newTestBridge creates a Bridge backed by a MockStore with no DAG engine.
 func newTestBridge(t *testing.T) (*httpbridge.Bridge, *state.MockStore) {
 	t.Helper()
@@ -380,6 +395,232 @@ func TestSendInput_EmptyKeys(t *testing.T) {
 	// The empty-keys validation fires only when substrate is present.
 	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("expected 501 (no substrate), got %d", w.Code)
+	}
+}
+
+// ── Cancel agent task (T14 / #119) ──────────────────────────────────────────
+
+func TestCancelAgent_UnknownAgent(t *testing.T) {
+	bridge, _ := newTestBridge(t)
+
+	req := httptest.NewRequest("POST", "/api/agents/ghost/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCancelAgent_NoActiveTask(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCancelAgent_Success(t *testing.T) {
+	store := state.NewMockStore()
+	substrate := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithSubstrate(substrate))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["task_id"] != "task-1" {
+		t.Errorf("expected task_id=task-1 in response, got %v", resp["task_id"])
+	}
+	if resp["cancelled"] != true {
+		t.Errorf("expected cancelled=true in response, got %v", resp["cancelled"])
+	}
+
+	fields, err := store.GetAgentFields(ctx, "agent-1")
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.State != "idle" {
+		t.Errorf("expected agent state=idle after cancel, got %q", fields.State)
+	}
+	if fields.CurrentTaskID != "" {
+		t.Errorf("expected CurrentTaskID cleared after cancel, got %q", fields.CurrentTaskID)
+	}
+
+	if substrate.sentSession != "agent-agent-1" {
+		t.Errorf("expected SendCommand session %q, got %q", "agent-agent-1", substrate.sentSession)
+	}
+	if substrate.sentCmd != "\x03" {
+		t.Errorf("expected SendCommand cmd %q (Ctrl-C), got %q", "\\x03", substrate.sentCmd)
+	}
+}
+
+func TestCancelAgent_NoSubstrate_StillDetaches(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/cancel", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	fields, err := store.GetAgentFields(ctx, "agent-1")
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.State != "idle" || fields.CurrentTaskID != "" {
+		t.Errorf("expected idle+detached with no substrate, got state=%q task=%q", fields.State, fields.CurrentTaskID)
+	}
+}
+
+// ── Reassign agent task (T14 / #119) ────────────────────────────────────────
+
+func TestReassignAgent_UnknownAgent(t *testing.T) {
+	bridge, _ := newTestBridge(t)
+
+	body, _ := json.Marshal(httpbridge.ReassignAgentRequest{Provider: "gemini"})
+	req := httptest.NewRequest("POST", "/api/agents/ghost/reassign", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReassignAgent_NoActiveTask(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+
+	body, _ := json.Marshal(httpbridge.ReassignAgentRequest{Provider: "gemini"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/reassign", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReassignAgent_EmptyTierAndProvider(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	body, _ := json.Marshal(httpbridge.ReassignAgentRequest{})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/reassign", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestReassignAgent_Success(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:               "working",
+		CurrentTaskID:       "task-1",
+		CurrentTaskPriority: 3.0,
+	})
+	// Existing description/project/floor metadata must survive the requeue.
+	if err := store.EnqueueTaskWithMeta(ctx, "task-1", 3.0, state.TaskMeta{
+		Description: "scout the eastern ridge",
+		Project:     "agenKic-orKistrator",
+		Floor:       "floor-1",
+	}); err != nil {
+		t.Fatalf("seed EnqueueTaskWithMeta: %v", err)
+	}
+	// Drain the seeded queue entry — CurrentTaskID/CurrentTaskPriority on the
+	// agent record (set above) is what the handler actually reads.
+	if _, _, err := store.DequeueTask(ctx); err != nil {
+		t.Fatalf("drain seeded queue entry: %v", err)
+	}
+
+	body, _ := json.Marshal(httpbridge.ReassignAgentRequest{Tier: "opus", Provider: "claude"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/reassign", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	qlen, err := store.QueueLength(ctx)
+	if err != nil {
+		t.Fatalf("QueueLength: %v", err)
+	}
+	if qlen != 1 {
+		t.Fatalf("expected task requeued (queue length 1), got %d", qlen)
+	}
+
+	meta, err := store.GetTaskMeta(ctx, "task-1")
+	if err != nil {
+		t.Fatalf("GetTaskMeta: %v", err)
+	}
+	if meta.Tier != "opus" {
+		t.Errorf("expected meta.Tier=opus, got %q", meta.Tier)
+	}
+	if meta.Provider != "claude" {
+		t.Errorf("expected meta.Provider=claude, got %q", meta.Provider)
+	}
+	if meta.Description != "scout the eastern ridge" {
+		t.Errorf("expected description preserved, got %q", meta.Description)
+	}
+	if meta.Project != "agenKic-orKistrator" {
+		t.Errorf("expected project preserved, got %q", meta.Project)
+	}
+	if meta.Floor != "floor-1" {
+		t.Errorf("expected floor preserved, got %q", meta.Floor)
+	}
+
+	fields, err := store.GetAgentFields(ctx, "agent-1")
+	if err != nil {
+		t.Fatalf("GetAgentFields: %v", err)
+	}
+	if fields.State != "idle" {
+		t.Errorf("expected agent state=idle after reassign, got %q", fields.State)
+	}
+	if fields.CurrentTaskID != "" {
+		t.Errorf("expected CurrentTaskID cleared after reassign, got %q", fields.CurrentTaskID)
 	}
 }
 
