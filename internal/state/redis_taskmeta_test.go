@@ -34,6 +34,8 @@ func TestRedisStore_TaskMetaHasExpiry(t *testing.T) {
 	const taskID = "meta-ttl-task"
 	if err := store.EnqueueTaskWithMeta(ctx, taskID, 1.0, TaskMeta{
 		Description: "scout the eastern ridge",
+		Tier:        "opus",
+		Provider:    "claude",
 	}); err != nil {
 		t.Fatalf("EnqueueTaskWithMeta: %v", err)
 	}
@@ -44,6 +46,12 @@ func TestRedisStore_TaskMetaHasExpiry(t *testing.T) {
 	}
 	if meta.Description != "scout the eastern ridge" {
 		t.Fatalf("meta.Description = %q, want %q", meta.Description, "scout the eastern ridge")
+	}
+	if meta.Tier != "opus" {
+		t.Fatalf("meta.Tier = %q, want %q", meta.Tier, "opus")
+	}
+	if meta.Provider != "claude" {
+		t.Fatalf("meta.Provider = %q, want %q", meta.Provider, "claude")
 	}
 
 	ttl, err := store.client.TTL(ctx, store.taskMetaKey(taskID)).Result()
