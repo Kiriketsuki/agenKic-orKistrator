@@ -2,6 +2,7 @@ extends Node2D
 ## TowerManager — fisheye layout engine, floor ordering, scroll/zoom, signal routing.
 
 signal agent_panel_requested(agent_id: String)
+signal agent_context_menu_requested(agent_id: String, screen_position: Vector2)
 signal agent_hover_requested(agent_id: String)
 signal agent_unhover_requested(agent_id: String)
 signal floor_focus_changed(index: int)
@@ -123,6 +124,9 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.set_meta("floor_name", floor_name)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
+	)
+	instance.agent_right_clicked.connect(func(agent_id: String) -> void:
+		agent_context_menu_requested.emit(agent_id, get_viewport().get_mouse_position())
 	)
 	instance.agent_hovered.connect(func(agent_id: String) -> void:
 		agent_hover_requested.emit(agent_id)
