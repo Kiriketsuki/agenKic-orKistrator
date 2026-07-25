@@ -263,6 +263,20 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 //  4. A "task_cancelled" event is published so SSE subscribers see the
 //     agent's idle transition live (mapped to agent.state_changed by
 //     mapStoreEvent — no new SSE event type or frontend handler needed).
+//  5. If a *supervisor.CompletionRegistry was wired in via
+//     WithCompletionRegistry, Complete(taskID) is called so a
+//     dag.BlockingSubmitter.Wait blocking on this exact task (i.e. taskID
+//     belongs to a DAG node) unblocks instead of hanging until the DAG's own
+//     context is cancelled (T14 council finding #2). CompletionRegistry has
+//     no notion of "completed via cancellation" vs. "completed normally" —
+//     Complete just unblocks every waiter — so a cancelled DAG node is
+//     observed by the DAG engine as having finished successfully with no
+//     output, not as having failed. This is an honest limitation of the
+//     current registry API, not a design goal; a step-in change to signal
+//     failure would require widening CompletionRegistry's contract, which is
+//     out of scope here. Reassign does NOT need this: it re-enqueues the
+//     same taskID, so some agent eventually completes it and the normal
+//     completeAgent path signals Complete(taskID) as usual.
 //
 // This bypasses the supervisor's per-agent mutex entirely (the Bridge has no
 // way to take it), so a narrow race with a concurrent
@@ -316,6 +330,13 @@ func (b *Bridge) handleCancelAgent(w http.ResponseWriter, r *http.Request) {
 		log.Printf("httpbridge: cancel agent %s: PublishEvent: %v", agentID, err)
 	}
 
+	if b.completionRegistry != nil {
+		// Unblock any dag.BlockingSubmitter.Wait(ctx, taskID) — see the
+		// completionRegistry field/WithCompletionRegistry doc comments for
+		// the honest-minimal semantics (T14 council finding #2).
+		b.completionRegistry.Complete(taskID)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"agent_id":  agentID,
 		"task_id":   taskID,
@@ -337,12 +358,28 @@ func (b *Bridge) handleCancelAgent(w http.ResponseWriter, r *http.Request) {
 //  1. The agent's current task's existing metadata (description/project/
 //     floor) is read via GetTaskMeta so it survives the requeue.
 //  2. Best-effort PTY interrupt, exactly as in handleCancelAgent.
-//  3. ClearCurrentTask detaches the task from the agent BEFORE the requeue,
-//     so a concurrent crash-triggered re-enqueue (e.g. supervisor heartbeat
-//     timeout) cannot race this handler into enqueuing the same task twice.
-//  4. EnqueueTaskWithMeta re-enqueues the task at its original priority, with
+//  3. EnqueueTaskWithMeta re-enqueues the task at its original priority, with
 //     Tier/Provider persisted into TaskMeta — a hint that is stored but,
 //     like TaskMeta.Project/Floor, not consumed by the assign loop today.
+//     This runs BEFORE ClearCurrentTask (deliberately the reverse of an
+//     earlier version of this handler) so that if the enqueue fails, the
+//     task is still fully attached to this agent and nothing is lost — the
+//     handler can simply be retried, and the supervisor's own crash-recovery
+//     path (crashAgent, which re-enqueues from the still-intact
+//     CurrentTaskID) remains a safety net. This mirrors completeAgent's own
+//     documented ordering (signal/enqueue BEFORE clearing CurrentTaskID),
+//     chosen there for the identical reason: clearing first and then failing
+//     to enqueue orphans the task permanently (T14 council finding #3).
+//  4. ClearCurrentTask detaches the task from the agent now that the requeue
+//     has landed. Trade-off: because this Bridge endpoint runs outside the
+//     supervisor's per-agent mutex (see handleCancelAgent's doc comment), a
+//     concurrent crash-triggered re-enqueue (heartbeat timeout on this same
+//     agent) landing in the narrow window between steps 3 and 4 could
+//     observe the still-attached CurrentTaskID and re-enqueue the same task
+//     a second time — a duplicate-delivery risk, not a loss risk. Given the
+//     choice between a rare duplicate and a guaranteed loss on any
+//     transient enqueue error, this endpoint accepts the former, consistent
+//     with the rest of the codebase's stated preference.
 //  5. The agent is settled back to idle (same CAS-with-tolerant-reread
 //     handling as cancel) and a "task_cancelled" event is published so SSE
 //     subscribers observe the idle transition live.
@@ -402,11 +439,6 @@ func (b *Bridge) handleReassignAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
-		writeError(w, err)
-		return
-	}
-
 	newMeta := state.TaskMeta{
 		Description: existingMeta.Description,
 		Project:     existingMeta.Project,
@@ -414,7 +446,15 @@ func (b *Bridge) handleReassignAgent(w http.ResponseWriter, r *http.Request) {
 		Tier:        tier,
 		Provider:    provider,
 	}
+	// Enqueue BEFORE detaching from the agent — see doc comment above (T14
+	// council finding #3): if this fails, the task is still fully attached
+	// to agentID and nothing is lost.
 	if err := b.store.EnqueueTaskWithMeta(ctx, taskID, priority, newMeta); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
 		writeError(w, err)
 		return
 	}

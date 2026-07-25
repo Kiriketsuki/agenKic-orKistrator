@@ -202,10 +202,19 @@ func _on_reassign_id_pressed(id: int) -> void:
 # ---------------------------------------------------------------------------
 
 func _start_copy_output(agent_id: String) -> void:
-	if _copy_pending:
-		return
 	if _bridge == null or not _bridge.has_method("fetch_agent_output_history"):
 		return
+	if _copy_pending:
+		if agent_id == _copy_agent_id:
+			# Duplicate click for the same in-flight agent — ignore.
+			return
+		# A different agent's copy was requested while one was already in
+		# flight. fetch_agent_output_history shares a single HTTPRequest node
+		# across every caller and cancels the previous request on entry, so
+		# the earlier request is about to be superseded rather than
+		# completed. Tell the user instead of silently dropping their click
+		# (see T14 council finding #6).
+		_toast_message("Copy output cancelled — switched to new agent", ERROR_COLOR)
 	_copy_pending = true
 	_copy_agent_id = agent_id
 	_bridge.fetch_agent_output_history(agent_id, COPY_LINES)
@@ -215,15 +224,26 @@ func _start_copy_output(agent_id: String) -> void:
 ## since this node's whole lifetime spans many copy requests) — the
 ## _copy_pending guard plus the aid == _copy_agent_id check give the
 ## equivalent one-shot-per-request semantics without repeated
-## connect/disconnect churn. fetch_agent_output_history always emits exactly
-## once per call (even with an empty [] on failure), so _copy_pending is
-## always cleared.
+## connect/disconnect churn.
+##
+## fetch_agent_output_history's own doc comment states cancel_request() does
+## NOT fire request_completed in Godot 4 — so a concurrent backfill for a
+## different agent (spell scroll / terminal panel opening, or another copy
+## request) can silently cancel our in-flight request with no completion at
+## all for it. Because fetch_agent_output_history always cancels the *shared*
+## HTTPRequest before starting a new one, at most one request is ever
+## in-flight, so the next emission this node observes — regardless of whose
+## agent_id it carries — is authoritative proof our own attempt is settled
+## (either it's ours, or ours got superseded and will never complete). Clear
+## _copy_pending unconditionally so a superseded request can never leave the
+## guard stuck forever (T14 council finding #1); only actually copy to the
+## clipboard when the emission is the one we asked for.
 func _on_copy_history(agent_id: String, chunks: Array) -> void:
-	if agent_id != _copy_agent_id:
-		# Not our in-flight request (e.g. a concurrent scroll-panel backfill
-		# sharing the same signal) — ignore, keep waiting for ours.
-		return
 	_copy_pending = false
+	if agent_id != _copy_agent_id:
+		# Not our in-flight request — a concurrent backfill/copy superseded
+		# ours before it could complete. Nothing to copy; just stop waiting.
+		return
 
 	var lines: Array = []
 	for chunk: Variant in chunks:

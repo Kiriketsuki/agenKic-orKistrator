@@ -236,10 +236,17 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 		// "task.cancelled" SSE type — this maps onto the same
 		// agent.state_changed shape the UI already handles, so BridgeManager
 		// picks up the idle transition with no new frontend event handler.
+		//
+		// TaskID is deliberately omitted (unlike e.g. EventTaskAssigned)
+		// rather than set to e.TaskID: every other idle-producing case above
+		// (EventOutputDelivered, EventAgentFailed) carries no TaskID because
+		// an idle agent.state_changed event is the UI-wide invariant for "no
+		// current task". Setting TaskID here to the just-cancelled task would
+		// have the frontend render "State: Idle" next to the very task ID
+		// that was just detached (T14 council finding #5).
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
 			State:     "idle",
-			TaskID:    e.TaskID,
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
 		}
