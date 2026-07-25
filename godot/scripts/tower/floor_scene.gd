@@ -3,6 +3,7 @@ extends Node2D
 ## AgentCharacter spawning, and the ephemeral lifecycle state machine.
 
 signal agent_clicked(agent_id: String)
+signal agent_right_clicked(agent_id: String)
 signal agent_hovered(agent_id: String)
 signal agent_unhovered(agent_id: String)
 
@@ -187,6 +188,9 @@ func _rebuild_interior() -> void:
 		char_node.set_provider(slot.get("provider", ""))
 		char_node.character_clicked.connect(func(agent_id: String) -> void:
 			agent_clicked.emit(agent_id)
+		)
+		char_node.character_right_clicked.connect(func(agent_id: String) -> void:
+			agent_right_clicked.emit(agent_id)
 		)
 		char_node.character_hovered.connect(func(agent_id: String) -> void:
 			agent_hovered.emit(agent_id)

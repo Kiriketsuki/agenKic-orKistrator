@@ -9,6 +9,7 @@ import (
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 )
 
@@ -20,6 +21,16 @@ type Bridge struct {
 	dag       ipc.DAGEngine
 	substrate terminal.Substrate // optional; nil = PTY endpoints return 501
 	apiKey    string             // optional; empty = no auth required
+
+	// completionRegistry is optional; nil means handleCancelAgent cannot
+	// unblock a DAG node's dag.BlockingSubmitter.Wait for the cancelled
+	// task, so a cancel on a DAG-member task will strand that DAG node
+	// forever instead of just detaching the task from the agent (T14
+	// council finding #2). Wire it via WithCompletionRegistry using the
+	// same *supervisor.CompletionRegistry instance passed to
+	// supervisor.WithCompletionRegistry / dag.NewBlockingSubmitter so all
+	// three components agree on what "this task is done" means.
+	completionRegistry *supervisor.CompletionRegistry
 
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
 	brokerInterval time.Duration
@@ -41,6 +52,19 @@ func WithAPIKey(key string) BridgeOption {
 // WithSubstrate enables terminal-related endpoints (output capture, PTY input).
 func WithSubstrate(s terminal.Substrate) BridgeOption {
 	return func(b *Bridge) { b.substrate = s }
+}
+
+// WithCompletionRegistry wires the same *supervisor.CompletionRegistry used
+// by the supervisor and the DAG's BlockingSubmitter into the Bridge, so
+// handleCancelAgent can call Complete(taskID) on cancel to unblock any DAG
+// node waiting on that task (see the Bridge.completionRegistry doc comment
+// and handleCancelAgent for the exact, honest-minimal semantics: Complete
+// has no success/failure signal, so a cancelled DAG-member task is observed
+// by the DAG as having completed with no output — not as having failed).
+// Optional: nil (the default) preserves the pre-T14-fix behavior of never
+// signalling completion from the Bridge.
+func WithCompletionRegistry(r *supervisor.CompletionRegistry) BridgeOption {
+	return func(b *Bridge) { b.completionRegistry = r }
 }
 
 // WithBrokerInterval overrides the SSE broker's poll interval (default
@@ -77,6 +101,8 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b.mux.HandleFunc("POST /api/tasks", b.handleSubmitTask)
 	b.mux.HandleFunc("POST /api/dags", b.handleSubmitDAG)
 	b.mux.HandleFunc("POST /api/agents/{id}/input", b.handleSendInput)
+	b.mux.HandleFunc("POST /api/agents/{id}/cancel", b.handleCancelAgent)
+	b.mux.HandleFunc("POST /api/agents/{id}/reassign", b.handleReassignAgent)
 
 	// SSE stream
 	b.mux.HandleFunc("GET /events/stream", b.handleSSE)

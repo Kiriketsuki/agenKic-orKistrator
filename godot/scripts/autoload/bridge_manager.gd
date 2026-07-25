@@ -283,6 +283,18 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			var old_state: String = _agent_states.get(agent_id, "")
 			if _agents.has(agent_id):
 				_agents[agent_id].state = new_state
+				# Keep the cached AgentData.current_task_id in sync so
+				# consumers reading it directly (e.g. agent_context_menu's
+				# Reassign/Cancel enable/disable gate) don't see a stale
+				# value (T14 council finding #4). Only "assigned" and the
+				# idle-producing transitions carry task-identity information
+				# in this payload (see httpbridge/sse.go mapStoreEvent) —
+				# "working"/"reporting" carry no task_id and must NOT stomp
+				# the value set at "assigned" with an empty string.
+				if new_state == "assigned" and not task_id.is_empty():
+					_agents[agent_id].current_task_id = task_id
+				elif new_state == "idle" or new_state == "crashed":
+					_agents[agent_id].current_task_id = ""
 			agent_state_changed.emit(agent_id, old_state, new_state, task_id)
 			_agent_states[agent_id] = new_state
 		"agent.deregistered":
@@ -357,6 +369,24 @@ func submit_dag(nodes: Array, edges: Array) -> void:
 
 func send_input(agent_id: String, keys: String) -> void:
 	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"keys": keys})
+
+
+## Requeues agent_id's current task with a tier/provider hint (T14 / #119
+## "Reassign task"). `target` is passed straight through as the JSON body —
+## callers set whichever of {"tier": ..., "provider": ...} applies. See
+## httpbridge.ReassignAgentRequest doc comment: this is a persisted hint on
+## the requeued task, not live migration — the assign loop does not honor it
+## yet. Result surfaces via command_succeeded/command_failed (path
+## "/api/agents/{id}/reassign").
+func reassign_agent(agent_id: String, target: Dictionary) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/reassign", target)
+
+
+## Cancels agent_id's current task (T14 / #119 "Cancel task"). Result
+## surfaces via command_succeeded/command_failed (path
+## "/api/agents/{id}/cancel").
+func cancel_agent_task(agent_id: String) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/cancel", {})
 
 
 func get_agent_output(agent_id: String, lines: int = 50) -> void:
