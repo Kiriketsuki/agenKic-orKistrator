@@ -624,6 +624,19 @@ func open_scroll_panel(agent_id: String) -> void:
 	_place_scroll_panel(panel)
 
 
+## Opens the singleton scroll panel for `agent_id` and forces it into
+## terminal mode (T14 / #119 "Open terminal" context-menu action). Reuses
+## open_scroll_panel for singleton creation/targeting/placement, then flips
+## the mode if it isn't already "terminal" — set_mode routes through the
+## existing mode_changed -> PanelContentRouter.mount() + mode_preferences
+## persistence, so this needs no separate mounting logic.
+func open_agent_terminal(agent_id: String) -> void:
+	open_scroll_panel(agent_id)
+	var panel: PanelBase = panels_by_id.get(SCROLL_PANEL_ID) as PanelBase
+	if panel != null and panel.mode != "terminal":
+		panel.set_mode("terminal")
+
+
 ## Validates a mode_preferences value against the known mode set, defaulting
 ## to "scroll" for anything else (including legacy/garbage values) — the
 ## original T9 hazard this guards against, now that "terminal" (T10) is a
