@@ -3,10 +3,15 @@ extends Node2D
 ## AgentCharacter spawning, and the ephemeral lifecycle state machine.
 
 signal agent_clicked(agent_id: String)
+signal agent_right_clicked(agent_id: String)
 signal agent_hovered(agent_id: String)
 signal agent_unhovered(agent_id: String)
 
 const AGENT_CHARACTER_SCENE: PackedScene = preload("res://scenes/agent_character.tscn")
+
+## Active states — matches BridgeData.AgentData's doc-comment vocabulary.
+## Idle and crashed agents read as dim on the minimap/badges.
+const ACTIVE_STATES: Array[String] = ["assigned", "working", "reporting"]
 
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
@@ -102,6 +107,20 @@ func remove_agent_slot(agent_id: String) -> void:
 	_rebuild_interior()
 
 
+## Total agents assigned to this floor, across all edges.
+func get_agent_count() -> int:
+	return _agent_slots.size()
+
+
+## Agents on this floor currently in an active state (assigned/working/reporting).
+func get_active_count() -> int:
+	var count: int = 0
+	for slot: Dictionary in _agent_slots:
+		if slot.get("state", "idle") in ACTIVE_STATES:
+			count += 1
+	return count
+
+
 func get_agent_count_on_edge(edge: int) -> int:
 	var count: int = 0
 	for slot: Dictionary in _agent_slots:
@@ -169,6 +188,9 @@ func _rebuild_interior() -> void:
 		char_node.set_provider(slot.get("provider", ""))
 		char_node.character_clicked.connect(func(agent_id: String) -> void:
 			agent_clicked.emit(agent_id)
+		)
+		char_node.character_right_clicked.connect(func(agent_id: String) -> void:
+			agent_right_clicked.emit(agent_id)
 		)
 		char_node.character_hovered.connect(func(agent_id: String) -> void:
 			agent_hovered.emit(agent_id)

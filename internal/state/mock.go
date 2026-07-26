@@ -18,6 +18,7 @@ type MockStore struct {
 	streamSeq             int64
 	groups                map[string]*mockGroup
 	queue                 []queueItem // sorted by priority ascending
+	taskMeta              map[string]TaskMeta
 	pingErr               error
 	getAllAgentStatesErr  error
 	queueLenErr           error
@@ -62,6 +63,7 @@ func NewMockStore() *MockStore {
 		groups:                make(map[string]*mockGroup),
 		getAgentFieldsByAgent: make(map[string]error),
 		setAgentFieldsByAgent: make(map[string]error),
+		taskMeta:              make(map[string]TaskMeta),
 	}
 }
 
@@ -450,6 +452,12 @@ func (m *MockStore) SetEnqueueTaskError(err error) {
 }
 
 func (m *MockStore) EnqueueTask(ctx context.Context, taskID string, priority float64) error {
+	return m.EnqueueTaskWithMeta(ctx, taskID, priority, TaskMeta{})
+}
+
+// EnqueueTaskWithMeta enqueues taskID and stores meta (when non-zero) in the
+// in-memory taskMeta map. Honors enqueueTaskErr like EnqueueTask.
+func (m *MockStore) EnqueueTaskWithMeta(ctx context.Context, taskID string, priority float64, meta TaskMeta) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -460,7 +468,19 @@ func (m *MockStore) EnqueueTask(ctx context.Context, taskID string, priority flo
 	sort.Slice(m.queue, func(i, j int) bool {
 		return m.queue[i].priority < m.queue[j].priority
 	})
+	if !meta.IsZero() {
+		m.taskMeta[taskID] = meta
+	}
 	return nil
+}
+
+// GetTaskMeta returns the metadata stored for taskID, or a zero TaskMeta if
+// none was ever recorded.
+func (m *MockStore) GetTaskMeta(ctx context.Context, taskID string) (TaskMeta, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.taskMeta[taskID], nil
 }
 
 // SetDequeueTaskError configures DequeueTask to return err (instead of

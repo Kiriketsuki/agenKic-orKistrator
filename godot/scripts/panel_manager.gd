@@ -20,6 +20,10 @@ const SCROLL_PANEL_ID: String = "spell-scroll"
 const SCROLL_WIDTH_RATIO: float = 0.4
 const SCROLL_SLIDE_DURATION: float = 0.28
 
+## Singleton panel id for the quest board (#118) — a non-agent panel (empty
+## agent_id) mounted via PanelContentRouter's "quest" mode.
+const QUEST_BOARD_PANEL_ID: String = "quest-board"
+
 var master_ratio: float = MASTER_RATIO_DEFAULT
 var left_tree: DwindleTree = DwindleTree.new("left")
 var right_tree: DwindleTree = DwindleTree.new("right")
@@ -306,7 +310,15 @@ func _default_floating_position(index: int) -> Vector2:
 
 
 func _handle_hotkeys(event: InputEvent) -> void:
-	if event.is_action_pressed("panel_fullscreen") and _active_panel != null:
+	# Character-key hotkeys (f/p/k) must never fire while the user is typing
+	# into a text field — the quest board (#118) introduces the panel
+	# framework's first in-panel text-entry form, which first exposes this
+	# pre-existing latent hazard (PanelManager._handle_hotkeys runs in
+	# _input(), before GUI focus consumes the key in _gui_input). Ctrl-chord
+	# and non-character actions below are left ungated, matching prior
+	# behavior.
+	var typing: bool = _focus_owner_accepts_text()
+	if event.is_action_pressed("panel_fullscreen") and not typing and _active_panel != null:
 		_active_panel.toggle_fullscreen()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_cancel"):
@@ -321,8 +333,11 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	elif event.is_action_pressed("reset_panel_layout"):
 		reset_layout()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("toggle_panel_menu"):
+	elif event.is_action_pressed("toggle_panel_menu") and not typing:
 		_toggle_panel_menu()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_quest_board") and not typing:
+		_toggle_quest_board()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("toggle_terminal"):
 		# Do not steal Ctrl+T away from a focused live-PTY terminal: a shell,
@@ -352,6 +367,21 @@ func _focus_owner_is_live_terminal() -> bool:
 			return true
 		node = node.get_parent()
 	return false
+
+
+## True when the viewport's current keyboard focus owner is a text-entry
+## Control (LineEdit/TextEdit) or a live godot-xterm Terminal — i.e. typed
+## characters should reach that widget rather than being intercepted here as
+## a global single-key hotkey. Introduced by the quest board (#118), whose
+## form fields are the panel framework's first in-panel text entry.
+func _focus_owner_accepts_text() -> bool:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return false
+	var focus_owner: Control = viewport.gui_get_focus_owner()
+	if focus_owner is LineEdit or focus_owner is TextEdit:
+		return true
+	return _focus_owner_is_live_terminal()
 
 
 ## Ctrl+T global toggle — flips the scroll-singleton panel (falling back to
@@ -536,6 +566,22 @@ func _open_agent_panel(agent_id: String) -> void:
 	open_scroll_panel(agent_id)
 
 
+## Opens (or focuses) the singleton quest-board panel (#118). Uses an empty
+## agent_id deliberately — the quest board is not scoped to any agent, so
+## _save_layout()'s `if not agent_id.is_empty()` guard never writes a
+## mode_preferences entry for it, and _validated_mode() (which only allows
+## "scroll"/"terminal") is never consulted for this panel's mode.
+func open_quest_board() -> PanelBase:
+	return open_panel(QUEST_BOARD_PANEL_ID, "Quest Board", "", "quest")
+
+
+func _toggle_quest_board() -> void:
+	if panels_by_id.has(QUEST_BOARD_PANEL_ID):
+		close_panel(QUEST_BOARD_PANEL_ID)
+	else:
+		open_quest_board()
+
+
 ## Opens (or retargets) the singleton spell-scroll panel for `agent_id`.
 ## Only one scroll is ever open: clicking a different agent while a scroll is
 ## already open swaps its content in place instead of opening a second panel.
@@ -576,6 +622,19 @@ func open_scroll_panel(agent_id: String) -> void:
 		# Same validated-preference honoring as above, for the fresh-open path.
 		panel.set_mode(preferred_mode)
 	_place_scroll_panel(panel)
+
+
+## Opens the singleton scroll panel for `agent_id` and forces it into
+## terminal mode (T14 / #119 "Open terminal" context-menu action). Reuses
+## open_scroll_panel for singleton creation/targeting/placement, then flips
+## the mode if it isn't already "terminal" — set_mode routes through the
+## existing mode_changed -> PanelContentRouter.mount() + mode_preferences
+## persistence, so this needs no separate mounting logic.
+func open_agent_terminal(agent_id: String) -> void:
+	open_scroll_panel(agent_id)
+	var panel: PanelBase = panels_by_id.get(SCROLL_PANEL_ID) as PanelBase
+	if panel != null and panel.mode != "terminal":
+		panel.set_mode("terminal")
 
 
 ## Validates a mode_preferences value against the known mode set, defaulting

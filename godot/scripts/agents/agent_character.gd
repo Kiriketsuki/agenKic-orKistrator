@@ -5,6 +5,7 @@ extends Node2D
 class_name AgentCharacter
 
 signal character_clicked(agent_id: String)
+signal character_right_clicked(agent_id: String)
 signal character_hovered(agent_id: String)
 signal character_unhovered(agent_id: String)
 
@@ -192,3 +193,5 @@ func _on_area_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			character_clicked.emit(agent_id)
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+			character_right_clicked.emit(agent_id)

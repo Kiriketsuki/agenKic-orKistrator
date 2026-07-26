@@ -119,6 +119,15 @@ func _on_panel_requested(agent_id: String) -> void:
 	_show_for_agent(agent_id)
 
 
+## Public entry point for the "View details" context-menu action (T14 / #119).
+## Mirrors _on_panel_requested — pins the nameplate at the current mouse
+## position so it survives whatever else the menu triggers next.
+func show_details(agent_id: String) -> void:
+	_pinned = true
+	_pin_pos = get_viewport().get_mouse_position()
+	_show_for_agent(agent_id)
+
+
 # ---------------------------------------------------------------------------
 # BridgeManager signal handlers
 # ---------------------------------------------------------------------------
