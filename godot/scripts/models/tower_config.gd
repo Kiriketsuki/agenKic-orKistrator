@@ -55,6 +55,26 @@ var providers: Dictionary = {}
 ## particle_math.gd / agent_character.gd doc-comments).
 var max_particles_per_agent: int = 24
 
+# --- T18 (#129) panel floaty animation tunables ---
+## Master switch for ALL FOUR panel effects (bob, parchment flutter, drag
+## trail, border shimmer). This project has no settings screen — this knob is
+## the "effects toggleable in settings" acceptance criterion, following the
+## T15/T16/T17 config-knob precedent. Threaded once via
+## PanelManager._wire_panel() -> PanelBase.configure_panel_effects().
+var panel_effects_enabled: bool = true
+## Idle ambient float amplitude in pixels (snapped to whole pixels by
+## PanelFloatMath.bob_offset_snapped — see its doc-comment).
+var panel_bob_amplitude_px: float = 2.0
+## Idle float period in seconds; also the base for the parchment flutter
+## speed (PanelFloatMath.flutter_speed_rad applies FLUTTER_SPEED_RATIO).
+var panel_bob_period_sec: float = 4.0
+## Parchment edge-flutter amplitude in pixels, converted to shader UV units
+## against the parchment's pixel height at apply time.
+var panel_flutter_amplitude_px: float = 1.5
+## Budget cap for the drag particle trail, clamped the same way
+## max_particles_per_agent is. 0 disables the trail outright.
+var max_drag_trail_particles: int = 12
+
 
 static func from_file(path: String) -> TowerConfig:
 	var config := TowerConfig.new()
@@ -81,6 +101,11 @@ static func from_file(path: String) -> TowerConfig:
 	config.default_power_level = d.get("default_power_level", 0.4)
 	config.lut_strength = d.get("lut_strength", 0.85)
 	config.max_particles_per_agent = d.get("max_particles_per_agent", 24)
+	config.panel_effects_enabled = d.get("panel_effects_enabled", true)
+	config.panel_bob_amplitude_px = d.get("panel_bob_amplitude_px", 2.0)
+	config.panel_bob_period_sec = d.get("panel_bob_period_sec", 4.0)
+	config.panel_flutter_amplitude_px = d.get("panel_flutter_amplitude_px", 1.5)
+	config.max_drag_trail_particles = d.get("max_drag_trail_particles", 12)
 	var floors_raw: Variant = d.get("permanent_floors", [])
 	if floors_raw is Array:
 		for item: Variant in (floors_raw as Array):

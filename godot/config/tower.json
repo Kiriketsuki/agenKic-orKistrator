@@ -38,5 +38,11 @@
     "ollama":   { "stops": ["#3A1800", "#F4851E", "#FFE3C2"], "particle_style": "spark" },
     "deepseek": { "stops": ["#1E0E33", "#8B5CF6", "#EBDDFF"], "particle_style": "ring" },
     "unknown":  { "stops": ["#1A1A1A", "#888888", "#DDDDDD"], "particle_style": "dot" }
-  }
+  },
+  "_t18_panel_effects_note": "T18 (#129) panel floaty animations. panel_effects_enabled is the single master switch — false disables ALL FOUR effects (idle bob, parchment edge flutter, drag particle trail, border shimmer), not just the particles. There is no settings screen in this project; this config knob IS the 'toggleable in settings' acceptance criterion, following the T15/T16/T17 precedent. Values are threaded ONCE from PanelManager._wire_panel() -> PanelBase.configure_panel_effects(), never read from disk per panel. panel_bob_amplitude_px is the idle-float amplitude in pixels (snapped to whole pixels so panel text does not sub-pixel shimmer); panel_bob_period_sec drives both the bob and, scaled up, the parchment flutter speed. max_drag_trail_particles is the trail's budget cap, clamped exactly the way max_particles_per_agent is (0 disables the trail outright — never floored up to 1). Terminal-mode panels are excluded regardless of these values; the quest board is a themed panel and keeps them.",
+  "panel_effects_enabled": true,
+  "panel_bob_amplitude_px": 2.0,
+  "panel_bob_period_sec": 4.0,
+  "panel_flutter_amplitude_px": 1.5,
+  "max_drag_trail_particles": 12
 }
