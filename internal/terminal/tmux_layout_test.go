@@ -217,6 +217,7 @@ func TestSplitPane_InvalidSessionName(t *testing.T) {
 
 func TestSplitPane_SessionNotFound(t *testing.T) {
 	skipIfNoTmux(t)
+	ensureTmuxServer(t)
 
 	sub, err := NewTmuxSubstrate()
 	if err != nil {

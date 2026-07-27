@@ -37,6 +37,7 @@ func TestCaptureOutput_InvalidSessionName(t *testing.T) {
 
 func TestCaptureOutput_SessionNotFound(t *testing.T) {
 	skipIfNoTmux(t)
+	ensureTmuxServer(t)
 
 	sub, err := NewTmuxSubstrate()
 	if err != nil {
