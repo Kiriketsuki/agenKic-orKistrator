@@ -526,12 +526,10 @@ func _apply_drag_trail(delta: float) -> void:
 		_drag_trail.emitting = false
 		return
 	# CPUParticles2D reallocates its particle pool (and restarts every live
-	# particle) whenever `amount` is assigned, so assigning it unconditionally
-	# every frame would erase the trail it is supposed to be leaving. Only
-	# write it when the value actually changes.
-	var amount: int = int(params["amount"])
-	if _drag_trail.amount != amount:
-		_drag_trail.amount = amount
+	# particle) whenever `amount` is assigned. The pool size is therefore
+	# pinned once, in _configure_drag_trail(), to the fixed particle budget —
+	# per-frame speed only modulates non-destructive params (lifetime,
+	# velocity) so a live trail is never wiped mid-drag.
 	_drag_trail.lifetime = maxf(0.05, float(params["lifetime"]))
 	_drag_trail.initial_velocity_min = float(params["velocity"]) * 0.4
 	_drag_trail.initial_velocity_max = float(params["velocity"])
@@ -554,19 +552,20 @@ func _configure_drag_trail() -> void:
 	_drag_trail.gravity = Vector2(0.0, 14.0)
 	_drag_trail.scale_amount_min = 0.5
 	_drag_trail.scale_amount_max = 1.3
-	_drag_trail.damping = 12.0
+	_drag_trail.damping_min = 12.0
+	_drag_trail.damping_max = 12.0
+	_drag_trail.amount = maxi(_max_drag_trail_particles, 1)
 
 
 func _configure_border_glow() -> void:
 	if _border_glow == null:
 		return
 	_border_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_border_glow.modulate = Color(
-		DEFAULT_BORDER_SHIMMER_COLOR.r,
-		DEFAULT_BORDER_SHIMMER_COLOR.g,
-		DEFAULT_BORDER_SHIMMER_COLOR.b,
-		0.0
-	)
+	# The shimmer hue already lives on the StyleBoxFlat's `border_color` (see
+	# panel_base.tscn). `modulate` multiplies whatever the node draws, so
+	# setting its RGB to the same hue here would double-apply the tint
+	# (effectively squaring each channel) — only alpha is ours to drive.
+	_border_glow.modulate.a = 0.0
 
 
 func _max_vec2(a: Vector2, b: Vector2) -> Vector2:
