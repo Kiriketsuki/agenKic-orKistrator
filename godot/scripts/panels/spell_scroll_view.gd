@@ -50,6 +50,9 @@ func _ready() -> void:
 	_configure_parchment_material()
 	_configure_font()
 	_quill.visible = false
+	_apply_flutter_uniforms()
+	if _parchment != null and not _parchment.resized.is_connected(_apply_flutter_uniforms):
+		_parchment.resized.connect(_apply_flutter_uniforms)
 
 
 func _process(delta: float) -> void:
@@ -85,6 +88,7 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_connect_bridge_signals()
 	if _panel != null and not _panel.animation_hook_requested.is_connected(_on_panel_animation_hook):
 		_panel.animation_hook_requested.connect(_on_panel_animation_hook)
+	_apply_flutter_uniforms()
 	_play_unroll_flourish.call_deferred()
 	_request_backfill()
 
@@ -107,18 +111,44 @@ func _configure_parchment_material() -> void:
 	var material: ShaderMaterial = _parchment.material as ShaderMaterial
 	if material == null:
 		return
-	if material.get_shader_parameter("fibre_noise") != null:
+	if material.get_shader_parameter("fibre_noise") == null:
+		var noise: FastNoiseLite = FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_PERLIN
+		noise.frequency = 0.045
+		noise.fractal_octaves = 3
+		var noise_texture: NoiseTexture2D = NoiseTexture2D.new()
+		noise_texture.width = 256
+		noise_texture.height = 256
+		noise_texture.seamless = true
+		noise_texture.noise = noise
+		material.set_shader_parameter("fibre_noise", noise_texture)
+
+
+## T18 (#129) — parchment edge flutter. Amplitude arrives in pixels from
+## tower.json (panel_flutter_amplitude_px) via PanelBase.get_effect_settings()
+## and is converted to the shader's UV units against the parchment's current
+## pixel height. Must be re-applied on resize, because the px->UV conversion
+## depends on that height. When the panel reports effects disabled (the config
+## knob is off, or the panel is in terminal mode) flutter_enabled is set false
+## and the shader renders exactly as it did before T18.
+func _apply_flutter_uniforms() -> void:
+	if _parchment == null:
 		return
-	var noise: FastNoiseLite = FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.frequency = 0.045
-	noise.fractal_octaves = 3
-	var noise_texture: NoiseTexture2D = NoiseTexture2D.new()
-	noise_texture.width = 256
-	noise_texture.height = 256
-	noise_texture.seamless = true
-	noise_texture.noise = noise
-	material.set_shader_parameter("fibre_noise", noise_texture)
+	var material: ShaderMaterial = _parchment.material as ShaderMaterial
+	if material == null:
+		return
+	var enabled: bool = false
+	var amplitude_px: float = PanelFloatMath.DEFAULT_FLUTTER_AMPLITUDE_PX
+	var period_sec: float = PanelFloatMath.DEFAULT_BOB_PERIOD_SEC
+	if _panel != null:
+		var settings: Dictionary = _panel.get_effect_settings()
+		enabled = bool(settings["enabled"])
+		amplitude_px = float(settings["flutter_amplitude_px"])
+		period_sec = float(settings["bob_period_sec"])
+	var uv_amplitude: float = PanelFloatMath.flutter_uv_amplitude(amplitude_px, _parchment.size.y)
+	material.set_shader_parameter("flutter_enabled", enabled and uv_amplitude > 0.0)
+	material.set_shader_parameter("flutter_amplitude", uv_amplitude)
+	material.set_shader_parameter("flutter_speed", PanelFloatMath.flutter_speed_rad(period_sec))
 
 
 func _configure_font() -> void:

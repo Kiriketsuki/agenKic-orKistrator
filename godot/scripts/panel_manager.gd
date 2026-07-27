@@ -24,6 +24,15 @@ const SCROLL_SLIDE_DURATION: float = 0.28
 ## agent_id) mounted via PanelContentRouter's "quest" mode.
 const QUEST_BOARD_PANEL_ID: String = "quest-board"
 
+## T18 (#129) — panel effect knobs live in the same tower.json the tower
+## layer reads. PanelManager loads its own TowerConfig instance rather than
+## reaching into ProviderPalette's static cache: that cache is a tower-layer
+## implementation detail keyed to palette/particle concerns, and the UI layer
+## having its own read keeps the dependency one-directional. The extra read
+## is one file parse at startup — see the "not done" notes for the deferred
+## unification.
+const TOWER_CONFIG_PATH: String = "res://config/tower.json"
+
 var master_ratio: float = MASTER_RATIO_DEFAULT
 var left_tree: DwindleTree = DwindleTree.new("left")
 var right_tree: DwindleTree = DwindleTree.new("right")
@@ -40,6 +49,7 @@ var _panels_hidden: bool = false
 var _restoring_layout: bool = false
 var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
 var _agent_list: Dictionary = {}
+var _tower_config: TowerConfig = null
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -63,6 +73,7 @@ func _ready() -> void:
 	offset_right = 0.0
 	offset_bottom = 0.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tower_config = TowerConfig.from_file(TOWER_CONFIG_PATH)
 	get_viewport().size_changed.connect(_refresh_layout)
 	_bind_divider(_left_divider, "left")
 	_bind_divider(_right_divider, "right")
@@ -147,6 +158,19 @@ func show_dock_preview(side: String, visible_flag: bool) -> void:
 
 
 func _wire_panel(panel: PanelBase) -> void:
+	# T18 (#129) — thread the panel effect config ONCE, mirroring T17's
+	# TowerManager -> FloorScene.configure_particle_budget() thread-through.
+	# Must land BEFORE PanelContentRouter.mount() below, because
+	# SpellScrollView.setup() reads panel.get_effect_settings() to configure its
+	# parchment flutter uniforms in the same frame.
+	if _tower_config != null:
+		panel.configure_panel_effects(
+			_tower_config.panel_effects_enabled,
+			_tower_config.panel_bob_amplitude_px,
+			_tower_config.panel_bob_period_sec,
+			_tower_config.panel_flutter_amplitude_px,
+			_tower_config.max_drag_trail_particles
+		)
 	panel.focus_requested.connect(func(p: PanelBase) -> void:
 		focus_panel(p)
 	)
