@@ -427,6 +427,16 @@ func configure_panel_effects(
 	_flutter_amplitude_px = maxf(flutter_amplitude_px, 0.0)
 	_max_drag_trail_particles = maxi(max_drag_trail_particles, 0)
 	_bob_phase = PanelFloatMath.phase_for_id(panel_id)
+	# Re-pin the trail's particle pool. _configure_drag_trail() already ran in
+	# _ready(), i.e. BEFORE PanelManager threaded the real config in, so at
+	# that point it sized the pool from the built-in default. Without this
+	# second call the configured max_drag_trail_particles would never reach
+	# the node: the per-frame path deliberately does not touch `amount` (that
+	# reallocates the pool and wipes a live trail), so `amount` is only ever
+	# written here and in _configure_drag_trail(). A budget of 0 still
+	# disables the trail through drag_trail_params()'s emitting gate rather
+	# than through the pool size, which CPUParticles2D requires to be >= 1.
+	_configure_drag_trail()
 	_reset_effect_visuals()
 	_refresh_effect_processing()
 
@@ -526,10 +536,11 @@ func _apply_drag_trail(delta: float) -> void:
 		_drag_trail.emitting = false
 		return
 	# CPUParticles2D reallocates its particle pool (and restarts every live
-	# particle) whenever `amount` is assigned. The pool size is therefore
-	# pinned once, in _configure_drag_trail(), to the fixed particle budget —
-	# per-frame speed only modulates non-destructive params (lifetime,
-	# velocity) so a live trail is never wiped mid-drag.
+	# particle) whenever `amount` is assigned. The pool size is therefore only
+	# ever written outside the per-frame path — in _configure_drag_trail(),
+	# called from _ready() and again from configure_panel_effects() once the
+	# real budget arrives. Per-frame speed modulates only non-destructive
+	# params (lifetime, velocity) so a live trail is never wiped mid-drag.
 	_drag_trail.lifetime = maxf(0.05, float(params["lifetime"]))
 	_drag_trail.initial_velocity_min = float(params["velocity"]) * 0.4
 	_drag_trail.initial_velocity_max = float(params["velocity"])
