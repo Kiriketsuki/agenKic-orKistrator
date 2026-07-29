@@ -34,11 +34,11 @@ func _run_sepia_regression_cases(failures: Array[String]) -> void:
 	var cases: Array = [
 		["", ""],
 		["plain text", "[color=#3b2a1a]plain text[/color]"],
-		["\x1b[31mred\x1b[0m", "[color=#8b3a2b]red[/color]"],
-		["\x1b[1;32mbold green\x1b[0m", "[color=#6b7a3d][b]bold green[/b][/color]"],
+		["\u001b[31mred\u001b[0m", "[color=#8b3a2b]red[/color]"],
+		["\u001b[1;32mbold green\u001b[0m", "[color=#6b7a3d][b]bold green[/b][/color]"],
 		["a[b]c", "[color=#3b2a1a]a[lb]b[rb]c[/color]"],
-		["\x1b[2J\x1b[Hcleared", "[color=#3b2a1a]cleared[/color]"],
-		["\x1b[39mdefault fg", "[color=#3b2a1a]default fg[/color]"],
+		["\u001b[2J\u001b[Hcleared", "[color=#3b2a1a]cleared[/color]"],
+		["\u001b[39mdefault fg", "[color=#3b2a1a]default fg[/color]"],
 		["line\rreturn", "[color=#3b2a1a]linereturn[/color]"],
 	]
 	for case: Array in cases:
@@ -53,9 +53,9 @@ func _run_standard_palette_cases(failures: Array[String]) -> void:
 	var cases: Array = [
 		["", ""],
 		["plain text", "[color=#e5e5e5]plain text[/color]"],
-		["\x1b[31mred\x1b[0m", "[color=#e06c75]red[/color]"],
-		["\x1b[1;94mbold blue\x1b[0m", "[color=#82c0ff][b]bold blue[/b][/color]"],
-		["\x1b[39mdefault fg", "[color=#e5e5e5]default fg[/color]"],
+		["\u001b[31mred\u001b[0m", "[color=#e06c75]red[/color]"],
+		["\u001b[1;94mbold blue\u001b[0m", "[color=#82c0ff][b]bold blue[/b][/color]"],
+		["\u001b[39mdefault fg", "[color=#e5e5e5]default fg[/color]"],
 	]
 	for case: Array in cases:
 		var raw: String = case[0]
