@@ -1,6 +1,15 @@
 {
   "polygon_sides": 6,
   "linger_duration_sec": 30,
+  "load_capacity": 6,
+  "throughput_window_sec": 60,
+  "throughput_cap": 6,
+  "min_sides": 6,
+  "max_sides": 12,
+  "breathe_min_scale": 1.0,
+  "breathe_max_scale": 1.25,
+  "bucket_hysteresis": 0.03,
+  "load_recompute_interval_sec": 5,
   "permanent_floors": [
     { "name": "main", "label": "Main Hall" },
     { "name": "archive", "label": "Archive" }
