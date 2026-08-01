@@ -57,6 +57,13 @@ var _morph_new_glow: float = 0.0
 var _morph_last_unit: PackedVector2Array = PackedVector2Array()
 var _morph_last_width: float = 280.0
 var _morph_last_glow: float = 0.0
+## Deferred set_floor_dimensions() input, applied once the in-flight morph
+## settles (see set_floor_dimensions / _on_morph_finished) — council finding
+## #124: rebuilding mid-morph clobbered _morph_last_* with a stale
+## _current_sides shape, causing a one-frame snap-back.
+var _pending_dimensions: bool = false
+var _pending_width: float = 280.0
+var _pending_height: float = 40.0
 
 ## Config-driven tunables (see TowerConfig / config/tower.json), pushed by
 ## TowerManager at floor creation via configure_load_params(). Defaults here
@@ -142,10 +149,23 @@ func reactivate() -> void:
 
 
 func set_floor_dimensions(width: float, height: float) -> void:
+	if _morph_tween != null and _morph_tween.is_valid():
+		# Council finding #124 — _rebuild_background()/_rebuild_interior()
+		# rebuild from the stale _current_sides shape and stomp
+		# _morph_last_*, which the running tween's next frame then reads from
+		# for its interrupt-resume path, producing a one-frame snap-back to
+		# the old shape (violates "no popping"). Defer instead: the in-flight
+		# tween keeps animating with its already-captured old/new widths
+		# undisturbed, and the new dimensions are applied via a normal
+		# (non-mid-morph) set_floor_dimensions() call once it settles — see
+		# _on_morph_finished().
+		_pending_width = width
+		_pending_height = height
+		_pending_dimensions = true
+		return
 	_floor_width = width
 	_floor_height = height
-	if not (_morph_tween != null and _morph_tween.is_valid()):
-		_effective_width = _floor_width * FloorMorph.breathe_scale_for_load(_composite_load, _breathe_min_scale, _breathe_max_scale)
+	_effective_width = _floor_width * FloorMorph.breathe_scale_for_load(_composite_load, _breathe_min_scale, _breathe_max_scale)
 	if is_inside_tree():
 		_rebuild_background()
 		_rebuild_interior()
@@ -173,10 +193,14 @@ func set_composite_load(load: float) -> void:
 		_composite_load = clampf(load, 0.0, 1.0)
 		return
 	_composite_load = clampf(load, 0.0, 1.0)
-	var new_target: int = clampi(
+	# Council finding #124 — clampi() alone can land on a value that isn't a
+	# _SIDES member (e.g. a misconfigured max_sides of 9), silently breaking
+	# _bucket_index_for_sides() lookups on the next call. Snap to the nearest
+	# real bucket after clamping so this stays total.
+	var new_target: int = FloorMorph.nearest_valid_side_count(clampi(
 		FloorMorph.side_count_for_load_hysteresis(_composite_load, _target_sides, _bucket_hysteresis),
 		_min_sides, _max_sides
-	)
+	))
 	var new_width: float = _floor_width * FloorMorph.breathe_scale_for_load(_composite_load, _breathe_min_scale, _breathe_max_scale)
 	var sides_changing: bool = new_target != _target_sides
 	var already_settled: bool = not sides_changing and is_equal_approx(new_width, _effective_width) \
@@ -273,6 +297,14 @@ func _on_morph_finished() -> void:
 	# (positions, not the node set, in case anything drifted from rounding).
 	_reposition_interior(_effective_width)
 	_update_active_edge_glow()
+	if _pending_dimensions:
+		# A resize came in while this morph was running (see
+		# set_floor_dimensions) — apply it now that no tween is in flight, so
+		# this always takes the non-mid-morph (immediate rebuild) path.
+		_pending_dimensions = false
+		var w: float = _pending_width
+		var h: float = _pending_height
+		set_floor_dimensions(w, h)
 
 
 func add_agent_slot(agent_id: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:

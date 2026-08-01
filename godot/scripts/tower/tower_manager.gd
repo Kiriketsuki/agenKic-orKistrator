@@ -37,6 +37,10 @@ var _agent_assignments: Dictionary = {}  # agent_id → {floor: String, edge: in
 ## client-observed "completions per window" signal, not tokens/sec, because
 ## no real cost data reaches the client (or the orchestrator's store) today.
 var _floor_completion_rings: Dictionary = {}
+## T15 (#124) council finding — periodic sweep so composite_load (and
+## therefore polygon side count) decays even when no new agent event fires.
+## Only floors with a non-empty completion ring are touched each tick.
+var _load_recompute_timer: Timer = null
 var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
 var _overscroll_tween: Tween = null
@@ -62,6 +66,11 @@ func _ready() -> void:
 	_update_tower_frame()
 	_apply_fisheye_layout()
 	_sync_tower_exterior()
+	_load_recompute_timer = Timer.new()
+	_load_recompute_timer.wait_time = maxf(_config.load_recompute_interval_sec, 0.1)
+	_load_recompute_timer.autostart = true
+	_load_recompute_timer.timeout.connect(_on_load_recompute_timer_timeout)
+	add_child(_load_recompute_timer)
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -297,9 +306,15 @@ func _rotate_focused_edge(direction: int) -> void:
 		return
 	var floor_node: Node2D = _floors[_focused_index]
 	var current_edge: int = floor_node.get_active_edge()
-	var new_edge: int = (current_edge + direction) % _config.polygon_sides
+	# T15 (#124) council finding — floor_node.polygon_sides is now dynamic
+	# (6..12, driven by composite_load) rather than the static _config value,
+	# so rotation must wrap against the focused floor's own current side
+	# count. Wrapping against _config.polygon_sides (always 6) would make
+	# edges above index 5 unreachable once this floor has morphed larger.
+	var sides: int = floor_node.polygon_sides
+	var new_edge: int = (current_edge + direction) % sides
 	if new_edge < 0:
-		new_edge += _config.polygon_sides
+		new_edge += sides
 	var old_x: float = floor_node.position.x
 	var slide_offset: float = maxf(_master_region.size.x * 0.18, 320.0) * (-direction)
 	var tween: Tween = create_tween()
@@ -386,6 +401,21 @@ func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: St
 			# state-machine signal, not a real cost/throughput metric; see
 			# FloorMorph's doc-comment for why token_cost_norm is dropped
 			# entirely rather than faked from this.
+			#
+			# KNOWN LIMITATION (council finding, #124) — a task_cancelled SSE
+			# event maps onto this exact same {state:"idle", no TaskID} shape
+			# (see internal/httpbridge/sse.go case "task_cancelled": it reuses
+			# SSEAgentStateChanged with State "idle" precisely so no new
+			# frontend handler is needed). The client has no signal that lets
+			# it tell a genuine completion apart from a cancellation here, so
+			# a cancelled task is counted as a completion and can inflate
+			# task_throughput_norm. Fixing this honestly would require the
+			# orchestrator to emit a distinct event type — out of scope for a
+			# client-only fix, and not worth inventing partial plumbing (e.g.
+			# subtracting only client-initiated /cancel calls via
+			# BridgeManager.command_succeeded would race the SSE event and
+			# only cover cancels issued from this client, not other clients
+			# or reassigns). Documented and accepted as-is.
 			if new_state == "idle":
 				_record_floor_completion(floor_name)
 			_recompute_floor_load(floor_name)
@@ -482,6 +512,21 @@ func _record_floor_completion(floor_name: String) -> void:
 func _prune_completion_ring(ring: Array, now: float) -> Array:
 	var window: float = _config.throughput_window_sec
 	return ring.filter(func(ts: float) -> bool: return now - ts <= window)
+
+
+## T15 (#124) council finding — composite_load is otherwise only recomputed
+## from _recompute_floor_load() calls triggered by agent register/state-change
+## /deregister events, so a floor's throughput_norm (and therefore its
+## polygon side count) never decays on its own once activity stops: the ring
+## just sits there, still non-empty, with nothing left to prune it. This
+## periodic sweep re-prunes and recomputes only floors with a non-empty ring
+## — idle floors that have already fully decayed (empty ring) are skipped so
+## this stays cheap even with many floors.
+func _on_load_recompute_timer_timeout() -> void:
+	for floor_name: String in _floor_completion_rings.keys():
+		var ring: Array = _floor_completion_rings.get(floor_name, [])
+		if not ring.is_empty():
+			_recompute_floor_load(floor_name)
 
 
 ## Recomputes and pushes composite_load for a single floor from data that is
