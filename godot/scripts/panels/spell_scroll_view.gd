@@ -11,6 +11,10 @@ const QUILL_BOB_SPEED: float = 9.0
 const QUILL_BOB_AMPLITUDE: float = 0.22
 const HISTORY_BACKFILL_LINES: int = 200
 
+## Seconds between visible-pane snapshot polls while the scroll runs in
+## snapshot mode. Matches TerminalView.SCREEN_POLL_SECONDS.
+const SCREEN_POLL_SECONDS: float = 0.7
+
 ## LLM provider -> (glyph, ink color). Empty key is the fallback.
 const PROVIDER_GLYPHS: Dictionary = {
 	"claude": {"glyph": "✦", "color": Color(0.55, 0.32, 0.14, 1.0)},
@@ -44,6 +48,14 @@ var _bob_time: float = 0.0
 ## short-circuited by the backfill's instant-reveal.
 var _backfill_pending: bool = false
 var _pending_live_chunks: Array = []
+## Snapshot mode. An interactive CLI agent (Claude Code, Gemini CLI) writes to
+## its tmux pane and never produces line-oriented output chunks, so the
+## backfill comes back empty and the parchment stays blank. In that case the
+## scroll polls the same visible-pane snapshot the terminal chat body uses and
+## renders it through the sepia parser. The first real output chunk ends
+## snapshot mode, because line-oriented history is the better view.
+var _snapshot_mode: bool = false
+var _snapshot_timer: Timer = null
 
 
 func _ready() -> void:
@@ -217,7 +229,10 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 			_panel.set_panel_title("Spell Scroll")
 		return
 	_agent_id = agent_data.id
-	_name_label.text = agent_data.id
+	# Show the fantasy name the orchestrator assigned at spawn time.
+	# display_name falls back to the raw UUID when no name exists.
+	var shown_name: String = agent_data.display_name()
+	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
 	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
 		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
@@ -228,7 +243,7 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])
 	if _panel != null:
-		_panel.set_panel_title("%s — Spell Scroll" % agent_data.id)
+		_panel.set_panel_title("%s — Spell Scroll" % shown_name)
 
 
 func _connect_bridge_signals() -> void:
@@ -240,6 +255,8 @@ func _connect_bridge_signals() -> void:
 		_bridge.connect("agent_state_changed", _on_state_changed)
 	if _bridge.has_signal("agent_output_history"):
 		_bridge.connect("agent_output_history", _on_history_backfill)
+	if _bridge.has_signal("agent_screen"):
+		_bridge.connect("agent_screen", _on_screen_snapshot)
 	_signals_connected = true
 
 
@@ -261,6 +278,7 @@ func _clear_history() -> void:
 	_bob_time = 0.0
 	_backfill_pending = false
 	_pending_live_chunks.clear()
+	_disable_snapshot_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +294,13 @@ func _on_history_backfill(agent_id: String, chunks: Array) -> void:
 		# risk appending stale history after newer content.
 		return
 	_backfill_pending = false
+	var appended: int = 0
 	for item: Variant in chunks:
 		var chunk: BridgeData.AgentOutputChunk = item as BridgeData.AgentOutputChunk
 		if chunk == null:
 			continue
 		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
+		appended += 1
 	# Backfilled history appears instantly — only new live output is quill-written.
 	# Cap the instant reveal at the backfill's own end so it can never race
 	# ahead of and short-circuit a live chunk appended below it.
@@ -292,6 +312,8 @@ func _on_history_backfill(agent_id: String, chunks: Array) -> void:
 	_pending_live_chunks = []
 	for chunk: BridgeData.AgentOutputChunk in pending:
 		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
+	if appended == 0 and pending.is_empty():
+		_enable_snapshot_mode()
 
 
 func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
@@ -303,8 +325,64 @@ func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
 		# short-circuited by the backfill's instant visible_characters set.
 		_pending_live_chunks.append(chunk)
 		return
+	if _snapshot_mode:
+		# Line-oriented output arrived after all, so leave the pane snapshot
+		# behind and start the real history from this chunk.
+		_disable_snapshot_mode()
+		_history.clear()
+		_history.visible_characters = 0
 	_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
 	# visible_characters is left behind on purpose — _process() advances it.
+
+
+# ---------------------------------------------------------------------------
+# Snapshot mode (interactive CLI agents with no line-oriented history)
+# ---------------------------------------------------------------------------
+
+func _enable_snapshot_mode() -> void:
+	if _snapshot_mode or _bridge == null or _agent_id.is_empty():
+		return
+	if not _bridge.has_method("fetch_agent_screen"):
+		return
+	_snapshot_mode = true
+	if _snapshot_timer == null:
+		var timer: Timer = Timer.new()
+		timer.name = "ScreenPoll"
+		timer.wait_time = SCREEN_POLL_SECONDS
+		timer.timeout.connect(_on_snapshot_tick)
+		add_child(timer)
+		_snapshot_timer = timer
+	_snapshot_timer.start()
+	_on_snapshot_tick()
+
+
+func _disable_snapshot_mode() -> void:
+	_snapshot_mode = false
+	if _snapshot_timer != null and is_instance_valid(_snapshot_timer):
+		_snapshot_timer.stop()
+
+
+func _on_snapshot_tick() -> void:
+	if not _snapshot_mode or _bridge == null or _agent_id.is_empty():
+		return
+	_bridge.call("fetch_agent_screen", _agent_id)
+
+
+## Full-pane snapshot replace, the same contract TerminalView uses. An empty
+## payload means a transient failure, so the last good frame stays on screen.
+func _on_screen_snapshot(agent_id: String, text: String) -> void:
+	if not _snapshot_mode or agent_id != _agent_id or _history == null:
+		return
+	if text == "":
+		return
+	var trimmed: String = AnsiSgrScanner.trim_blank_lines(text)
+	if trimmed == "":
+		return
+	_history.clear()
+	_history.append_text(AnsiSepiaParser.to_bbcode(trimmed))
+	# A snapshot is a redraw of the whole pane, not new writing, so it appears
+	# at once and the quill stays down.
+	_history.visible_characters = _history.get_total_character_count()
 
 
 func _on_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:

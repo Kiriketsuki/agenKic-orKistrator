@@ -112,7 +112,10 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 			_panel.set_panel_title("Raw Terminal")
 		return
 	_agent_id = agent_data.id
-	_name_label.text = agent_data.id
+	# Show the fantasy name the orchestrator assigned at spawn time.
+	# display_name falls back to the raw UUID when no name exists.
+	var shown_name: String = agent_data.display_name()
+	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
 	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
 		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
@@ -123,7 +126,7 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])
 	if _panel != null:
-		_panel.set_panel_title("%s — Raw Terminal" % agent_data.id)
+		_panel.set_panel_title("%s — Raw Terminal" % shown_name)
 
 
 func _on_enchant_pressed() -> void:
@@ -359,9 +362,15 @@ func _on_screen_snapshot(agent_id: String, text: String) -> void:
 		return
 	if text == "":
 		return
+	# tmux returns the whole pane rectangle, so a short TUI frame arrives padded
+	# with empty rows above and below the content. Drop them, otherwise the body
+	# shows a large blank region.
+	var trimmed: String = AnsiSgrScanner.trim_blank_lines(text)
+	if trimmed == "":
+		return
 	_output_label.clear()
 	_output_label.append_text(
-		AnsiSgrScanner.to_bbcode(text, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG)
+		AnsiSgrScanner.to_bbcode(trimmed, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG)
 	)
 	# A full replace resets the scroll position, so scroll_following alone can
 	# miss the tail. Jump to the last line explicitly.

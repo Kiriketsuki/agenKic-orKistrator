@@ -37,6 +37,7 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		agents = append(agents, AgentJSON{
 			ID:            id,
+			Name:          b.agentName(id),
 			State:         fields.State,
 			CurrentTaskID: fields.CurrentTaskID,
 			LastHeartbeat: fields.LastHeartbeat,
@@ -112,6 +113,13 @@ func (b *Bridge) handleListFloors(w http.ResponseWriter, r *http.Request) {
 
 	floors := make([]FloorJSON, 0, len(sessions))
 	for _, s := range sessions {
+		// Per-agent tmux sessions are the agent's own PTY, not a tower
+		// floor. The supervisor names them "agent-<uuid>" in RegisterAgent,
+		// and the UI renders every floor as a room in the tower, so listing
+		// them here turns each interactive CLI agent into a spurious floor.
+		if isAgentSession(s.Name) {
+			continue
+		}
 		floors = append(floors, FloorJSON{
 			Name:       s.Name,
 			AgentCount: s.WindowCount,
@@ -581,6 +589,10 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Record the fantasy name so every later agent projection (REST list and
+	// SSE payloads) can show it instead of the raw UUID. See
+	// Bridge.setAgentName for the honest limitation of this registry.
+	b.setAgentName(agentID, req.Name)
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
 		Kind:    req.Kind,

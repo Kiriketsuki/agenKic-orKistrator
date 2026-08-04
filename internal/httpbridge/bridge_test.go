@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -746,5 +747,103 @@ func TestSendInput_EmptyKeys_WithSubstrate(t *testing.T) {
 	// This exercises the validation at handlers.go:200-206.
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (empty keys), got %d", w.Code)
+	}
+}
+
+// listingSubstrate returns a fixed session list from ListSessions so the
+// floor filter can be exercised without a real tmux server.
+type listingSubstrate struct {
+	stubSubstrate
+	sessions []terminal.Session
+}
+
+func (s *listingSubstrate) ListSessions(_ context.Context) ([]terminal.Session, error) {
+	return s.sessions, nil
+}
+
+// A per-agent tmux session is the agent's own PTY. The tower must not draw a
+// floor for it (Task D bug 1).
+func TestListFloors_ExcludesAgentSessions(t *testing.T) {
+	sub := &listingSubstrate{sessions: []terminal.Session{
+		{Name: "main", WindowCount: 2},
+		{Name: "agent-1f0c9b2a", WindowCount: 1},
+		{Name: "archive", WindowCount: 1},
+		{Name: "agent-x", WindowCount: 1},
+	}}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	req := httptest.NewRequest("GET", "/api/floors", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Floors []httpbridge.FloorJSON `json:"floors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Floors) != 2 {
+		t.Fatalf("expected 2 floors, got %d: %+v", len(resp.Floors), resp.Floors)
+	}
+	for _, f := range resp.Floors {
+		if strings.HasPrefix(f.Name, "agent-") {
+			t.Errorf("agent session %q leaked into the floor list", f.Name)
+		}
+	}
+}
+
+// The spawn endpoint picks a fantasy name. The name must survive into the
+// agent listing so the UI can show it instead of the UUID (Task D bug 2).
+func TestSpawnAgent_NamePersistsInAgentList(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			return "agent-42", nil
+		}))
+
+	body := []byte(`{"kind":"sim","name":"Emberwick"}`)
+	req := httptest.NewRequest("POST", "/api/agents/spawn", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("spawn: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The spawner is a stub, so register the agent in the store by hand.
+	if err := store.SetAgentFields(context.Background(), "agent-42", state.AgentFields{
+		State: state.AgentStateIdle,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAgentFields(context.Background(), "agent-unnamed", state.AgentFields{
+		State: state.AgentStateIdle,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	listReq := httptest.NewRequest("GET", "/api/agents", nil)
+	listW := httptest.NewRecorder()
+	bridge.ServeHTTP(listW, listReq)
+
+	var resp struct {
+		Agents []httpbridge.AgentJSON `json:"agents"`
+	}
+	if err := json.NewDecoder(listW.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]httpbridge.AgentJSON, len(resp.Agents))
+	for _, a := range resp.Agents {
+		byID[a.ID] = a
+	}
+	if got := byID["agent-42"].Name; got != "Emberwick" {
+		t.Errorf("agent-42 name = %q, want Emberwick", got)
+	}
+	// An agent the spawn endpoint never named carries no name, and the UI
+	// falls back to the ID.
+	if got := byID["agent-unnamed"].Name; got != "" {
+		t.Errorf("agent-unnamed name = %q, want empty", got)
 	}
 }

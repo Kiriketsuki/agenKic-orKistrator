@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
@@ -36,6 +37,11 @@ type Bridge struct {
 	// Wired from main via WithAgentSpawner — spawns a simulated in-process
 	// worker agent (demo scaffolding, not a real external agent).
 	spawner AgentSpawner
+
+	// names maps agent ID to the fantasy display name chosen by
+	// handleSpawnAgent. See setAgentName for the scope and the limitation.
+	namesMu sync.RWMutex
+	names   map[string]string
 
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
 	brokerInterval time.Duration
@@ -95,6 +101,7 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b := &Bridge{
 		store: store,
 		dag:   dag,
+		names: make(map[string]string),
 		mux:   http.NewServeMux(),
 	}
 	for _, opt := range opts {
@@ -137,6 +144,43 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	}
 
 	return b
+}
+
+// setAgentName records the display name the spawn endpoint picked for
+// agentID. The registry lives in the Bridge process only, because
+// state.AgentFields has no name field and the gRPC RegisterAgent handler
+// drops pb.AgentInfo.Name. Two consequences follow, and both are deliberate
+// for now. An orchestrator restart loses every name, and an agent that
+// registered through gRPC without going through POST /api/agents/spawn never
+// has one. Every consumer falls back to the agent UUID when the name is
+// empty.
+//
+// A further known gap: the agent registers itself during the spawner call,
+// so the agent.registered SSE event can reach a client before this line
+// runs. The Godot client closes that window by applying the name from the
+// spawn response, and every later projection carries the name.
+func (b *Bridge) setAgentName(agentID, name string) {
+	if agentID == "" || name == "" {
+		return
+	}
+	b.namesMu.Lock()
+	b.names[agentID] = name
+	b.namesMu.Unlock()
+}
+
+// agentName returns the recorded display name for agentID, or an empty
+// string when the Bridge never saw a spawn for it.
+func (b *Bridge) agentName(agentID string) string {
+	b.namesMu.RLock()
+	defer b.namesMu.RUnlock()
+	return b.names[agentID]
+}
+
+// isAgentSession reports whether a terminal session name belongs to a single
+// agent's PTY rather than to a tower floor. The supervisor builds these names
+// as "agent-" + agentID in RegisterAgent.
+func isAgentSession(session string) bool {
+	return strings.HasPrefix(session, "agent-")
 }
 
 // ServeHTTP implements http.Handler, enabling use with httptest.

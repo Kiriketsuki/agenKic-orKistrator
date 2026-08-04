@@ -43,7 +43,10 @@ const TIER_BY_CLASS: Dictionary = {
 ## `agent_data.current_task_id` because BridgeManager does not update that
 ## field on agent.state_changed — callers pass the freshest known task id.
 func populate(agent_id: String, agent_data: BridgeData.AgentData, task_id: String) -> void:
-	_name_label.text = agent_id
+	# Prefer the fantasy name the orchestrator assigned at spawn time. An
+	# agent that never went through the spawn endpoint has none, so
+	# display_name falls back to the UUID this method already received.
+	_name_label.text = agent_data.display_name() if agent_data != null else agent_id
 	var character_class: String = "apprentice"
 	var provider: String = ""
 	var state: String = "idle"

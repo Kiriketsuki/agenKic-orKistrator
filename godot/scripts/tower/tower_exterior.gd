@@ -12,11 +12,13 @@ const ROOF_WIDTH: float = 60.0
 const ROOF_HEIGHT: float = 14.0
 const ROOF_COLOR: Color = Color("#3f4a3a")
 const ROOF_OUTLINE: Color = Color("#2b3327")
-## Phase 4 plinth: shaft width, not plaza width. It reads as a base the tower
-## stands on, so it stays narrow, dark, and tucked under the bottom slab.
-const PLINTH_COLOR: Color = Color("#1a1d26")
-const PLINTH_OUTLINE: Color = Color("#12141b")
-const PLINTH_RADIUS: float = 24.0
+## Phase 5 plinth: shaft width, not plaza width. It reads as a base the tower
+## stands on, so it stays a narrow dark rect tucked under the bottom slab. A
+## hexagon here read as a floating pedestal.
+const PLINTH_COLOR: Color = Color("#14161f")
+const PLINTH_OUTLINE: Color = Color("#0e1017")
+const PLINTH_HALF_WIDTH: float = 24.0
+const PLINTH_HEIGHT: float = 12.0
 ## How far the plinth top hides behind the bottom slab.
 const PLINTH_TUCK: float = 4.0
 
@@ -78,22 +80,15 @@ func _draw_roof(tower_height: float) -> void:
 
 
 func _draw_base() -> void:
-	var points: PackedVector2Array = _regular_polygon_points(PLINTH_RADIUS)
 	# The bottom slab centre sits at y = 0, so its bottom edge is at
-	# FLOOR_HEIGHT / 2. Push the plinth down until its top vertex hides
-	# PLINTH_TUCK px behind that edge.
+	# FLOOR_HEIGHT / 2. Start the plinth PLINTH_TUCK px above that edge, so the
+	# slab hides its top.
 	var top_y: float = FLOOR_HEIGHT / 2.0 - PLINTH_TUCK
-	var offset := Vector2(0.0, top_y + PLINTH_RADIUS)
-	for i: int in range(points.size()):
-		points[i] += offset
+	var points := PackedVector2Array([
+		Vector2(-PLINTH_HALF_WIDTH, top_y), Vector2(PLINTH_HALF_WIDTH, top_y),
+		Vector2(PLINTH_HALF_WIDTH, top_y + PLINTH_HEIGHT),
+		Vector2(-PLINTH_HALF_WIDTH, top_y + PLINTH_HEIGHT),
+	])
 	_base_polygon.polygon = points
 	if _base_outline:
 		_base_outline.points = points
-
-
-func _regular_polygon_points(radius: float) -> PackedVector2Array:
-	var points: PackedVector2Array = PackedVector2Array()
-	for i: int in range(_polygon_sides):
-		var angle: float = (TAU / _polygon_sides) * i - PI / 2.0
-		points.append(Vector2(cos(angle) * radius, sin(angle) * radius))
-	return points

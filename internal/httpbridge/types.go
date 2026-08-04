@@ -65,8 +65,12 @@ type ReassignAgentRequest struct {
 // ── Response types ───────────────────────────────────────────────────────────
 
 // AgentJSON is the JSON representation of an agent.
+// Name is the fantasy display name chosen by POST /api/agents/spawn. It is
+// empty for an agent that registered straight through gRPC, and every UI
+// consumer falls back to ID in that case. See Bridge.setAgentName.
 type AgentJSON struct {
 	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
@@ -91,6 +95,7 @@ type ErrorResponse struct {
 // Carries the full agent state so Godot can construct AgentData directly.
 type SSEAgentRegistered struct {
 	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
@@ -101,6 +106,7 @@ type SSEAgentRegistered struct {
 // SSEAgentStateChanged is the payload for agent.state_changed events.
 type SSEAgentStateChanged struct {
 	AgentID   string `json:"agent_id"`
+	Name      string `json:"name,omitempty"`
 	State     string `json:"state"`
 	TaskID    string `json:"task_id,omitempty"`
 	Timestamp int64  `json:"timestamp"`

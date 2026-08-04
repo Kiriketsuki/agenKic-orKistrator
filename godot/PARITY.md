@@ -235,3 +235,65 @@ tw.parallel().tween_property(wall_poly, "texture_offset:x",
 1. Floor bands (§1) — biggest visual payoff, self-contained in `floor_scene.gd`.
 2. Rotation A+B (§2) — depends on §1's wall/contents split.
 3. Hex widget + polish (§2 widget, §3).
+
+---
+
+# Phase 5 — why it still reads off
+
+Post-Phase-4 build review (screenshot 2026-08-04, latest push to `feature/163-…-t15-t22`). The band anatomy, carousel, UV scroll, and zoom regime are all in and correct. The remaining gap is four perceptual problems — each small in code, large on screen.
+
+---
+
+## 1. Everything is the same gray — the tower has no color identity
+
+The demo's floors are instantly tellable apart: Main Hall = **mossy green wall** (`wall_moss`), Archive = cold stone, orkistrator = **wood**. The build uses `stone_wall` for every wall band (`WALL_TEXTURE` is a single const), and the identity wash is invisible: a 15% multiply toward the tint on already-dark tiles shifts pixels by ~2 RGB points.
+
+**Fix:**
+- Add a `wall` key to `FLOOR_DRESSING` and per-floor wall textures:
+  `main → wall_moss`, `archive → stone_wall`, `orkistrator → stone_wall` + wood plane (already set).
+- Retire the multiply-wash subtlety: either raise `WASH_ALPHA` to **0.35**, or simpler and closer to the demo's soft-light — drop the wash polygon and bake the tint into the band `color` modulates directly (`_wall_band.color = wash_tint.lerp(Color.WHITE, 0.55)`, plane slightly brighter). Direct modulate is one multiply anyway, minus a node.
+- Floor label color: demo gold `#c8a84e` on focused, `#8a9a7a` dim — the current world-label is near-black and sub-legible. Bump the UILayer font size ~1.5×.
+
+## 2. The floor plane reads as a second wall (the "carrier deck")
+
+Band B is a face-on trapezoid of full-brightness 16px tiles, flaring *wider than the slab* at the front — it reads as an aircraft-carrier deck, not ground. Un-foreshortened tiles can never read as a horizontal plane; the demo doesn't try — its floor band is a straight rect that is **darker than the wall and short**.
+
+**Fix (all three, cheap):**
+- `PLANE_FLARE = 0` — the plane stays inside the slab silhouette. The flare is what breaks the outline.
+- Invert the value relationship: plane `color = Color(0.78, 0.78, 0.74)` (darker than the wall's 0.82), wall stays the lit surface. Ground recedes; walls catch torchlight.
+- Add a 1px darker seam line at the wall/plane junction (the demo's step shadow) — this single line does more for the "room corner" read than the whole trapezoid.
+- Optional depth cue done right: a vertical gradient on the plane (top 100% → bottom 85% brightness) via a 4px `GradientTexture2D` overlay — foreshortening by value, not by shape.
+
+## 3. Rotation is invisible because every edge looks identical
+
+The carousel + UV scroll are implemented — but windows, torches, and the wall band are **static dressing, identical for all 6–12 edges**. Rotate between two empty edges and the frame after the turn is pixel-identical to the frame before: the motion plays, the result reads as "nothing happened." The demo never has this problem because each edge shows different contents.
+
+**Fix — make edges distinct, and move the tells into the moving layer:**
+- Reparent windows into the scrolling/carousel layer (or offset their x by `active_edge * edge_w` and include them in the UV-scroll motion). Torches can stay fixed (they're the door frame, not the room).
+- Derive per-edge dressing deterministically: `hash(floor_name, edge)` picks window count (1–3), window x-jitter, and one ambient prop (bookshelf / candle / crystal_orb from the atlas) even when the edge has zero agents. Empty edge ≠ empty room.
+- Ship the edge compass prominently while rotating: fade it in at 1.0 alpha during the turn, decay to 0.4 after — the widget exists (`edge_compass.gd`), give it the moment.
+
+## 4. Chrome details that break the silhouette
+
+| Read | Cause | Fix |
+|:--|:--|:--|
+| Floating gray monorail above each floor | Cornice is a *light* strip with 4px overhang (`±hw+4`, `-hh-3`) | Flush trim, ink-weight trick: 2px light line at slab top edge, 1px dark below; zero overhang |
+| Dark hexagon pedestal floating under Main Hall | `tower_exterior.gd` base polygon still 40px-radius hex at y+30 | Narrow to shaft width (~24px half-width), rect not hex, tuck 4px under the bottom slab, color `#14161f` |
+| Tower column reads as a monolith with drawers | Shaft drawn at full opacity in front of the sky, same value as slabs | Drop shaft modulate to ~0.8 alpha or darken 20% — it's *behind* the rooms; the demo shaft is clearly recessive |
+| Rooms are dead when no agents are connected | Interior only populates from `_agent_slots` | The per-edge ambient prop from §3 fixes this for free |
+
+---
+
+## Priority
+
+1. §1 color identity — one-day change, biggest "matches the demo" jump.
+2. §3 per-edge dressing — makes rotation *mean* something (the standing complaint).
+3. §2 plane fixes — kills the carrier deck.
+4. §4 chrome — an afternoon of nudges.
+
+## Acceptance
+
+- Screenshot the three floors side by side: each is identifiable by wall color alone at 0.4 fisheye scale.
+- Rotate on an empty floor: the post-turn frame differs visibly from the pre-turn frame (different windows/prop), and the compass telegraphs the step.
+- The slab silhouette is a clean chamfered rectangle — nothing overhangs, nothing flares.
+- With zero agents connected, the focused floor still looks inhabited (ambient prop + torch flicker).

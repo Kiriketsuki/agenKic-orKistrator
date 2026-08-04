@@ -33,6 +33,9 @@ enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 var _connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var _agent_states: Dictionary = {}
 var _agents: Dictionary = {}
+## agent_id -> display name reported by a spawn response, applied when the
+## agent.registered event lands. See set_agent_name.
+var _pending_names: Dictionary = {}
 var _floors: Array[BridgeData.FloorData] = []
 var _sse_client: HTTPClient
 var _sse_buffer: String = ""
@@ -285,6 +288,8 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 	match event_type:
 		"agent.registered":
 			var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(data)
+			if agent.name.is_empty() and _pending_names.has(agent.id):
+				agent.name = _pending_names[agent.id]
 			_agent_states[agent.id] = agent.state
 			_agents[agent.id] = agent
 			agent_registered.emit(agent)
@@ -293,8 +298,15 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			var new_state: String = data.get("state", "")
 			var task_id: String = data.get("task_id", "")
 			var old_state: String = _agent_states.get(agent_id, "")
+			var sse_name: String = data.get("name", "")
 			if _agents.has(agent_id):
 				_agents[agent_id].state = new_state
+				# The bridge learns an agent name only at spawn time, so an
+				# early registered event can arrive without one. Later
+				# payloads carry it, and an empty value never clears a name
+				# the UI already shows.
+				if not sse_name.is_empty():
+					_agents[agent_id].name = sse_name
 				# Keep the cached AgentData.current_task_id in sync so
 				# consumers reading it directly (e.g. agent_context_menu's
 				# Reassign/Cancel enable/disable gate) don't see a stale
@@ -314,6 +326,7 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			if agent_id != "":
 				_agent_states.erase(agent_id)
 				_agents.erase(agent_id)
+				_pending_names.erase(agent_id)
 				agent_deregistered.emit(agent_id)
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
@@ -532,6 +545,20 @@ func _coerce_output_item(item: Variant, agent_id: String) -> BridgeData.AgentOut
 
 func get_agent(agent_id: String) -> BridgeData.AgentData:
 	return _agents.get(agent_id, null)
+
+
+## Records the display name the spawn response reported for agent_id. The
+## agent registers itself while the spawn request is still in flight, so the
+## agent.registered event can arrive before or after this call. Storing the
+## name in _pending_names covers the "before" order, and writing it straight
+## onto the cached agent covers the "after" order.
+func set_agent_name(agent_id: String, agent_name: String) -> void:
+	if agent_id.is_empty() or agent_name.is_empty():
+		return
+	_pending_names[agent_id] = agent_name
+	var agent: BridgeData.AgentData = _agents.get(agent_id, null)
+	if agent != null:
+		agent.name = agent_name
 
 
 func _enqueue_command(method: String, path: String, body: Dictionary) -> void:

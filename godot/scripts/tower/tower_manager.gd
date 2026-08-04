@@ -19,10 +19,10 @@ const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 ## Phase 4 per-floor dressing, keyed by floor name. The tile names the band B
 ## texture, the wash names the multiply tint over bands A and B.
 const FLOOR_DRESSING: Dictionary = {
-	"main": {"tile": "stone_floor", "wash": Color(0.227, 0.290, 0.227, 1.0)},
-	"archive": {"tile": "stone_floor", "wash": Color(0.180, 0.204, 0.282, 1.0)},
-	"orkistrator": {"tile": "wood_floor", "wash": Color(0.290, 0.227, 0.180, 1.0)},
-	"_default": {"tile": "stone_floor", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+	"main": {"tile": "stone_floor", "wall": "wall_moss", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+	"archive": {"tile": "stone_floor", "wall": "stone_wall", "wash": Color(0.180, 0.204, 0.282, 1.0)},
+	"orkistrator": {"tile": "wood_floor", "wall": "stone_wall", "wash": Color(0.290, 0.227, 0.180, 1.0)},
+	"_default": {"tile": "stone_floor", "wall": "stone_wall", "wash": Color(0.227, 0.290, 0.227, 1.0)},
 }
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
@@ -161,6 +161,7 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	# Phase 4 — per-floor identity: floor tile and multiply wash tint.
 	var dressing: Dictionary = FLOOR_DRESSING.get(floor_name, FLOOR_DRESSING["_default"])
 	instance.floor_tile = dressing["tile"]
+	instance.wall_texture = dressing.get("wall", "stone_wall")
 	instance.wash_tint = dressing["wash"]
 	instance.set_meta("floor_name", floor_name)
 	if instance.has_method("configure_load_params"):
@@ -224,6 +225,9 @@ func _update_stair_shaft() -> void:
 	# Top slab top edge, in Tower-local coords.
 	var top_y: float = -(_floors.size() - 1) * _floor_spacing - _floor_height / 2.0
 	_stair_shaft.position = Vector2(-shaft_w / 2.0, top_y)
+	# Phase 5 section 4 — the shaft sits behind the rooms, so it recedes
+	# instead of reading as a monolith in front of the sky.
+	_stair_shaft.modulate = Color(0.8, 0.8, 0.8, 1.0)
 
 
 ## Tweens scale and opacity of all floors based on distance from _focused_index.

@@ -13,10 +13,11 @@ extends Control
 
 const FOCUS_COLOR: Color = Color("#c8a84e")
 const DIM_COLOR: Color = Color("#8a9a7a")
-const FLOOR_LABEL_SIZE: int = 14
+const FLOOR_LABEL_SIZE: int = 21
 const NAMEPLATE_TEXT_SIZE: int = 11
-## Screen-space offsets, in window pixels.
-const FLOOR_LABEL_OFFSET: Vector2 = Vector2(-140.0, -40.0)
+## Screen-space offsets, in window pixels. The floor label clears the slab top
+## edge, so it never overlaps the wall band.
+const FLOOR_LABEL_OFFSET: Vector2 = Vector2(-140.0, -150.0)
 const NAMEPLATE_OFFSET: Vector2 = Vector2(0.0, -26.0)
 const NAMEPLATE_SIZE: Vector2 = Vector2(96.0, 20.0)
 

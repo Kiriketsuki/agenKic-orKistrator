@@ -47,7 +47,16 @@ func _on_command_succeeded(path: String, _code: int, response_body: String) -> v
 	var parsed: Variant = JSON.parse_string(response_body)
 	if parsed is Dictionary:
 		var d: Dictionary = parsed as Dictionary
-		_result_label.text = "%s the %s agent joins the tower" % [d.get("name", "?"), d.get("kind", "?")]
+		var agent_name: String = String(d.get("name", ""))
+		_result_label.text = "%s the %s agent joins the tower" % [
+			agent_name if not agent_name.is_empty() else "?", d.get("kind", "?")
+		]
+		# The spawn response is the only place that pairs the new agent ID
+		# with its name, so hand both to BridgeManager. Every view then reads
+		# the name from the cached agent data.
+		var bridge: Node = get_node_or_null("/root/BridgeManager")
+		if bridge != null:
+			bridge.call("set_agent_name", String(d.get("agent_id", "")), agent_name)
 	else:
 		_result_label.text = "agent summoned"
 
