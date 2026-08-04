@@ -13,11 +13,8 @@ extends Control
 
 const FOCUS_COLOR: Color = Color("#c8a84e")
 const DIM_COLOR: Color = Color("#8a9a7a")
-const FLOOR_LABEL_SIZE: int = 21
 const NAMEPLATE_TEXT_SIZE: int = 11
-## Screen-space offsets, in window pixels. The floor label clears the slab top
-## edge, so it never overlaps the wall band.
-const FLOOR_LABEL_OFFSET: Vector2 = Vector2(-140.0, -150.0)
+## Screen-space offset, in window pixels.
 const NAMEPLATE_OFFSET: Vector2 = Vector2(0.0, -26.0)
 const NAMEPLATE_SIZE: Vector2 = Vector2(96.0, 20.0)
 
@@ -27,7 +24,6 @@ const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.pn
 
 var _tower: Node = null
 var _font: Font = null
-var _floor_labels: Array[Label] = []
 ## agent_id -> the NinePatchRect plate holding that agent's Label.
 var _nameplates: Dictionary = {}
 
@@ -40,9 +36,6 @@ func _ready() -> void:
 	if _tower == null:
 		set_process(false)
 		return
-	if _tower.has_signal("floors_changed"):
-		_tower.connect("floors_changed", _rebuild_floor_labels)
-	_rebuild_floor_labels()
 
 
 ## Fira Code where the system has it, plain monospace otherwise.
@@ -55,51 +48,7 @@ func _make_font() -> Font:
 func _process(_delta: float) -> void:
 	if _tower == null or not is_instance_valid(_tower):
 		return
-	_update_floor_labels()
 	_update_nameplates()
-
-
-# --- floor labels ---
-
-func _rebuild_floor_labels() -> void:
-	for label: Label in _floor_labels:
-		if is_instance_valid(label):
-			label.queue_free()
-	_floor_labels.clear()
-	var infos: Array = _tower.get_floor_infos()
-	for info: Dictionary in infos:
-		var label := Label.new()
-		label.text = String(info.get("label", "")).to_upper()
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.add_theme_font_override("font", _font)
-		label.add_theme_font_size_override("font_size", FLOOR_LABEL_SIZE)
-		label.add_theme_constant_override("outline_size", 4)
-		label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.07, 0.9))
-		label.add_theme_constant_override("line_spacing", 2)
-		add_child(label)
-		_floor_labels.append(label)
-
-
-func _update_floor_labels() -> void:
-	var container: Node = _tower.get_node_or_null("FloorsContainer")
-	if container == null:
-		return
-	var floors: Array = container.get_children()
-	var focus: int = _tower.get_focus_index()
-	for i: int in range(_floor_labels.size()):
-		var label: Label = _floor_labels[i]
-		if i >= floors.size() or not (floors[i] is Node2D):
-			label.visible = false
-			continue
-		# Mirrors FloorScene.set_show_interior: only the focused floor and its
-		# two neighbours carry readable text.
-		if absi(i - focus) > 1:
-			label.visible = false
-			continue
-		label.visible = true
-		label.add_theme_color_override("font_color", FOCUS_COLOR if i == focus else DIM_COLOR)
-		var origin: Vector2 = (floors[i] as Node2D).get_global_transform_with_canvas().origin
-		label.position = origin + FLOOR_LABEL_OFFSET
 
 
 # --- agent nameplates ---
