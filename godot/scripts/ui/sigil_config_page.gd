@@ -23,16 +23,30 @@ extends Control
 ## modal covered.
 signal closed()
 
+## True while any SigilConfigPage is showing. OrbFlock reads this in its
+## _input the same way it reads GrimoireFlyout.is_placing: while the modal
+## is up, the flock must not treat clicks on it as outside-clicks and
+## collapse (round 6 keeper feedback, "BACK does not return to the grid").
+static var is_open: bool = false
+
 const TIERS: Array[String] = ["", "haiku", "sonnet", "opus", "adept", "novice"]
 
 ## Row grid separation, doubled from the pre-2x base (10px, 8px) to match
 ## the doubled project.godot viewport (see defect 3, epic 169).
 const GRID_H_SEPARATION: int = 20
-const GRID_V_SEPARATION: int = 16
-const BACKDROP_COLOR: Color = Color(0.0, 0.0, 0.0, 0.6)
+const GRID_V_SEPARATION: int = 24
+const BACKDROP_COLOR: Color = Color(0.02, 0.02, 0.05, 0.78)
 const PANEL_MIN_SIZE: Vector2 = Vector2(1200.0, 760.0)
-const TITLE_FONT_SIZE: int = 40
-const ROW_FONT_SIZE: int = 24
+const TITLE_FONT_SIZE: int = 44
+const ROW_FONT_SIZE: int = 26
+## Solid parchment-dark panel behind the rows. The old unstyled
+## PanelContainer let the hall show through and the rows were hard to read
+## (round 6 keeper feedback, "overhaul it").
+const PANEL_BG_COLOR: Color = Color(0.075, 0.082, 0.125, 0.985)
+const PANEL_BORDER_COLOR: Color = Color(0.788, 0.635, 0.153, 1.0)
+const PANEL_BORDER_WIDTH: int = 3
+const PANEL_CONTENT_MARGIN: int = 40
+const ROW_BG_COLOR: Color = Color(1.0, 1.0, 1.0, 0.04)
 
 ## True for the Grimoire flyout's F3 page (see grimoire_flyout.gd), where
 ## this node owns its own dim backdrop and centered panel. The title
@@ -50,6 +64,11 @@ var _panel: PanelContainer
 
 func _ready() -> void:
 	set_process_unhandled_input(true)
+	# Static var, reset on scene reload for the same reason as
+	# OrbFlock.suspend_hotkeys (see that _ready). Only one config page shows
+	# at a time, so tracking visibility of this instance is safe.
+	is_open = visible
+	visibility_changed.connect(func() -> void: is_open = visible)
 
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", GRID_V_SEPARATION)
@@ -75,6 +94,7 @@ func _ready() -> void:
 		_panel = PanelContainer.new()
 		_panel.custom_minimum_size = PANEL_MIN_SIZE
 		_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		_panel.add_theme_stylebox_override("panel", _build_panel_style())
 		center.add_child(_panel)
 		_panel.add_child(content)
 	else:
@@ -100,6 +120,19 @@ func _ready() -> void:
 	close_button.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 	close_button.pressed.connect(func() -> void: closed.emit())
 	content.add_child(close_button)
+
+
+## Solid, bordered stylebox for the modal panel: opaque dark fill, gold
+## border, rounded corners, generous content margins. Built in code because
+## this page builds all of its Controls in code (see the class doc-comment).
+func _build_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = PANEL_BG_COLOR
+	style.border_color = PANEL_BORDER_COLOR
+	style.set_border_width_all(PANEL_BORDER_WIDTH)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(PANEL_CONTENT_MARGIN)
+	return style
 
 
 ## Populates the page from a provider roster (ProviderRoster.parse_response
@@ -185,9 +218,9 @@ func _add_row_cells(provider: Dictionary, index: int, all_kinds: Array) -> void:
 	_rows_grid.add_child(tier_button)
 
 	var name_pool_edit := LineEdit.new()
-	name_pool_edit.placeholder_text = "name pool (comma separated)"
+	name_pool_edit.placeholder_text = "names, comma separated"
 	name_pool_edit.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
-	name_pool_edit.custom_minimum_size = Vector2(280.0, 0.0)
+	name_pool_edit.custom_minimum_size = Vector2(420.0, 0.0)
 	name_pool_edit.text = ",".join(PackedStringArray(_config.name_pool(kind)))
 	name_pool_edit.text_submitted.connect(func(new_text: String) -> void:
 		var names: Array = []

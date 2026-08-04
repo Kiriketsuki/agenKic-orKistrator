@@ -123,6 +123,14 @@ func open_config_page() -> void:
 func _on_config_page_closed() -> void:
 	_config_page.visible = false
 	_content_box.visible = true
+	# Belt and braces for round 6 keeper feedback: if the flock collapsed
+	# while the modal was up (any stray path), reopen it on the grimoire orb
+	# so BACK always lands on the sigil grid.
+	var node: Node = get_parent()
+	while node != null and not node is OrbFlock:
+		node = node.get_parent()
+	if node != null:
+		(node as OrbFlock).switch_to("grimoire")
 
 
 func _on_sigil_input(kind: String, event: InputEvent) -> void:
