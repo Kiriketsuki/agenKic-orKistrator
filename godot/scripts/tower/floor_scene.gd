@@ -10,17 +10,29 @@ signal agent_unhovered(agent_id: String)
 
 const AGENT_CHARACTER_SCENE: PackedScene = preload("res://scenes/agent_character.tscn")
 const WALL_TEXTURE: Texture2D = preload("res://assets/tiles/sliced/stone_wall.png")
-const FLOOR_PLANE_TEXTURE: Texture2D = preload("res://assets/tiles/sliced/stone_floor.png")
+## Floor-plane tiles, keyed by the floor_tile export. TowerManager picks one
+## per floor so each room reads as its own place.
+const FLOOR_TILES: Dictionary = {
+	"stone_floor": preload("res://assets/tiles/sliced/stone_floor.png"),
+	"wood_floor": preload("res://assets/tiles/sliced/wood_floor.png"),
+	"rune_floor": preload("res://assets/tiles/sliced/rune_floor.png"),
+}
 const WINDOW_TEXTURE: Texture2D = preload("res://assets/sprites/deco/window.png")
 const TORCH_TEXTURE: Texture2D = preload("res://assets/sprites/deco/torch.png")
 const PROPS_TEXTURE: Texture2D = preload("res://assets/props/workstations.png")
 const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.png")
 
-## 3/4-view depth: how far the walkable floor plane extends toward the
-## viewer below the wall, and how much wider it gets at the front edge.
-## One 16 px tile row deep, matching the demo's floor band at 1x art scale.
-const PLANE_DEPTH: float = 16.0
+## Phase 4 three-band anatomy, in art px, inside a 40 px slab.
+## Band A is the back wall, band B the walkable floor plane, band C the front
+## lip. The plane flares toward the viewer, so its back edge sits inset by
+## PLANE_FLARE and its front edge reaches the slab width.
+const WALL_BAND_HEIGHT: float = 16.0
+const PLANE_DEPTH: float = 20.0
 const PLANE_FLARE: float = 8.0
+const FRONT_LIP_HEIGHT: float = 3.0
+const FRONT_LIP_COLOR: Color = Color(0.059, 0.067, 0.090, 1.0)
+## Alpha of the per-floor multiply wash over bands A and B.
+const WASH_ALPHA: float = 0.15
 const PROP_COUNT: int = 8
 ## Wall dressing spacing, in art px.
 const WINDOW_SPACING: float = 48.0
@@ -47,6 +59,11 @@ const ROTATION: float = 0.0
 @export var floor_label: String = ""
 @export var is_permanent: bool = false
 @export var polygon_sides: int = 6
+## Floor-plane tile name, a key of FLOOR_TILES. TowerManager sets this per
+## floor. An unknown name falls back to stone_floor.
+@export var floor_tile: String = "stone_floor"
+## Per-floor identity wash, multiplied over bands A and B at WASH_ALPHA.
+@export var wash_tint: Color = Color(0.227, 0.290, 0.227, 1.0)
 
 var _state: FloorState = FloorState.ACTIVE
 var _active_edge: int = 0
@@ -57,8 +74,24 @@ var _agent_slots: Array[Dictionary] = []
 var _linger_timer: float = 0.0
 var _linger_duration: float = 30.0
 var _dressing: Node2D = null
+## Phase 4 — the fisheye layout hides the dressing on distant floors, where the
+## windows and torches shrink to sub-pixel noise. A rebuild re-applies this.
+var _show_dressing: bool = true
+## Band polygons, kept as fields so a morph frame can restretch them without
+## rebuilding the whole dressing layer. _wall_band also carries the texture
+## offset that Phase 4 rotation scrolls.
+var _wall_band: Polygon2D = null
+var _floor_plane: Polygon2D = null
+var _front_lip: Polygon2D = null
+var _wash: Polygon2D = null
+var _cornice: Polygon2D = null
 var _torches: Array[Sprite2D] = []
 var _flicker_time: float = 0.0
+## Wall scroll position in texture px. This lives on the scene, not on the band,
+## because _rebuild_dressing() frees and recreates the band. A separate tween
+## drives it, so a rebuild during a turn never aborts the carousel tween.
+var _wall_scroll_x: float = 0.0
+var _wall_scroll_tween: Tween = null
 
 # --- T15 load-driven morph state ---
 var _composite_load: float = 0.0
@@ -167,6 +200,57 @@ func set_active_edge(edge: int) -> void:
 	_active_edge = edge % polygon_sides
 	_rebuild_interior()
 	_update_active_edge_glow()
+
+
+## Turns the room to a new edge. The slab, the silhouette and the dressing stay
+## fixed. Only the contents layer moves, so the building never teleports.
+## direction is +1 to rotate right and -1 to rotate left. Returns the Tween so
+## the caller can kill it when a click interrupts the turn.
+func rotate_to_edge(new_edge: int, direction: int) -> Tween:
+	# A killed tween leaves the contents layer part way through a turn. Reset it
+	# to home before the next turn starts, so rapid clicks never compound drift.
+	_agent_slots_node.position.x = 0.0
+	_agent_slots_node.scale.x = 1.0
+	_agent_slots_node.modulate.a = 1.0
+	var edge_w: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
+	var tw: Tween = create_tween().set_parallel(true) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_agent_slots_node, "position:x", -direction * edge_w, 0.275)
+	tw.tween_property(_agent_slots_node, "modulate:a", 0.0, 0.2)
+	# Optional C. Scale only, no skew and no rotation, so the carousel reads as
+	# depth instead of a bounce.
+	tw.tween_property(_agent_slots_node, "scale:x", 0.9, 0.275)
+	# The wall band streams one edge width of brick across the whole turn. That
+	# sells the cylinder rotation even when both edges hold no agents. It runs on
+	# its own tween for two reasons. A 0.55 s tweener inside the first parallel
+	# step would delay chain() to t=0.55 and stall the carousel. A rebuild of the
+	# dressing layer also frees the band mid-turn, and Godot aborts a tween whose
+	# target it cannot find, which would strand the contents layer hidden.
+	_start_wall_scroll(_wall_scroll_x + direction * edge_w)
+	tw.chain().tween_callback(func() -> void:
+		set_active_edge(new_edge)
+		_agent_slots_node.position.x = direction * edge_w
+	)
+	tw.chain().tween_property(_agent_slots_node, "position:x", 0.0, 0.275)
+	tw.parallel().tween_property(_agent_slots_node, "modulate:a", 1.0, 0.25)
+	tw.parallel().tween_property(_agent_slots_node, "scale:x", 1.0, 0.275)
+	return tw
+
+
+## Scrolls the wall brick to a new offset over the full 0.55 s turn. The tween
+## writes through _apply_wall_scroll, so a freed band never aborts it.
+func _start_wall_scroll(target_x: float) -> void:
+	if _wall_scroll_tween != null and _wall_scroll_tween.is_valid():
+		_wall_scroll_tween.kill()
+	_wall_scroll_tween = create_tween() \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	_wall_scroll_tween.tween_method(_apply_wall_scroll, _wall_scroll_x, target_x, 0.55)
+
+
+func _apply_wall_scroll(value: float) -> void:
+	_wall_scroll_x = value
+	if _wall_band != null and is_instance_valid(_wall_band):
+		_wall_band.texture_offset.x = value
 
 
 func begin_linger(duration: float) -> void:
@@ -323,8 +407,9 @@ func _apply_morph_t(t: float) -> void:
 	# Silhouette is the fixed chamfered slab; only the width breathes.
 	var scaled: PackedVector2Array = _slab_polygon(width)
 	_background.polygon = scaled
-	# Keep the wall-tile UVs vertex-aligned with the morphing polygon.
-	_background.uv = scaled
+	# Phase 4 — the slab is a silhouette only. Re-apply the three-band split at
+	# the new width so a morph frame never shows the old full-slab wall.
+	_apply_band_geometry(width)
 	if _edge_glow:
 		_edge_glow.points = scaled
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
@@ -425,6 +510,14 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 	return null
 
 
+## Hides the three bands, the wash, and the windows and torches. TowerManager
+## calls this for any floor at fisheye distance 2 or more.
+func set_show_dressing(visible_flag: bool) -> void:
+	_show_dressing = visible_flag
+	if _dressing != null and is_instance_valid(_dressing):
+		_dressing.visible = visible_flag
+
+
 func set_show_interior(visible_flag: bool) -> void:
 	_interior.visible = visible_flag
 	_agent_slots_node.visible = visible_flag
@@ -450,13 +543,12 @@ func _slab_polygon(width: float) -> PackedVector2Array:
 
 func _rebuild_background() -> void:
 	var scaled: PackedVector2Array = _slab_polygon(_effective_width)
+	# Phase 4 — the slab carries no wall texture any more. It is the silhouette
+	# behind the three bands, so it only fills the gaps the bands leave.
 	_background.polygon = scaled
-	_background.texture = WALL_TEXTURE
-	_background.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	_background.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	# UVs in texture pixels so the 16px tile repeats across the wall.
-	_background.uv = scaled
-	_background.color = Color(0.82, 0.82, 0.88, 1.0)  # back wall sits in shadow
+	_background.texture = null
+	_background.uv = PackedVector2Array()
+	_background.color = Color(0.129, 0.145, 0.184, 1.0)
 	if _edge_glow:
 		_edge_glow.points = scaled
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
@@ -468,8 +560,9 @@ func _rebuild_background() -> void:
 	_rebuild_dressing()
 
 
-## Rebuilds the decorative layer: cornice/base trim, glowing windows, and
-## flickering torches. Sits directly above the brick background, behind agents.
+## Rebuilds the decorative layer: the three depth bands, the cornice, the
+## per-floor wash, glowing windows, and flickering torches. Sits directly above
+## the slab silhouette, behind agents.
 func _rebuild_dressing() -> void:
 	if _dressing != null and is_instance_valid(_dressing):
 		_dressing.queue_free()
@@ -477,66 +570,135 @@ func _rebuild_dressing() -> void:
 	_dressing = Node2D.new()
 	add_child(_dressing)
 	move_child(_dressing, _background.get_index() + 1)
+	_dressing.visible = _show_dressing
 
 	var half_w: float = _floor_width / 2.0
 	var half_h: float = _floor_height / 2.0
 
+	# Band A. Back wall, the top 16 px of the slab.
+	_wall_band = Polygon2D.new()
+	_wall_band.texture = WALL_TEXTURE
+	_wall_band.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_wall_band.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_wall_band.color = Color(0.82, 0.82, 0.88, 1.0)  # back wall sits in shadow
+	_wall_band.texture_offset.x = _wall_scroll_x  # a rebuild keeps the scroll
+	_dressing.add_child(_wall_band)
+
+	# Band B. The 3/4-view walkable plane, inside the slab, below the wall line.
+	_floor_plane = Polygon2D.new()
+	_floor_plane.texture = FLOOR_TILES.get(floor_tile, FLOOR_TILES["stone_floor"])
+	_floor_plane.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_floor_plane.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_floor_plane.color = Color(1.08, 1.08, 1.05, 1.0)  # lit floor, brighter than wall
+	_dressing.add_child(_floor_plane)
+
+	# Band C. Front lip, a 3 px plinth shadow at the slab bottom.
+	_front_lip = Polygon2D.new()
+	_front_lip.color = FRONT_LIP_COLOR
+	_dressing.add_child(_front_lip)
+
+	# Per-floor identity wash over bands A and B, multiplied.
+	_wash = Polygon2D.new()
+	var wash_mat := CanvasItemMaterial.new()
+	wash_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
+	_wash.material = wash_mat
+	# The multiply blend resolves to dst * (src_rgb + 1 - src_a). A raw tint at
+	# alpha 0.15 gives a factor above 1.0, which brightens the bands instead of
+	# tinting them. Pre-scale the tint toward white and keep alpha at 1.0, so the
+	# factor is exactly a 15 percent multiply toward wash_tint.
+	var wash_rgb: Color = Color.WHITE.lerp(wash_tint, WASH_ALPHA)
+	_wash.color = Color(wash_rgb.r, wash_rgb.g, wash_rgb.b, 1.0)
+	_dressing.add_child(_wash)
+
 	# Cornice (light stone strip along the top).
-	var cornice := Polygon2D.new()
-	cornice.polygon = PackedVector2Array([
-		Vector2(-half_w - 4.0, -half_h - 3.0), Vector2(half_w + 4.0, -half_h - 3.0),
-		Vector2(half_w + 4.0, -half_h + 1.0), Vector2(-half_w - 4.0, -half_h + 1.0),
-	])
-	cornice.color = Color(0.42, 0.44, 0.52, 1.0)
-	_dressing.add_child(cornice)
+	_cornice = Polygon2D.new()
+	_cornice.color = Color(0.42, 0.44, 0.52, 1.0)
+	_dressing.add_child(_cornice)
 
-	# 3/4-view walkable floor plane: a trapezoid extending down toward the
-	# viewer, wider at the front edge, so the room reads as seen from a
-	# slight top-down angle instead of a flat billboard.
-	var plane := Polygon2D.new()
-	plane.polygon = PackedVector2Array([
-		Vector2(-half_w, half_h),
-		Vector2(half_w, half_h),
-		Vector2(half_w + PLANE_FLARE, half_h + PLANE_DEPTH),
-		Vector2(-half_w - PLANE_FLARE, half_h + PLANE_DEPTH),
-	])
-	plane.texture = FLOOR_PLANE_TEXTURE
-	plane.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	plane.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	plane.uv = plane.polygon
-	plane.color = Color(1.08, 1.08, 1.05, 1.0)  # lit floor, brighter than wall
-	_dressing.add_child(plane)
+	_apply_band_geometry(_effective_width)
 
-	# Front-edge shadow line under the floor plane.
-	var plinth := Polygon2D.new()
-	plinth.polygon = PackedVector2Array([
-		Vector2(-half_w - PLANE_FLARE, half_h + PLANE_DEPTH - 1.0),
-		Vector2(half_w + PLANE_FLARE, half_h + PLANE_DEPTH - 1.0),
-		Vector2(half_w + PLANE_FLARE, half_h + PLANE_DEPTH + 3.0),
-		Vector2(-half_w - PLANE_FLARE, half_h + PLANE_DEPTH + 3.0),
-	])
-	plinth.color = Color(0.10, 0.10, 0.14, 1.0)
-	_dressing.add_child(plinth)
-
-	# Windows spaced across the wall, skipping the center band.
+	# Windows spaced across the wall band, skipping the center band.
 	var x: float = -half_w + WINDOW_START
 	while x < half_w - 16.0:
 		if absf(x) > 32.0:
 			var win := Sprite2D.new()
 			win.texture = WINDOW_TEXTURE
 			win.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			win.position = Vector2(x, -half_h * 0.25)
+			win.position = Vector2(x, -half_h + WALL_BAND_HEIGHT / 2.0)
 			_dressing.add_child(win)
 		x += WINDOW_SPACING
 
-	# Torches flanking the floor near each end.
+	# Torches flanking the wall band near each end.
 	for tx: float in [-half_w + TORCH_INSET, half_w - TORCH_INSET]:
 		var torch := Sprite2D.new()
 		torch.texture = TORCH_TEXTURE
 		torch.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		torch.position = Vector2(tx, -half_h * 0.15)
+		torch.position = Vector2(tx, -half_h + WALL_BAND_HEIGHT / 2.0)
 		_dressing.add_child(torch)
 		_torches.append(torch)
+
+
+## Restretches the three bands, the wash, and the cornice to a breathed width.
+## A morph frame calls this every tick, so it allocates no nodes.
+func _apply_band_geometry(width: float) -> void:
+	if _wall_band == null or not is_instance_valid(_wall_band):
+		return
+	var hw: float = width / 2.0
+	var hh: float = _floor_height / 2.0
+	var ch: float = minf(8.0, hh)
+	var wall_line: float = -hh + WALL_BAND_HEIGHT
+	var plane_bottom: float = wall_line + PLANE_DEPTH
+
+	# Band A follows the slab's top chamfer so it never spills past the edge.
+	var wall_pts := PackedVector2Array([
+		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
+		Vector2(hw, -hh + ch), Vector2(hw, wall_line),
+		Vector2(-hw, wall_line), Vector2(-hw, -hh + ch),
+	])
+	_wall_band.polygon = wall_pts
+	# UVs in texture pixels so the 16 px tile repeats across the wall.
+	_wall_band.uv = wall_pts
+
+	# Band B narrows at the back and reaches full slab width at the front, so
+	# the flare reads as depth without breaking the silhouette.
+	var plane_pts := PackedVector2Array([
+		Vector2(-hw + PLANE_FLARE, wall_line), Vector2(hw - PLANE_FLARE, wall_line),
+		Vector2(hw, plane_bottom), Vector2(-hw, plane_bottom),
+	])
+	_floor_plane.polygon = plane_pts
+	_floor_plane.uv = plane_pts
+
+	# Band C tucks inside the bottom chamfer.
+	var lip_top: float = hh - FRONT_LIP_HEIGHT
+	var lip_inset: float = maxf(0.0, ch - FRONT_LIP_HEIGHT)
+	_front_lip.polygon = PackedVector2Array([
+		Vector2(-hw + lip_inset, lip_top), Vector2(hw - lip_inset, lip_top),
+		Vector2(hw - ch, hh), Vector2(-hw + ch, hh),
+	])
+
+	_wash.polygon = PackedVector2Array([
+		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
+		Vector2(hw, -hh + ch), Vector2(hw, plane_bottom),
+		Vector2(-hw, plane_bottom), Vector2(-hw, -hh + ch),
+	])
+
+	_cornice.polygon = PackedVector2Array([
+		Vector2(-hw - 4.0, -hh - 3.0), Vector2(hw + 4.0, -hh - 3.0),
+		Vector2(hw + 4.0, -hh + 1.0), Vector2(-hw - 4.0, -hh + 1.0),
+	])
+
+
+## Y of an AgentCharacter's origin. Feet land at band B mid-depth, so the head
+## overlaps the wall line and clears the cornice.
+func _character_y() -> float:
+	var feet_y: float = -_floor_height / 2.0 + WALL_BAND_HEIGHT + PLANE_DEPTH * 0.55
+	return feet_y - EdgeLayout.DESK_HEIGHT / 2.0
+
+
+## Y of a workstation prop. Props sit at the back edge of band B, against the
+## wall line.
+func _prop_y() -> float:
+	return -_floor_height / 2.0 + WALL_BAND_HEIGHT + 2.0
 
 
 ## Structural rebuild: destroys and recreates AgentCharacter nodes for the
@@ -555,10 +717,9 @@ func _rebuild_interior() -> void:
 		return
 	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
 	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), edge_width)
-	# Characters stand ON the 3/4-view floor plane: feet land mid-plane so
-	# the down-angle reads. Only x comes from EdgeLayout; y is fixed.
-	var feet_y: float = _floor_height / 2.0 + PLANE_DEPTH * 0.55
-	var char_y: float = feet_y - EdgeLayout.DESK_HEIGHT / 2.0
+	# Characters stand ON band B: feet land mid-plane so the down-angle reads,
+	# and heads clear the cornice. Only x comes from EdgeLayout; y is fixed.
+	var char_y: float = _character_y()
 	for i: int in range(edge_agents.size()):
 		var slot: Dictionary = edge_agents[i]
 		var char_node: AgentCharacter = AGENT_CHARACTER_SCENE.instantiate() as AgentCharacter
@@ -574,7 +735,7 @@ func _rebuild_interior() -> void:
 		prop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		prop.position = Vector2(
 			positions[i].x + EdgeLayout.DESK_WIDTH / 2.0 - 10.0,
-			_floor_height / 2.0 - 2.0
+			_prop_y()
 		)
 		_agent_slots_node.add_child(prop)
 
@@ -611,13 +772,28 @@ func _reposition_interior(effective_width: float) -> void:
 	var children: Array[Node] = _agent_slots_node.get_children()
 	if children.is_empty():
 		return
+	# _rebuild_interior adds one prop then one character per agent, so the
+	# child list is pairs. Count the characters to get the true slot count.
+	var agent_count: int = 0
+	for child: Node in children:
+		if child is AgentCharacter:
+			agent_count += 1
+	if agent_count == 0:
+		return
 	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, effective_width)
-	var positions: Array[Vector2] = EdgeLayout.calculate_positions(children.size(), edge_width)
-	var center_offset: Vector2 = Vector2(EdgeLayout.DESK_WIDTH / 2.0, EdgeLayout.DESK_HEIGHT / 2.0)
-	for i: int in range(mini(children.size(), positions.size())):
-		var child: Node = children[i]
-		if child is Node2D:
-			(child as Node2D).position = positions[i] + center_offset
+	var positions: Array[Vector2] = EdgeLayout.calculate_positions(agent_count, edge_width)
+	var char_y: float = _character_y()
+	var prop_y: float = _prop_y()
+	var slot: int = 0
+	for child: Node in children:
+		if slot >= positions.size():
+			break
+		var base_x: float = positions[slot].x + EdgeLayout.DESK_WIDTH / 2.0
+		if child is AgentCharacter:
+			(child as AgentCharacter).position = Vector2(base_x, char_y)
+			slot += 1
+		elif child is Node2D:
+			(child as Node2D).position = Vector2(base_x - 10.0, prop_y)
 
 
 ## Recomputes the ActiveEdgeGlow outline segment (criterion #124.4 — glow

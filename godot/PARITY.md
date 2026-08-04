@@ -119,3 +119,119 @@ The nameplate/parchment nine-patches then also render at UI resolution (`NinePat
 - No flat-color vector polygons beside pixel art (exterior, cornice, plinth: texture them or paint sprites).
 - No `TRANS_BACK` / spring overshoot — the system is precise.
 - No vector-font text in world space.
+
+---
+
+# Phase 4 — floor anatomy & rotation parity
+
+Follow-up to `PARITY.md`. Grounded in the post-b472593 build (screenshot 2026-08-04): scale regime, backdrops, shaft, and roof are correct. Two design gaps remain — the focused floor reads as a rampart, and edge rotation reads as a teleport. This file is the implementation spec for both.
+
+All values in **world/art px** (camera zoom 6 owns magnification). Demo px ÷ 4 = world px.
+
+---
+
+## 1. Floor anatomy — from rampart to room
+
+### Current (wrong)
+
+The T15 n-gon (`_background`, 280×40) is textured edge-to-edge with `stone_wall`; windows/torches are embedded in the brick; agents/props render below the slab, visually lost. 100% wall, 0% room.
+
+### Target — three depth bands (demo anatomy)
+
+```
+        ┌ cornice (light stone strip, 2 px)
+ band A │ BACK WALL — one row of stone_wall/wall_moss, 16 px
+        │   windows + torches live ONLY here
+        ├───────────────────────────────────
+ band B │ FLOOR PLANE — stone_floor/wood_floor in the
+        │   3/4 trapezoid, ~20 px deep, flare 8 px
+        │   props sit at the back of it, against the wall line
+        │   agents stand ON it, feet at plane mid-depth,
+        │   heads overlapping ABOVE the wall line
+        ├───────────────────────────────────
+ band C │ FRONT LIP — plinth shadow line, 3 px, #0f1117-ish
+```
+
+Ratio flips from 40:0 (all wall) to **16 wall : 24 floor**. The agents become the largest, brightest element on the slab — that's the demo's read.
+
+### Implementation notes (`floor_scene.gd`)
+
+- Keep the n-gon as the **silhouette/clip only**. Texture its top 16 px band with the wall tile (either a second Polygon2D clipped to the band, or UV-map the wall texture so rows below 16 px sample the floor tile — the two-polygon approach is simpler and cheaper than a shader).
+- `_rebuild_dressing()`: windows and torches reposition onto the wall band (`y ≈ -_floor_height/2 + 8`). Delete the current mid-slab placement.
+- The existing 3/4 plane is right — set `PLANE_DEPTH = 20`, `PLANE_FLARE = 8`, and give it the floor tile per floor type (stone for Main Hall, wood for orkistrator — pull from a per-floor `floor_tile` field, default `stone_floor`).
+- Agents: `feet_y = -_floor_height/2 + 16 + PLANE_DEPTH * 0.55` — heads clear the cornice by ~6 px. Props: back edge of the plane, `y = -_floor_height/2 + 16 + 2`.
+- **Per-floor wash** (demo's soft-light gradient): one `ColorRect` over bands A+B, `CanvasItemMaterial BLEND_MODE_MUL`, alpha ≈ 0.15. Suggested tints: Main Hall `#3a4a3a`, Archive `#2e3448`, orkistrator `#4a3a2e`. This is what gives floors identity beyond brick gray.
+- Label/nameplate stays on the UILayer (Phase 3 rule) — never inside band A.
+
+### Acceptance
+
+- On the focused floor, an idle agent is fully visible, feet grounded on floor tiles, head above the wall line.
+- No window or torch below the wall band.
+- Two adjacent floors are distinguishable by wash tint at 0.4 fisheye scale.
+
+---
+
+## 2. Edge rotation — from teleport to turn
+
+### Current (wrong)
+
+`_rotate_focused_edge()` tweens the ENTIRE floor node ±max(region·0.18, 320) px — the whole building flies off-screen and snaps back in two 0.15 s halves. Reads as a teleport; with an empty target edge, nothing visibly changes at all.
+
+### Target — the room turns; the building stays
+
+Ship **A + B** together; C is optional taste. One continuous **0.55 s, TRANS_EXPO / EASE_OUT** motion (never two half-tweens, never TRANS_BACK).
+
+**A. Interior carousel.** The slab, silhouette, and dressing stay fixed. Only the contents layer (`AgentSlots` + props) moves:
+
+```gdscript
+# direction: +1 rotate right
+var edge_w: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
+var tw := create_tween().set_parallel(true)\
+    .set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+tw.tween_property(_agent_slots_node, "position:x", -direction * edge_w, 0.275)
+tw.tween_property(_agent_slots_node, "modulate:a", 0.0, 0.2)
+tw.chain().tween_callback(func() -> void:
+    set_active_edge(new_edge)                       # rebuild for the new edge
+    _agent_slots_node.position.x = direction * edge_w
+)
+tw.chain().tween_property(_agent_slots_node, "position:x", 0.0, 0.275)
+tw.parallel().tween_property(_agent_slots_node, "modulate:a", 1.0, 0.25)
+```
+
+Delete the floor-node `position:x` tween from `tower_manager.gd` entirely.
+
+**B. Wall UV scroll.** Simultaneously tween the wall band's texture offset by one edge width in the same direction — brick streaming past sells "the cylinder is turning" even when both edges are empty:
+
+```gdscript
+# wall_poly.texture_offset is in texture px; 1 world px = 1 texture px here
+tw.parallel().tween_property(wall_poly, "texture_offset:x",
+    wall_poly.texture_offset.x + direction * edge_w, 0.55)
+```
+
+(If band A is UV-mapped instead of a separate polygon, tween the uv array's x via a `tween_method` — same visual.)
+
+**C. Fake perspective (optional).** During the slide, `_agent_slots_node.scale.x` 1.0 → 0.9 → 1.0 (two chained 0.275 s halves). Scale only — no skew, no rotation, no bounce.
+
+**Orientation widget.** Port the demo's hex diagram as a small UILayer control (bottom-left, ~72 px screen): the floor's current n-gon drawn as `Line2D`/`draw_polygon`, active edge highlighted (`#FBB13C` at glow, others `#363a4f`), rotating 360/sides° per step with the same 0.55 s EXPO ease. It doubles as the composite-load readout (side count is already dynamic from T15). Without it, rotation on an empty edge is invisible.
+
+### Acceptance
+
+- Rotating with agents on both edges: old crew slides out one edge-width while new crew slides in; slab never moves.
+- Rotating between two empty edges: wall brick visibly scrolls + hex widget turns — the action is never silent.
+- No motion anywhere uses TRANS_BACK or exceeds one continuous ease.
+
+---
+
+## 3. Small polish (same PR)
+
+| Issue | Fix |
+|:--|:--|
+| Moon's screentone halo clips as a hard square | Fade the dither's alpha radially in the PNG (or drop the halo — the demo moon has none) |
+| Gray base hexagon under Main Hall reads as a floating pedestal | Narrow to shaft width (~48 px), darken to `#1a1d26`, tuck 4 px under the bottom slab — it's a plinth, not a plaza |
+| Archive floor's windows/torches at 0.4 scale become sub-pixel noise | Hide dressing below fisheye distance 1 (`set_show_interior` already gates interior — gate `_dressing` the same way at distance ≥ 2) |
+
+## Order of work
+
+1. Floor bands (§1) — biggest visual payoff, self-contained in `floor_scene.gd`.
+2. Rotation A+B (§2) — depends on §1's wall/contents split.
+3. Hex widget + polish (§2 widget, §3).

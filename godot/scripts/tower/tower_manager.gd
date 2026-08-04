@@ -15,6 +15,15 @@ signal floors_changed()
 signal agent_activity_changed()
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
+
+## Phase 4 per-floor dressing, keyed by floor name. The tile names the band B
+## texture, the wash names the multiply tint over bands A and B.
+const FLOOR_DRESSING: Dictionary = {
+	"main": {"tile": "stone_floor", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+	"archive": {"tile": "stone_floor", "wash": Color(0.180, 0.204, 0.282, 1.0)},
+	"orkistrator": {"tile": "wood_floor", "wash": Color(0.290, 0.227, 0.180, 1.0)},
+	"_default": {"tile": "stone_floor", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+}
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
 ## PARITY (2026-08-04) — the tower world lives in 1x art pixels and the camera
@@ -27,8 +36,6 @@ const BASE_FLOOR_WIDTH: float = 280.0
 const BASE_FLOOR_HEIGHT: float = 40.0
 const BASE_TOWER_RADIUS: float = 40.0
 const FLOOR_SPACING: float = 56.0
-## Horizontal slide distance of an edge rotation, in art px.
-const EDGE_SLIDE_PX: float = 60.0
 ## Demo refocus timing. Position, scale and alpha all move together over this
 ## duration with an expo ease out. No overshoot anywhere.
 const REFOCUS_DUR: float = 0.55
@@ -151,6 +158,10 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.floor_label = label
 	instance.is_permanent = permanent
 	instance.polygon_sides = _config.polygon_sides
+	# Phase 4 — per-floor identity: floor tile and multiply wash tint.
+	var dressing: Dictionary = FLOOR_DRESSING.get(floor_name, FLOOR_DRESSING["_default"])
+	instance.floor_tile = dressing["tile"]
+	instance.wash_tint = dressing["wash"]
 	instance.set_meta("floor_name", floor_name)
 	if instance.has_method("configure_load_params"):
 		instance.configure_load_params(
@@ -241,6 +252,10 @@ func _apply_fisheye_layout() -> void:
 		_fisheye_tween.tween_property(floor_node, "scale", target_scale, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		_fisheye_tween.tween_property(floor_node, "modulate:a", target_alpha, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		floor_node.set_show_interior(show_interior)
+		# Dressing follows the same distance rule. At distance 2 or more the
+		# windows and torches drop below one screen pixel and read as noise.
+		if floor_node.has_method("set_show_dressing"):
+			floor_node.set_show_dressing(distance < 2)
 
 
 func _scroll_focus(direction: int) -> void:
@@ -401,21 +416,14 @@ func _rotate_focused_edge(direction: int) -> void:
 	var new_edge: int = (current_edge + direction) % sides
 	if new_edge < 0:
 		new_edge += sides
-	# Home is always the layout x (0). Capturing floor_node.position.x here
-	# would compound drift when clicks interrupt a slide mid-flight.
-	var home_x: float = 0.0
-	var slide_offset: float = EDGE_SLIDE_PX * (-direction)
+	# Phase 4: the floor node itself never moves. FloorScene.rotate_to_edge
+	# turns the interior carousel and scrolls the wall band. The manager keeps
+	# only the per-floor kill discipline, so spam clicks cannot stack tweens.
 	var prev: Tween = _edge_tweens.get(floor_node)
 	if prev != null and prev.is_valid():
 		prev.kill()
-	var tween: Tween = create_tween()
+	var tween: Tween = floor_node.rotate_to_edge(new_edge, direction)
 	_edge_tweens[floor_node] = tween
-	tween.tween_property(floor_node, "position:x", home_x + slide_offset, 0.15)
-	tween.tween_callback(func() -> void:
-		floor_node.set_active_edge(new_edge)
-		floor_node.position.x = home_x - slide_offset
-	)
-	tween.tween_property(floor_node, "position:x", home_x, 0.15)
 	tween.finished.connect(func() -> void: _edge_tweens.erase(floor_node))
 
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://main"]
+[gd_scene load_steps=13 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/tower/backdrop_parallax.gd" id="9"]
 [ext_resource type="Texture2D" path="res://assets/backdrops/stair_shaft.png" id="10"]
 [ext_resource type="Script" path="res://scripts/ui/world_labels.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/ui/edge_compass.gd" id="12"]
 
 [node name="Main" type="Node2D"]
 
@@ -76,6 +77,18 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("11")
+
+[node name="EdgeCompass" type="Control" parent="UILayer"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -88.0
+offset_right = 88.0
+offset_bottom = -16.0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("12")
 
 [node name="PanelManager" type="Control" parent="UILayer"]
 anchors_preset = 15
