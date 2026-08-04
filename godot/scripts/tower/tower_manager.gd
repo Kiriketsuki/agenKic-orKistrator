@@ -396,17 +396,23 @@ func get_floor_infos() -> Array[Dictionary]:
 
 
 ## Snaps the camera to the base zoom for the current viewport height. The base
-## is floorf(viewport_h / 180) pulled down to the nearest ZOOM_LEVELS entry at
-## or below it, so 1080p lands on 6 and a small window still gets 4.
+## is floorf(viewport_h / 360) pulled down to the nearest ZOOM_LEVELS entry at
+## or below it, so 2160p (the doubled design canvas) lands on 6 and a small
+## window still gets 4.
 func _apply_base_zoom() -> void:
 	if _user_zoom_override:
 		return
-	# Zoom derives from the DESIGN canvas (1080 -> 6), not the OS window: the
-	# canvas_items stretch already maps design px to window px, so using the
-	# window height here would double-scale (a 1066px tile picked 5, not 6).
-	var raw: float = floorf(get_tree().root.content_scale_size.y / 180.0)
+	# Zoom derives from the DESIGN canvas, not the OS window: the canvas_items
+	# stretch already maps design px to window px, so using the window height
+	# here would double-scale. The design canvas doubled from 1920x1080 to
+	# 3840x2160 (project.godot), so the divisor doubled from 180 to 360 to
+	# keep the same base zoom (and the same on-screen world size) at every
+	# window size the divisor by 180 used to produce. Using 180 unchanged
+	# would compute a base zoom twice as large as before, zooming the world
+	# in instead of leaving it the same size, only sharper.
+	var raw: float = floorf(get_tree().root.content_scale_size.y / 360.0)
 	if raw < 1.0:
-		raw = floorf(get_viewport_rect().size.y / 180.0)
+		raw = floorf(get_viewport_rect().size.y / 360.0)
 	var z: int = ZOOM_LEVELS[0]
 	for level: int in ZOOM_LEVELS:
 		if float(level) <= raw:

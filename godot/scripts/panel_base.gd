@@ -67,8 +67,8 @@ enum ResizeEdge {
 }
 
 const MATERIALIZE_DURATION: float = 0.22
-const HANDLE_THICKNESS: float = 12.0
-const TITLE_BAR_HEIGHT: float = 36.0
+const HANDLE_THICKNESS: float = 24.0
+const TITLE_BAR_HEIGHT: float = 72.0
 const DEFAULT_BORDER_SHIMMER_COLOR: Color = Color(0.62, 0.72, 0.95, 1.0)
 
 @export var panel_id: String = ""

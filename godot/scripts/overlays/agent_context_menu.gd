@@ -333,7 +333,7 @@ func _toast_message(text: String, color: Color) -> void:
 	_toast.add_theme_color_override("font_color", color)
 	_toast.modulate.a = 1.0
 	_toast.visible = true
-	_toast.position = get_viewport().get_mouse_position() + Vector2(12.0, 12.0)
+	_toast.position = get_viewport().get_mouse_position() + Vector2(24.0, 24.0)
 
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()

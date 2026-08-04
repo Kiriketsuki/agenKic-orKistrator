@@ -249,8 +249,8 @@ func _configure_font() -> void:
 	font.allow_system_fallback = true
 	_history.add_theme_font_override("normal_font", font)
 	_history.add_theme_font_override("bold_font", font)
-	_history.add_theme_font_size_override("normal_font_size", 14)
-	_history.add_theme_font_size_override("bold_font_size", 14)
+	_history.add_theme_font_size_override("normal_font_size", 28)
+	_history.add_theme_font_size_override("bold_font_size", 28)
 	_name_label.add_theme_font_override("font", font)
 
 

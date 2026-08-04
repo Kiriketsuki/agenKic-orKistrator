@@ -25,7 +25,7 @@ const HUB_COLOR: Color = Color("#2a2f45")
 
 @export var tower_path: NodePath = NodePath("/root/Main/Tower")
 ## Circumradius of the drawn n-gon, in window pixels.
-@export var radius: float = 28.0
+@export var radius: float = 56.0
 
 var _tower: Node = null
 var _sides: int = 6
@@ -34,7 +34,7 @@ var _active_edge: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size = Vector2(72.0, 72.0)
+	custom_minimum_size = Vector2(144.0, 144.0)
 	_tower = get_node_or_null(tower_path)
 	if _tower == null:
 		set_process(false)
@@ -98,5 +98,5 @@ func _draw() -> void:
 		var a: Vector2 = points[i]
 		var b: Vector2 = points[(i + 1) % _sides]
 		var is_active: bool = i == posmod(_active_edge, _sides)
-		draw_line(a, b, ACTIVE_COLOR if is_active else IDLE_COLOR, 3.0 if is_active else 1.5)
-	draw_circle(centre, 2.0, HUB_COLOR)
+		draw_line(a, b, ACTIVE_COLOR if is_active else IDLE_COLOR, 6.0 if is_active else 3.0)
+	draw_circle(centre, 4.0, HUB_COLOR)

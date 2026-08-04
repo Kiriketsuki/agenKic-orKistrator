@@ -20,12 +20,14 @@ const PATCH_V: int = 4
 const PATCH_H: int = 6
 const INTERIOR_COLOR: Color = Color("#1a1626")
 const TEXT_COLOR: Color = Color("#d9a94a")
-const TEXT_SIZE: int = 14
-const PLATE_HEIGHT: float = 26.0
-const PLATE_PADDING: float = 18.0
-## Screen-space offset from the floor origin, in window pixels. The plate sits
-## above the floor label, which WorldLabels puts at y -150.
-const PLATE_OFFSET_Y: float = -188.0
+const TEXT_SIZE: int = 28
+const PLATE_HEIGHT: float = 52.0
+const PLATE_PADDING: float = 36.0
+## Screen-space offset from the floor origin, in window (design-canvas)
+## pixels. The plate sits above the floor label. Doubled alongside every
+## other screen-space UI size when project.godot's design canvas doubled
+## from 1920x1080 to 3840x2160.
+const PLATE_OFFSET_Y: float = -376.0
 ## Fade applied when no floor is in focus yet.
 const FADE_DURATION: float = 0.2
 
@@ -159,7 +161,7 @@ func _refresh_text() -> void:
 func _resize_plate() -> void:
 	var width: float = _font.get_string_size(
 		_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, TEXT_SIZE).x + PLATE_PADDING * 2.0
-	_frame.size = Vector2(maxf(width, 96.0), PLATE_HEIGHT)
+	_frame.size = Vector2(maxf(width, 192.0), PLATE_HEIGHT)
 
 
 ## Camera zoom at which the plate renders at its authored 1:1 size. Above

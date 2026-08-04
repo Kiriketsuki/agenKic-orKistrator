@@ -10,8 +10,8 @@ const MASTER_RATIO_DEFAULT: float = 0.6
 const MASTER_RATIO_MIN: float = 0.2
 const MASTER_RATIO_MAX: float = 0.8
 const MASTER_RATIO_SNAP_POINTS: Array[float] = [0.25, 0.5, 0.75]
-const DIVIDER_WIDTH: float = 8.0
-const DOCK_PREVIEW_WIDTH: float = 72.0
+const DIVIDER_WIDTH: float = 16.0
+const DOCK_PREVIEW_WIDTH: float = 144.0
 
 ## Singleton panel id for the spell scroll — only one may be open at a time;
 ## opening a different agent's scroll retargets this panel instead of
@@ -29,7 +29,7 @@ const QUEST_BOARD_PANEL_ID: String = "quest-board"
 const GRID_PRESET_NAME: String = "GRID"
 const FOCUS_PRESET_NAME: String = "FOCUS"
 const GRID_COLUMNS: int = 2
-const GRID_PADDING: float = 12.0
+const GRID_PADDING: float = 24.0
 const FOCUS_WIDTH_RATIO: float = 0.65
 
 ## T18 (#129) — panel effect knobs live in the same tower.json the tower
@@ -122,7 +122,7 @@ func open_panel(panel_id: String, title: String, agent_id: String = "", preferre
 	panel.set_mode(mode_preferences.get(agent_id, preferred_mode) if not agent_id.is_empty() else preferred_mode)
 	panel.position = _default_floating_position(panels_by_id.size())
 	_floating_layer.add_child(panel)
-	panel.size = Vector2(maxf(420.0, panel.custom_minimum_size.x), maxf(280.0, panel.custom_minimum_size.y))
+	panel.size = Vector2(maxf(840.0, panel.custom_minimum_size.x), maxf(560.0, panel.custom_minimum_size.y))
 	_wire_panel(panel)
 	panels_by_id[panel_id] = panel
 	focus_panel(panel)

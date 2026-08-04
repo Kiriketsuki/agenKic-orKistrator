@@ -16,7 +16,7 @@ const EMBOSS_COLOR: Color = Color(0.72, 0.28, 0.24, 0.55)
 const GLYPH_COLOR: Color = Color(0.86, 0.74, 0.42, 1.0)
 const GLYPH: String = "❦"
 
-@export var seal_size: float = 84.0
+@export var seal_size: float = 168.0
 
 var _font: Font = ThemeDB.fallback_font
 
@@ -54,14 +54,14 @@ func _draw() -> void:
 		fill_color = SEAL_COLOR.darkened(0.35)
 	elif is_pressed():
 		fill_color = SEAL_COLOR_PRESSED
-		pressed_offset = 1.0
-		radius -= 2.0
+		pressed_offset = 2.0
+		radius -= 4.0
 	elif is_hovered():
 		fill_color = SEAL_COLOR_HOVER
-		radius += 1.5
+		radius += 3.0
 
 	# Rim (drawn slightly larger, underneath the fill).
-	draw_circle(center, radius + 2.0, RIM_COLOR)
+	draw_circle(center, radius + 4.0, RIM_COLOR)
 	# Main seal fill.
 	draw_circle(center, radius, fill_color)
 	# Emboss highlight — a soft arc toward the upper-left, suggesting a
