@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 	"github.com/google/uuid"
 )
 
@@ -73,7 +74,21 @@ func (b *Bridge) handleAgentOutput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	output, err := b.substrate.CaptureOutput(r.Context(), "agent-"+agentID, lines)
+	// screen=1 asks for the visible pane instead of scrollback history. A
+	// redrawing TUI overwrites one screen, so history capture repeats frames.
+	// A substrate without the capability falls back to history capture.
+	session := "agent-" + agentID
+	var output string
+	var err error
+	if screenParam := r.URL.Query().Get("screen"); screenParam == "1" || screenParam == "true" {
+		if sc, ok := b.substrate.(terminal.ScreenCapturer); ok {
+			output, err = sc.CaptureScreen(r.Context(), session)
+		} else {
+			output, err = b.substrate.CaptureOutput(r.Context(), session, lines)
+		}
+	} else {
+		output, err = b.substrate.CaptureOutput(r.Context(), session, lines)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -541,10 +556,10 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	switch req.Kind {
 	case "":
 		req.Kind = "sim"
-	case "sim", "claude", "codex", "opencode":
+	case "sim", "claude", "codex", "opencode", "pi":
 	default:
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "kind must be one of: sim, claude, codex, opencode",
+			Error: "kind must be one of: sim, claude, codex, opencode, pi",
 			Code:  "invalid_argument",
 		})
 		return

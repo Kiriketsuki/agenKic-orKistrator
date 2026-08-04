@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/agent"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/cliagent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/dag"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/health"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
-	"github.com/Kiriketsuki/agenKic-orKistrator/internal/cliagent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/simagent"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/supervisor"
@@ -117,7 +117,11 @@ func main() {
 		if kind == "sim" {
 			return simagent.Spawn(ctx, loopbackAddr, name, tier)
 		}
-		return cliagent.Spawn(ctx, loopbackAddr, kind, name, tier, promptFn)
+		var cliOpts []cliagent.SpawnOption
+		if sub, ok := sv.Substrate(); ok {
+			cliOpts = append(cliOpts, cliagent.WithSubstrate(sub))
+		}
+		return cliagent.Spawn(ctx, loopbackAddr, kind, name, tier, promptFn, cliOpts...)
 	}))
 	if apiKey := os.Getenv("BRIDGE_API_KEY"); apiKey != "" {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))

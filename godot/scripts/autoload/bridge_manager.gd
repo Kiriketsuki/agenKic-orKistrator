@@ -9,6 +9,10 @@ signal agent_output(chunk: BridgeData.AgentOutputChunk)
 ## Emitted once per fetch_agent_output_history() call, with the parsed backfill
 ## as an Array[BridgeData.AgentOutputChunk] (empty on any failure/parse miss).
 signal agent_output_history(agent_id: String, chunks: Array)
+## Emitted once per fetch_agent_screen() call with the raw visible tmux pane
+## text for that agent. The payload is "" on any transport or parse failure,
+## so a consumer can keep the last good frame instead of clearing the view.
+signal agent_screen(agent_id: String, text: String)
 signal connection_status_changed(status: String)
 ## Emitted when a queued write command (submit_task, submit_dag, ...) fails —
 ## either a transport failure or a non-2xx HTTP response. `reason` is the
@@ -46,6 +50,9 @@ var _sync_floors_request: HTTPRequest
 var _command_request: HTTPRequest
 var _output_history_request: HTTPRequest
 var _output_history_agent_id: String = ""
+var _screen_request: HTTPRequest
+var _screen_agent_id: String = ""
+var _screen_inflight: bool = false
 
 var _agents_synced: bool = false
 var _floors_synced: bool = false
@@ -72,6 +79,11 @@ func _ready() -> void:
 	add_child(_output_history_request)
 	_output_history_request.timeout = 10
 	_output_history_request.request_completed.connect(_on_output_history_completed)
+
+	_screen_request = HTTPRequest.new()
+	add_child(_screen_request)
+	_screen_request.timeout = 10
+	_screen_request.request_completed.connect(_on_screen_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
 	_start_initial_sync()
@@ -433,6 +445,49 @@ func _on_output_history_completed(result: int, code: int, _headers: PackedString
 		return
 	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
 	agent_output_history.emit(agent_id, _parse_output_history(parsed, agent_id))
+
+
+## Dedicated GET for the terminal chat panel. Asks the orchestrator for a
+## visible-pane snapshot (screen=1) of the agent tmux session and emits
+## agent_screen with the raw text. The single-flight and cancel pattern
+## matches fetch_agent_output_history: cancel_request() never fires
+## request_completed in Godot 4, so a stale response cannot land under a new
+## agent id. _screen_agent_id is set only after the request really starts.
+## A poll tick that lands while a request for the same agent is still in
+## flight returns at once. cancel_request() fires no request_completed, so a
+## cancel on every tick could starve the panel of every snapshot and of every
+## failure signal. A request for a different agent still cancels, because that
+## response is no longer wanted, and the HTTPRequest timeout clears the flag.
+func fetch_agent_screen(agent_id: String) -> void:
+	if _screen_inflight:
+		if _screen_agent_id == agent_id:
+			return
+		_screen_request.cancel_request()
+		_screen_inflight = false
+	var url: String = base_url + "/api/agents/" + agent_id + "/output?screen=1&lines=50"
+	var err: int = _screen_request.request(url)
+	if err != OK:
+		agent_screen.emit(agent_id, "")
+		return
+	_screen_agent_id = agent_id
+	_screen_inflight = true
+
+
+func _on_screen_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var agent_id: String = _screen_agent_id
+	_screen_inflight = false
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		agent_screen.emit(agent_id, "")
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if not (parsed is Dictionary):
+		agent_screen.emit(agent_id, "")
+		return
+	var payload: Variant = (parsed as Dictionary).get("output", "")
+	if typeof(payload) != TYPE_STRING:
+		agent_screen.emit(agent_id, "")
+		return
+	agent_screen.emit(agent_id, payload as String)
 
 
 ## Defensive parse: the /output response shape is undocumented, so this

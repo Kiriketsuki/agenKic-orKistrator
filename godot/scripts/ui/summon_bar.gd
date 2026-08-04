@@ -6,7 +6,7 @@ extends HBoxContainer
 const KINDS: Array[Dictionary] = [
 	{"kind": "claude", "label": "Summon Claude"},
 	{"kind": "codex", "label": "Summon Codex"},
-	{"kind": "opencode", "label": "Summon OpenCode"},
+	{"kind": "pi", "label": "Summon Pi"},
 	{"kind": "sim", "label": "Summon Sim"},
 ]
 

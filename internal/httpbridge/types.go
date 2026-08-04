@@ -132,7 +132,7 @@ type SSEFloorRemoved struct {
 // are optional — the server picks a fantasy name and rotates tiers.
 type SpawnAgentRequest struct {
 	// Kind selects the worker implementation: "sim" (default), "claude",
-	// "codex", or "opencode".
+	// "codex", "opencode", or "pi".
 	Kind string `json:"kind,omitempty"`
 	Name string `json:"name,omitempty"`
 	Tier string `json:"tier,omitempty"`
