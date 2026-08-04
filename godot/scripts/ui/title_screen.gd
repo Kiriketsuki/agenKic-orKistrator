@@ -5,7 +5,7 @@ extends Control
 ## Splits into a left wordmark half and a right menu half. The menu supports
 ## keyboard (arrow keys plus Enter) and mouse activation, with a teal focus
 ## highlight on the active entry. ENTER THE TOWER fades to black and loads
-## the tower scene. GRIMOIRE opens a placeholder settings panel with a back
+## the tower scene. GRIMOIRE opens the sigil config page with a back
 ## action. DEPART quits the app. The bridge status rune polls
 ## BridgeManager's connection state and shows a teal "connected" state or a
 ## dim "disconnected" state.
@@ -39,7 +39,6 @@ const COLOR_DIM_GRAY: Color = Color(0.4, 0.4, 0.42, 1.0)
 @onready var _rune_label: Label = %RuneLabel
 @onready var _grimoire_panel: Control = %GrimoirePanel
 @onready var _grimoire_back_button: Button = %GrimoireBackButton
-@onready var _grimoire_body: Label = %GrimoireBody
 @onready var _menu_root: Control = %MenuRoot
 @onready var _backdrop_container: SubViewportContainer = %BackdropContainer
 @onready var _backdrop_viewport: SubViewport = %BackdropViewport
@@ -48,8 +47,8 @@ var _focused_index: int = 0
 var _backdrop_bake_frames_left: int = BACKDROP_BAKE_FRAMES
 var _rune_poll_timer: float = 0.0
 var _transitioning: bool = false
-## Grimoire Summoning (F3) — the sigil config page replaces the F1
-## placeholder GrimoireBody label the first time the keeper opens GRIMOIRE.
+## Grimoire Summoning (F3) — the sigil config page, built in code and
+## dropped into GrimoirePanel/Content at _ready.
 var _sigil_config_page: SigilConfigPage
 var _sigil_config: SigilConfig
 var _providers_loaded: bool = false
@@ -67,7 +66,6 @@ func _ready() -> void:
 	_fade_rect.color = Color(0, 0, 0, 0)
 	_fade_rect.visible = false
 	_grimoire_panel.visible = false
-	_grimoire_body.visible = false
 
 	_sigil_config = SigilConfig.load_from_file()
 	_sigil_config_page = SigilConfigPage.new()
