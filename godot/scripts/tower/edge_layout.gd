@@ -1,9 +1,11 @@
 class_name EdgeLayout
 ## Calculates desk positions for agents along a floor edge.
 
-const DESK_WIDTH: float = 40.0
-const DESK_HEIGHT: float = 50.0
-const DESK_SPACING: float = 10.0
+## Art-px metrics. One desk slot is the 16x20 sprite cell plus a pixel of
+## breathing room on each side.
+const DESK_WIDTH: float = 20.0
+const DESK_HEIGHT: float = 20.0
+const DESK_SPACING: float = 6.0
 
 
 ## Returns an array of Vector2 positions for agent desks along the edge.

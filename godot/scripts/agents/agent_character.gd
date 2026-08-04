@@ -45,25 +45,19 @@ const CLASS_COLORS: Dictionary = {
 	CharacterClass.APPRENTICE: Color(0.65, 0.65, 0.75, 1.0),
 }
 
-# T22 design-pack sheets: 16x20 cells, 4 columns x 5 rows, row order matches
-# AnimState (idle, walking, working, reporting, stunned). See
-# assets/asset_manifest.json.
-const CLASS_SHEETS: Dictionary = {
-	CharacterClass.ALCHEMIST:  preload("res://assets/sprites/alchemist.png"),
-	CharacterClass.SCRIBE:     preload("res://assets/sprites/scribe.png"),
-	CharacterClass.ARCHMAGE:   preload("res://assets/sprites/archmage.png"),
-	CharacterClass.WARDKEEPER: preload("res://assets/sprites/wardkeeper.png"),
-	CharacterClass.LIBRARIAN:  preload("res://assets/sprites/librarian.png"),
-	CharacterClass.ENCHANTER:  preload("res://assets/sprites/enchanter.png"),
-	CharacterClass.APPRENTICE: preload("res://assets/sprites/apprentice.png"),
+# T22 design-pack frames: the shipped kit SpriteFrames resources. Each cuts
+# the 64x100 sheet into 16x20 cells, one looping animation per AnimState row
+# (idle 4, walking 8, working 8, reporting 6, stunned 6 fps). See
+# assets/asset_manifest.json and PORTING.md.
+const CLASS_FRAMES: Dictionary = {
+	CharacterClass.ALCHEMIST:  preload("res://assets/sprites/alchemist_frames.tres"),
+	CharacterClass.SCRIBE:     preload("res://assets/sprites/scribe_frames.tres"),
+	CharacterClass.ARCHMAGE:   preload("res://assets/sprites/archmage_frames.tres"),
+	CharacterClass.WARDKEEPER: preload("res://assets/sprites/wardkeeper_frames.tres"),
+	CharacterClass.LIBRARIAN:  preload("res://assets/sprites/librarian_frames.tres"),
+	CharacterClass.ENCHANTER:  preload("res://assets/sprites/enchanter_frames.tres"),
+	CharacterClass.APPRENTICE: preload("res://assets/sprites/apprentice_frames.tres"),
 }
-
-const SHEET_FRAME_SIZE: Vector2i = Vector2i(16, 20)
-const SHEET_COLUMNS: int = 4
-const SHEET_ANIMS: Array = [
-	["idle", 4.0], ["walking", 8.0], ["working", 8.0],
-	["reporting", 6.0], ["stunned", 6.0],
-]
 
 const ANIM_BY_STATE: Dictionary = {
 	AnimState.IDLE:      "idle",
@@ -72,9 +66,6 @@ const ANIM_BY_STATE: Dictionary = {
 	AnimState.REPORTING: "reporting",
 	AnimState.STUNNED:   "stunned",
 }
-
-## SpriteFrames per class, built once and shared by every character instance.
-static var _frames_cache: Dictionary = {}
 
 const CLASS_LABELS: Dictionary = {
 	CharacterClass.ALCHEMIST:  "ALC",
@@ -104,13 +95,15 @@ const STATE_BY_NAME: Dictionary = {
 	"crashed":   AnimState.STUNNED,
 }
 
-# Multiplicative tints applied on top of the class base color.
+# Multiplicative tints applied on top of the class base color. Softened for
+# the real colored kit art. The earlier values were tuned for flat ColorRects
+# and they muddied real pixel colors.
 const STATE_TINTS: Dictionary = {
 	AnimState.IDLE:      Color(1.0,  1.0,  1.0,  1.0),
-	AnimState.WALKING:   Color(0.8,  0.9,  1.0,  1.0),
-	AnimState.WORKING:   Color(0.9,  0.95, 0.6,  1.0),
-	AnimState.REPORTING: Color(0.9,  0.85, 0.4,  1.0),
-	AnimState.STUNNED:   Color(0.5,  0.3,  0.3,  0.8),
+	AnimState.WALKING:   Color(0.92, 0.96, 1.0,  1.0),
+	AnimState.WORKING:   Color(1.0,  1.0,  0.88, 1.0),
+	AnimState.REPORTING: Color(1.0,  0.94, 0.78, 1.0),
+	AnimState.STUNNED:   Color(0.6,  0.45, 0.45, 0.85),
 }
 
 const FLOATING_RUNE_SCENE: PackedScene = preload("res://scenes/floating_rune.tscn")
@@ -140,6 +133,12 @@ const PALETTE_SHADER: Shader = preload("res://shaders/palette_swap.gdshader")
 ## max_particles_per_agent through FloorScene.configure_particle_budget().
 const DEFAULT_PARTICLE_BUDGET: int = 24
 
+## T22 art-scale correction. ParticleMath returns spatial values authored for
+## the dead 2.5x sprite scale, and particle_math.gd stays untouched because
+## tests/particle_math_test.gd asserts those numbers. This factor rescales
+## orbit_radius and plume_velocity at the call site only.
+const PARTICLE_SPACE_SCALE: float = 0.4
+
 ## Set by the owner (FloorScene) before add_child so it is ready in _ready().
 var agent_id: String = ""
 
@@ -153,14 +152,12 @@ var _shader_material: ShaderMaterial = null
 var _particle_budget: int = DEFAULT_PARTICLE_BUDGET
 
 @onready var _body: AnimatedSprite2D = $Body
-@onready var _class_label: Label = $ClassLabel
 @onready var _click_area: Area2D = $ClickArea
 @onready var _effect_particles: CPUParticles2D = $EffectParticles
 @onready var _ambient_particles: CPUParticles2D = $AmbientParticles
 
 
 func _ready() -> void:
-	_class_label.add_theme_font_size_override("font_size", 7)
 	_click_area.input_event.connect(_on_area_input_event)
 	_click_area.mouse_entered.connect(func() -> void: character_hovered.emit(agent_id))
 	_click_area.mouse_exited.connect(func() -> void: character_unhovered.emit(agent_id))
@@ -182,7 +179,7 @@ func _process(delta: float) -> void:
 	if _anim_state != AnimState.WORKING:
 		return
 	_pulse_time += delta * 4.0
-	var pulse: float = 0.85 + sin(_pulse_time) * 0.15
+	var pulse: float = 0.92 + sin(_pulse_time) * 0.08
 	_body.modulate = STATE_TINTS[AnimState.WORKING] * Color(pulse, pulse, pulse, 1.0)
 
 
@@ -256,7 +253,7 @@ func receive_output(chunk: BridgeData.AgentOutputChunk) -> void:
 			oldest.accelerate_fade()
 	var rune: FloatingRune = FLOATING_RUNE_SCENE.instantiate() as FloatingRune
 	add_child(rune)
-	rune.position = Vector2(0.0, -34.0)
+	rune.position = Vector2(0.0, -14.0)
 	rune.setup(result[&"text"], result[&"keywords"], provider)
 	_active_runes.append(rune)
 	rune.tree_exiting.connect(func() -> void:
@@ -291,9 +288,8 @@ func play_exit_animation() -> void:
 ## instead of a flat class tint) — not automatic today; wire it alongside
 ## whatever T22 uses to flip _body/_animated_sprite visibility.
 func _apply_class_visuals() -> void:
-	_body.sprite_frames = _frames_for_class(_character_class)
+	_body.sprite_frames = CLASS_FRAMES[_character_class]
 	_body.play(ANIM_BY_STATE[_anim_state])
-	_class_label.text = CLASS_LABELS[_character_class]
 	if _shader_material != null:
 		# Body is real sprite art now (asset port kit) — per the T16 contract,
 		# class_color stays WHITE so the sheet's own colors drive the palette.
@@ -305,32 +301,6 @@ func _apply_state_tint() -> void:
 		_body.modulate = STATE_TINTS[_anim_state]
 	if _body.sprite_frames != null:
 		_body.play(ANIM_BY_STATE[_anim_state])
-
-
-## Builds (or returns cached) SpriteFrames for a class sheet: one animation
-## per AnimState row, 4 frames per row, per-state fps from the manifest.
-static func _frames_for_class(char_class: CharacterClass) -> SpriteFrames:
-	if _frames_cache.has(char_class):
-		return _frames_cache[char_class]
-	var sheet: Texture2D = CLASS_SHEETS[char_class]
-	var frames := SpriteFrames.new()
-	frames.remove_animation("default")
-	for row: int in range(SHEET_ANIMS.size()):
-		var anim_name: String = SHEET_ANIMS[row][0]
-		var fps: float = SHEET_ANIMS[row][1]
-		frames.add_animation(anim_name)
-		frames.set_animation_speed(anim_name, fps)
-		frames.set_animation_loop(anim_name, true)
-		for col: int in range(SHEET_COLUMNS):
-			var atlas := AtlasTexture.new()
-			atlas.atlas = sheet
-			atlas.region = Rect2(
-				col * SHEET_FRAME_SIZE.x, row * SHEET_FRAME_SIZE.y,
-				SHEET_FRAME_SIZE.x, SHEET_FRAME_SIZE.y
-			)
-			frames.add_frame(anim_name, atlas)
-	_frames_cache[char_class] = frames
-	return frames
 
 
 ## Pushes provider_lut/lut_mix uniforms from the current _provider. Guarded
@@ -391,7 +361,12 @@ func _apply_particles() -> void:
 		_effect_particles.lifetime = maxf(0.05, float(params["lifetime"]))
 		_effect_particles.texture = ParticleTextures.get_texture(style)
 		_effect_particles.color = accent
-		_configure_tier_shape(params["tier"], float(params["orbit_radius"]), float(params["orbit_speed"]), float(params["plume_velocity"]))
+		_configure_tier_shape(
+			params["tier"],
+			float(params["orbit_radius"]) * PARTICLE_SPACE_SCALE,
+			float(params["orbit_speed"]),
+			float(params["plume_velocity"]) * PARTICLE_SPACE_SCALE
+		)
 
 	var ambient_enabled: bool = params["ambient_enabled"]
 	_ambient_particles.emitting = ambient_enabled
@@ -407,14 +382,14 @@ func _apply_particles() -> void:
 		_ambient_particles.texture = ParticleTextures.get_texture("dot")
 		_ambient_particles.color = Color(accent.r, accent.g, accent.b, 0.18)
 		_ambient_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
-		_ambient_particles.emission_sphere_radius = 14.0
+		_ambient_particles.emission_sphere_radius = 6.0
 		_ambient_particles.direction = Vector2(0.0, -1.0)
 		_ambient_particles.spread = 30.0
-		_ambient_particles.initial_velocity_min = 3.0
-		_ambient_particles.initial_velocity_max = 6.0
-		_ambient_particles.gravity = Vector2(0.0, -2.0)
-		_ambient_particles.scale_amount_min = 1.2
-		_ambient_particles.scale_amount_max = 2.0
+		_ambient_particles.initial_velocity_min = 1.5
+		_ambient_particles.initial_velocity_max = 2.5
+		_ambient_particles.gravity = Vector2(0.0, -1.0)
+		_ambient_particles.scale_amount_min = 0.6
+		_ambient_particles.scale_amount_max = 1.0
 
 
 ## Per-tier CPUParticles2D shape/velocity configuration for $EffectParticles.
@@ -426,9 +401,9 @@ func _configure_tier_shape(tier: int, orbit_radius: float, orbit_speed: float, p
 			_effect_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINT
 			_effect_particles.direction = Vector2(0.0, -1.0)
 			_effect_particles.spread = 60.0
-			_effect_particles.initial_velocity_min = 4.0
-			_effect_particles.initial_velocity_max = 10.0
-			_effect_particles.gravity = Vector2(0.0, -6.0)
+			_effect_particles.initial_velocity_min = 2.0
+			_effect_particles.initial_velocity_max = 4.0
+			_effect_particles.gravity = Vector2(0.0, -2.5)
 			_effect_particles.orbit_velocity_min = 0.0
 			_effect_particles.orbit_velocity_max = 0.0
 			_effect_particles.scale_amount_min = 0.5

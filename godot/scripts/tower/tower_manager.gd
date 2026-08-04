@@ -17,13 +17,21 @@ signal agent_activity_changed()
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
-const ZOOM_MIN: float = 0.5
-const ZOOM_MAX: float = 2.0
-const ZOOM_STEP: float = 0.1
+## PARITY (2026-08-04) — the tower world lives in 1x art pixels and the camera
+## is the only magnifier. Zoom is always an integer from this set, so the pixel
+## grid never shimmers. 6 is the 1080p base (1080 / 180 = 6).
+const ZOOM_LEVELS: Array[int] = [4, 5, 6, 8]
 const MAX_QUEUE_SIZE: int = 2
+## Art-px world truth. These are absolute, never derived from viewport size.
 const BASE_FLOOR_WIDTH: float = 280.0
 const BASE_FLOOR_HEIGHT: float = 40.0
 const BASE_TOWER_RADIUS: float = 40.0
+const FLOOR_SPACING: float = 56.0
+## Horizontal slide distance of an edge rotation, in art px.
+const EDGE_SLIDE_PX: float = 60.0
+## Demo refocus timing. Position, scale and alpha all move together over this
+## duration with an expo ease out. No overshoot anywhere.
+const REFOCUS_DUR: float = 0.55
 
 @export var config_path: String = "res://config/tower.json"
 
@@ -46,20 +54,27 @@ var _fisheye_tween: Tween = null
 var _overscroll_tween: Tween = null
 var _is_overscrolling: bool = false
 var _input_queue: Array[int] = []
-var _floor_spacing: float = 50.0
+var _floor_spacing: float = FLOOR_SPACING
 var _floor_width: float = BASE_FLOOR_WIDTH
 var _floor_height: float = BASE_FLOOR_HEIGHT
 var _tower_radius: float = BASE_TOWER_RADIUS
 var _master_region: Rect2 = Rect2()
+## True once the user ctrl-zooms away from the viewport-derived base level. A
+## resize then keeps their chosen zoom instead of snapping back.
+var _user_zoom_override: bool = false
+## Per-floor in-flight edge-rotate tween, killed on re-click to prevent drift.
+var _edge_tweens: Dictionary = {}
 
 @onready var _floors_container: Node2D = $FloorsContainer
 @onready var _camera: Camera2D = $Camera
 @onready var _tower_exterior: Node2D = $TowerExterior
+@onready var _stair_shaft: Sprite2D = $StairShaft
 
 
 func _ready() -> void:
 	_config = TowerConfig.from_file(config_path)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	_apply_base_zoom()
 	_spawn_permanent_floors()
 	_recalculate_layout_metrics()
 	_layout_floors()
@@ -100,13 +115,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.pressed:
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				if mb.ctrl_pressed:
-					_zoom(-ZOOM_STEP)
+					_zoom(-1)
 				else:
 					_scroll_focus(1)
 				get_viewport().set_input_as_handled()
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.ctrl_pressed:
-					_zoom(ZOOM_STEP)
+					_zoom(1)
 				else:
 					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()
@@ -170,6 +185,34 @@ func _layout_floors() -> void:
 		_floors[i].position = Vector2(0.0, i * -_floor_spacing)
 		if _floors[i].has_method("set_floor_dimensions"):
 			_floors[i].set_floor_dimensions(_floor_width, _floor_height)
+	_update_stair_shaft()
+
+
+## Tiles stair_shaft.png vertically on the tower axis so the floor stack reads
+## as one building instead of separate floating plates. The sprite spans the
+## bottom slab bottom to the top slab top, and sits behind FloorsContainer in
+## scene order.
+func _update_stair_shaft() -> void:
+	if _stair_shaft == null:
+		return
+	if _floors.is_empty():
+		_stair_shaft.visible = false
+		return
+	var tex: Texture2D = _stair_shaft.texture
+	if tex == null:
+		_stair_shaft.visible = false
+		return
+	var shaft_w: float = tex.get_width()
+	var span: float = (_floors.size() - 1) * _floor_spacing + _floor_height
+	_stair_shaft.visible = true
+	_stair_shaft.centered = false
+	_stair_shaft.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_stair_shaft.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_stair_shaft.region_enabled = true
+	_stair_shaft.region_rect = Rect2(0.0, 0.0, shaft_w, span)
+	# Top slab top edge, in Tower-local coords.
+	var top_y: float = -(_floors.size() - 1) * _floor_spacing - _floor_height / 2.0
+	_stair_shaft.position = Vector2(-shaft_w / 2.0, top_y)
 
 
 ## Tweens scale and opacity of all floors based on distance from _focused_index.
@@ -195,8 +238,8 @@ func _apply_fisheye_layout() -> void:
 			target_scale = Vector2(ADJACENT_SCALE * 0.6, ADJACENT_SCALE * 0.6)
 			target_alpha = 0.4
 			show_interior = false
-		_fisheye_tween.tween_property(floor_node, "scale", target_scale, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		_fisheye_tween.tween_property(floor_node, "modulate:a", target_alpha, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		_fisheye_tween.tween_property(floor_node, "scale", target_scale, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		_fisheye_tween.tween_property(floor_node, "modulate:a", target_alpha, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		floor_node.set_show_interior(show_interior)
 
 
@@ -225,7 +268,7 @@ func _do_scroll_tween() -> void:
 	_is_overscrolling = false
 	_scroll_tween = create_tween()
 	var target_y: float = _focused_index * -_floor_spacing
-	_scroll_tween.tween_property(_camera, "position:y", target_y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_scroll_tween.tween_property(_camera, "position:y", target_y, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	_scroll_tween.tween_callback(_on_scroll_tween_finished)
 	_apply_fisheye_layout()
 	floor_focus_changed.emit(_focused_index)
@@ -247,7 +290,7 @@ func _elastic_overscroll(direction: int) -> void:
 		_overscroll_tween.kill()
 	_overscroll_tween = create_tween()
 	_overscroll_tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_overscroll_tween.tween_callback(func() -> void: _is_overscrolling = false)
 
 
@@ -301,9 +344,47 @@ func get_floor_infos() -> Array[Dictionary]:
 	return infos
 
 
-func _zoom(amount: float) -> void:
-	var new_zoom: float = clampf(_camera.zoom.x + amount, ZOOM_MIN, ZOOM_MAX)
-	_camera.zoom = Vector2(new_zoom, new_zoom)
+## Snaps the camera to the base zoom for the current viewport height. The base
+## is floorf(viewport_h / 180) pulled down to the nearest ZOOM_LEVELS entry at
+## or below it, so 1080p lands on 6 and a small window still gets 4.
+func _apply_base_zoom() -> void:
+	if _user_zoom_override:
+		return
+	# Zoom derives from the DESIGN canvas (1080 -> 6), not the OS window: the
+	# canvas_items stretch already maps design px to window px, so using the
+	# window height here would double-scale (a 1066px tile picked 5, not 6).
+	var raw: float = floorf(get_tree().root.content_scale_size.y / 180.0)
+	if raw < 1.0:
+		raw = floorf(get_viewport_rect().size.y / 180.0)
+	var z: int = ZOOM_LEVELS[0]
+	for level: int in ZOOM_LEVELS:
+		if float(level) <= raw:
+			z = level
+	_camera.zoom = Vector2(z, z)
+
+
+## Steps one entry through ZOOM_LEVELS. Zoom is never fractional.
+func _zoom(direction: int) -> void:
+	var current: int = _nearest_zoom_index()
+	var next: int = clampi(current + signi(direction), 0, ZOOM_LEVELS.size() - 1)
+	if next == current:
+		return
+	var z: int = ZOOM_LEVELS[next]
+	_camera.zoom = Vector2(z, z)
+	_user_zoom_override = true
+	# The offset formula divides by zoom.x, so a new zoom invalidates the old offset.
+	_aim_camera_at_region()
+
+
+func _nearest_zoom_index() -> int:
+	var best: int = 0
+	var best_delta: float = INF
+	for i: int in range(ZOOM_LEVELS.size()):
+		var delta: float = absf(float(ZOOM_LEVELS[i]) - _camera.zoom.x)
+		if delta < best_delta:
+			best_delta = delta
+			best = i
+	return best
 
 
 func _rotate_focused_edge(direction: int) -> void:
@@ -320,15 +401,22 @@ func _rotate_focused_edge(direction: int) -> void:
 	var new_edge: int = (current_edge + direction) % sides
 	if new_edge < 0:
 		new_edge += sides
-	var old_x: float = floor_node.position.x
-	var slide_offset: float = maxf(_master_region.size.x * 0.18, 320.0) * (-direction)
+	# Home is always the layout x (0). Capturing floor_node.position.x here
+	# would compound drift when clicks interrupt a slide mid-flight.
+	var home_x: float = 0.0
+	var slide_offset: float = EDGE_SLIDE_PX * (-direction)
+	var prev: Tween = _edge_tweens.get(floor_node)
+	if prev != null and prev.is_valid():
+		prev.kill()
 	var tween: Tween = create_tween()
-	tween.tween_property(floor_node, "position:x", old_x + slide_offset, 0.15)
+	_edge_tweens[floor_node] = tween
+	tween.tween_property(floor_node, "position:x", home_x + slide_offset, 0.15)
 	tween.tween_callback(func() -> void:
 		floor_node.set_active_edge(new_edge)
-		floor_node.position.x = old_x - slide_offset
+		floor_node.position.x = home_x - slide_offset
 	)
-	tween.tween_property(floor_node, "position:x", old_x, 0.15)
+	tween.tween_property(floor_node, "position:x", home_x, 0.15)
+	tween.finished.connect(func() -> void: _edge_tweens.erase(floor_node))
 
 
 # --- Signal Handlers ---
@@ -623,32 +711,44 @@ func _has_floor(floor_name: String) -> bool:
 	return false
 
 
+## Panel docking calls this (see panel_manager.gd) with the screen rectangle the
+## tower still owns. Floor geometry never changes — only the camera aims, so
+## world x=0 keeps centering inside that region.
 func set_master_region(region: Rect2) -> void:
 	_master_region = region
-	_recalculate_layout_metrics()
-	_layout_floors()
-	_update_tower_frame()
-	_sync_tower_exterior()
+	_aim_camera_at_region()
+
+
+func _aim_camera_at_region() -> void:
+	if _camera == null:
+		return
+	if _master_region.size == Vector2.ZERO:
+		_camera.offset = Vector2.ZERO
+		return
+	var viewport_center: Vector2 = get_viewport_rect().size * 0.5
+	var region_center: Vector2 = _master_region.position + (_master_region.size * 0.5)
+	var zoom_x: float = maxf(_camera.zoom.x, 0.001)
+	_camera.offset = Vector2((viewport_center.x - region_center.x) / zoom_x, 0.0)
 
 
 func _on_viewport_size_changed() -> void:
+	_apply_base_zoom()
 	set_master_region(Rect2(Vector2.ZERO, get_viewport_rect().size))
 
 
+## The world is measured in art pixels, so the metrics are constants. Kept as a
+## function because several call sites still run it after structural changes.
 func _recalculate_layout_metrics() -> void:
-	if _master_region.size == Vector2.ZERO:
-		_master_region = Rect2(Vector2.ZERO, get_viewport_rect().size)
-	var viewport_size: Vector2 = _master_region.size
-	_floor_width = clampf(viewport_size.x * 0.24, BASE_FLOOR_WIDTH, 520.0)
-	_floor_height = clampf(_floor_width * 0.16, BASE_FLOOR_HEIGHT, 88.0)
-	_floor_spacing = clampf(viewport_size.y * 0.1, 50.0, 128.0)
-	_tower_radius = clampf(_floor_width * 0.14, BASE_TOWER_RADIUS, 88.0)
+	_floor_width = BASE_FLOOR_WIDTH
+	_floor_height = BASE_FLOOR_HEIGHT
+	_floor_spacing = FLOOR_SPACING
+	_tower_radius = BASE_TOWER_RADIUS
 
 
 func _update_tower_frame() -> void:
-	var center: Vector2 = _master_region.position + (_master_region.size * 0.5)
-	position = center
+	# The Tower root stays at world origin. Only the camera moves.
 	_camera.position = Vector2(0.0, _focused_index * -_floor_spacing)
+	_aim_camera_at_region()
 
 
 func _sync_tower_exterior() -> void:

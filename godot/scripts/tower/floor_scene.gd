@@ -18,9 +18,14 @@ const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.pn
 
 ## 3/4-view depth: how far the walkable floor plane extends toward the
 ## viewer below the wall, and how much wider it gets at the front edge.
-const PLANE_DEPTH: float = 26.0
-const PLANE_FLARE: float = 18.0
+## One 16 px tile row deep, matching the demo's floor band at 1x art scale.
+const PLANE_DEPTH: float = 16.0
+const PLANE_FLARE: float = 8.0
 const PROP_COUNT: int = 8
+## Wall dressing spacing, in art px.
+const WINDOW_SPACING: float = 48.0
+const WINDOW_START: float = 24.0
+const TORCH_INSET: float = 12.0
 
 ## Active states — matches BridgeData.AgentData's doc-comment vocabulary.
 ## Idle and crashed agents read as dim on the minimap/badges.
@@ -104,20 +109,12 @@ var _particle_budget: int = 24
 
 
 func _ready() -> void:
-	_name_label.text = floor_label if floor_label != "" else floor_name
-	# Parchment nameplate behind the floor name (T22 UI texture).
-	var plate := NinePatchRect.new()
-	plate.texture = NAMEPLATE_TEXTURE
-	plate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	plate.patch_margin_left = 6
-	plate.patch_margin_top = 4
-	plate.patch_margin_right = 6
-	plate.patch_margin_bottom = 4
-	plate.position = Vector2(-10.0, -9.0)
-	plate.size = Vector2(100.0, 30.0)
-	plate.show_behind_parent = true
-	_name_label.add_child(plate)
-	_name_label.add_theme_color_override("font_color", Color(0.18, 0.16, 0.09))
+	# PARITY — no vector font lives in world space any more. The floor label and
+	# the agent nameplates render on UILayer at window resolution (see
+	# scripts/ui/world_labels.gd). The node stays for API compatibility, hidden.
+	if _name_label != null:
+		_name_label.text = floor_label if floor_label != "" else floor_name
+		_name_label.visible = false
 	_current_sides = polygon_sides
 	_target_sides = polygon_sides
 	_effective_width = _floor_width
@@ -323,7 +320,8 @@ func _apply_morph_t(t: float) -> void:
 	_morph_last_width = width
 	_morph_last_glow = glow
 	_effective_width = width
-	var scaled: PackedVector2Array = FloorMorph.scale_unit_array(unit_pts, width / 2.0, _floor_height / 2.0)
+	# Silhouette is the fixed chamfered slab; only the width breathes.
+	var scaled: PackedVector2Array = _slab_polygon(width)
 	_background.polygon = scaled
 	# Keep the wall-tile UVs vertex-aligned with the morphing polygon.
 	_background.uv = scaled
@@ -430,13 +428,28 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 func set_show_interior(visible_flag: bool) -> void:
 	_interior.visible = visible_flag
 	_agent_slots_node.visible = visible_flag
-	_name_label.visible = visible_flag
+	# _name_label stays hidden. WorldLabels draws the floor name on UILayer and
+	# mirrors this same distance rule.
+
+
+## Demo-parity slab outline: a rectangle with chamfered short ends (the HTML
+## demo's clip-path), NOT the resampled n-gon lens. T15 load still drives the
+## width (breathe) and edge glow; the side-count bucket no longer changes the
+## silhouette, which the lens shape distorted beyond recognition.
+func _slab_polygon(width: float) -> PackedVector2Array:
+	var hw: float = width / 2.0
+	var hh: float = _floor_height / 2.0
+	var ch: float = minf(8.0, hh)
+	return PackedVector2Array([
+		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
+		Vector2(hw, -hh + ch), Vector2(hw, hh - ch),
+		Vector2(hw - ch, hh), Vector2(-hw + ch, hh),
+		Vector2(-hw, hh - ch), Vector2(-hw, -hh + ch),
+	])
 
 
 func _rebuild_background() -> void:
-	# T15 morphed n-gon boundary, textured with the stone wall tile.
-	var unit_pts: PackedVector2Array = FloorMorph.resample_ngon(_current_sides, RESAMPLE_K, ROTATION)
-	var scaled: PackedVector2Array = FloorMorph.scale_unit_array(unit_pts, _effective_width / 2.0, _floor_height / 2.0)
+	var scaled: PackedVector2Array = _slab_polygon(_effective_width)
 	_background.polygon = scaled
 	_background.texture = WALL_TEXTURE
 	_background.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
@@ -449,7 +462,7 @@ func _rebuild_background() -> void:
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
 		if mat:
 			mat.set_shader_parameter("glow", _composite_load)
-	_morph_last_unit = unit_pts
+	_morph_last_unit = FloorMorph.resample_ngon(_current_sides, RESAMPLE_K, ROTATION)
 	_morph_last_width = _effective_width
 	_morph_last_glow = _composite_load
 	_rebuild_dressing()
@@ -505,25 +518,22 @@ func _rebuild_dressing() -> void:
 	plinth.color = Color(0.10, 0.10, 0.14, 1.0)
 	_dressing.add_child(plinth)
 
-	# Windows spaced across the wall, skipping the center where the label sits.
-	var window_spacing: float = 90.0
-	var x: float = -half_w + 45.0
-	while x < half_w - 30.0:
-		if absf(x) > 60.0:
+	# Windows spaced across the wall, skipping the center band.
+	var x: float = -half_w + WINDOW_START
+	while x < half_w - 16.0:
+		if absf(x) > 32.0:
 			var win := Sprite2D.new()
 			win.texture = WINDOW_TEXTURE
 			win.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			win.scale = Vector2(2.0, 2.0)
 			win.position = Vector2(x, -half_h * 0.25)
 			_dressing.add_child(win)
-		x += window_spacing
+		x += WINDOW_SPACING
 
 	# Torches flanking the floor near each end.
-	for tx: float in [-half_w + 18.0, half_w - 18.0]:
+	for tx: float in [-half_w + TORCH_INSET, half_w - TORCH_INSET]:
 		var torch := Sprite2D.new()
 		torch.texture = TORCH_TEXTURE
 		torch.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		torch.scale = Vector2(2.0, 2.0)
 		torch.position = Vector2(tx, -half_h * 0.15)
 		_dressing.add_child(torch)
 		_torches.append(torch)
@@ -562,10 +572,9 @@ func _rebuild_interior() -> void:
 		atlas.region = Rect2(prop_idx * 16, 0, 16, 16)
 		prop.texture = atlas
 		prop.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		prop.scale = Vector2(2.5, 2.5)
 		prop.position = Vector2(
-			positions[i].x + EdgeLayout.DESK_WIDTH / 2.0 - 26.0,
-			_floor_height / 2.0 - 4.0
+			positions[i].x + EdgeLayout.DESK_WIDTH / 2.0 - 10.0,
+			_floor_height / 2.0 - 2.0
 		)
 		_agent_slots_node.add_child(prop)
 
