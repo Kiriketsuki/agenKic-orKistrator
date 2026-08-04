@@ -47,6 +47,14 @@ const EDGE_WINDOW_CENTER_GAP: float = 28.0
 const PROP_COUNT: int = 8
 const PROP_CELL: float = 16.0
 
+## Torches ride the faces like every other dressing, so a turn carries them
+## with the wall. Inset from each face end and pinned to the brick, in art px.
+const TORCH_INSET: float = 12.0
+const TORCH_TOP_MARGIN: float = 1.0
+const TORCH_FLICKER_SPEED: float = 9.0
+const TORCH_FLICKER_BASE: float = 0.82
+const TORCH_FLICKER_SPAN: float = 0.18
+
 var _sides: int = 6
 var _face_w: float = 140.0
 var _face_h: float = 40.0
@@ -57,6 +65,9 @@ var _tint: Color = Color.WHITE
 var _floor_tex: Texture2D = null
 var _window_tex: Texture2D = null
 var _prop_tex: Texture2D = null
+var _torch_tex: Texture2D = null
+## Drives the torch flame flicker in the draw pass.
+var _flicker_time: float = 0.0
 ## Hash seed for the per-face dressing. FloorScene passes its floor_name, so a
 ## floor keeps the same windows and props across every rebuild.
 var _seed: String = ""
@@ -80,11 +91,22 @@ func configure(sides: int, face_w: float, face_h: float, wall_tex: Texture2D, ti
 
 ## Sets the per-face dressing skin and the hash seed. FloorScene calls this from
 ## the same rebuild that calls configure().
-func configure_dressing(seed_name: String, floor_tex: Texture2D, window_tex: Texture2D, prop_tex: Texture2D) -> void:
+func configure_dressing(seed_name: String, floor_tex: Texture2D, window_tex: Texture2D, prop_tex: Texture2D, torch_tex: Texture2D = null) -> void:
 	_seed = seed_name
 	_floor_tex = floor_tex
 	_window_tex = window_tex
 	_prop_tex = prop_tex
+	_torch_tex = torch_tex
+	queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if _torch_tex == null:
+		return
+	# The flicker lives in the draw pass, so the prism redraws each frame while
+	# it carries torches. The whole prism is a few dozen polygons, so a full
+	# redraw stays cheap.
+	_flicker_time += delta
 	queue_redraw()
 
 
@@ -270,14 +292,14 @@ static func _dimmed(color: Color, dim: float) -> Color:
 ## Draws one sprite flat against a face. `cx` is the face-local x of the sprite
 ## middle, in art px, and `cy` is the same for y. The two vertical edges project
 ## separately, so the sprite shears with the wall it sits on.
-func _draw_face_sprite(index: int, cx: float, cy: float, w: float, h: float, tex: Texture2D, uvs: PackedVector2Array, dim: float) -> void:
+func _draw_face_sprite(index: int, cx: float, cy: float, w: float, h: float, tex: Texture2D, uvs: PackedVector2Array, dim: float, mod: Color = Color.WHITE) -> void:
 	if tex == null:
 		return
 	var half_w: float = _face_w / 2.0
 	var u0: float = (cx - w / 2.0 + half_w) / _face_w
 	var u1: float = (cx + w / 2.0 + half_w) / _face_w
 	var quad: PackedVector2Array = _face_quad(index, u0, u1, cy - h / 2.0, cy + h / 2.0)
-	draw_colored_polygon(quad, Color(dim, dim, dim, 1.0), uvs, tex)
+	draw_colored_polygon(quad, Color(dim * mod.r, dim * mod.g, dim * mod.b, mod.a), uvs, tex)
 
 
 ## Paints the bands, the windows and the ambient prop of one face. Every face
@@ -339,6 +361,20 @@ func _draw_face_dressing(index: int, dim: float) -> void:
 			index, prop_x(_seed, index, _face_w), py,
 			PROP_CELL, PROP_CELL, _prop_tex, prop_uvs, dim
 		)
+
+	if _torch_tex != null:
+		# Two torches flank each face and turn with it. The flame flickers per
+		# face, phase-shifted by the face index so the ring never pulses in
+		# lockstep.
+		var th: float = _torch_tex.get_height()
+		var tw: float = _torch_tex.get_width()
+		var ty: float = -half_h + TORCH_TOP_MARGIN + th / 2.0
+		var flicker: float = TORCH_FLICKER_BASE \
+			+ TORCH_FLICKER_SPAN * sin(_flicker_time * TORCH_FLICKER_SPEED + float(index) * 2.1)
+		var flame := Color(1.0, flicker, flicker * 0.85, 1.0)
+		var half_w2: float = _face_w / 2.0
+		for tx: float in [-half_w2 + TORCH_INSET, half_w2 - TORCH_INSET]:
+			_draw_face_sprite(index, tx, ty, tw, th, _torch_tex, unit_uvs, dim, flame)
 
 
 func _draw() -> void:

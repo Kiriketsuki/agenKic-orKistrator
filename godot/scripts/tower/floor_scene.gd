@@ -57,10 +57,6 @@ const PROP_COUNT: int = 8
 ## Wall dressing spacing, in art px.
 const WINDOW_SPACING: float = 48.0
 const WINDOW_START: float = 24.0
-const TORCH_INSET: float = 12.0
-## Gap between the front face's top edge and the top of a torch bracket, in
-## art px. It keeps the torch on the brick instead of over the slab edge.
-const TORCH_TOP_MARGIN: float = 1.0
 ## Phase 5 section 3 — per-edge dressing bounds. Each edge shows 1 to 3 windows,
 ## each jittered inside its cell, plus one ambient prop. The counts come from a
 ## hash of the floor name and the edge index, so a given edge always looks the
@@ -106,17 +102,12 @@ var _floor_height: float = 40.0
 var _agent_slots: Array[Dictionary] = []
 var _linger_timer: float = 0.0
 var _linger_duration: float = 30.0
-var _dressing: Node2D = null
 ## Phase 4 — the fisheye layout hides the dressing on distant floors, where the
 ## windows and torches shrink to sub-pixel noise. A rebuild re-applies this.
 var _show_dressing: bool = true
-## Phase 6 section 2 — the bands, the seam, the lip, the windows and the ambient
-## prop all moved into FloorPrism, which paints them on every face. A static copy
-## on the front face read as a plate parked in front of the room, and it did not
-## turn with the wall. The dressing layer keeps only the two torches, which frame
-## the door instead of the room and so must not rotate.
-var _torches: Array[Sprite2D] = []
-var _flicker_time: float = 0.0
+## Phase 6 section 2 — every dressing element, torches included, moved into
+## FloorPrism, which paints them on every face. Any static copy on the front
+## face read as a plate parked in front of the room during a turn.
 ## Phase 6 section 1 — the prism node draws every wall face. It sits between
 ## the slab silhouette and the dressing, so the front face's bands paint on top
 ## of its own wall quad.
@@ -192,12 +183,6 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_flicker_time += delta
-	for i: int in range(_torches.size()):
-		var torch: Sprite2D = _torches[i]
-		if is_instance_valid(torch):
-			var flicker: float = 0.82 + 0.18 * sin(_flicker_time * 9.0 + i * 2.1)
-			torch.modulate = Color(1.0, flicker, flicker * 0.85, 1.0)
 	if _state == FloorState.LINGERING:
 		_linger_timer -= delta
 		if _linger_timer <= 0.0:
@@ -608,8 +593,6 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 ## at fisheye distance 2 or more, where they shrink to sub-pixel noise.
 func set_show_dressing(visible_flag: bool) -> void:
 	_show_dressing = visible_flag
-	if _dressing != null and is_instance_valid(_dressing):
-		_dressing.visible = visible_flag
 	if _ghost_layer != null and is_instance_valid(_ghost_layer):
 		_ghost_layer.visible = visible_flag
 
@@ -662,7 +645,7 @@ func _update_prism() -> void:
 	_prism.configure_dressing(
 		floor_name,
 		FLOOR_TILES.get(floor_tile, FLOOR_TILES["stone_floor"]),
-		WINDOW_TEXTURE, PROPS_TEXTURE
+		WINDOW_TEXTURE, PROPS_TEXTURE, TORCH_TEXTURE
 	)
 	_prism.set_rotation_value(_prism_rot)
 	_update_ghost_transforms()
@@ -687,38 +670,6 @@ func _rebuild_background() -> void:
 	_morph_last_width = _effective_width
 	_morph_last_glow = _composite_load
 	_update_prism()
-	_rebuild_dressing()
-
-
-## Rebuilds the decorative layer: the three depth bands, the cornice, the
-## per-floor wash, glowing windows, and flickering torches. Sits directly above
-## the slab silhouette, behind agents.
-func _rebuild_dressing() -> void:
-	if _dressing != null and is_instance_valid(_dressing):
-		_dressing.queue_free()
-	_torches.clear()
-	_dressing = Node2D.new()
-	add_child(_dressing)
-	# The dressing paints the front face, so it must sit above the prism.
-	move_child(_dressing, _prism.get_index() + 1)
-	_dressing.visible = _show_dressing
-
-	var half_w: float = _face_width() / 2.0
-	var half_h: float = _floor_height / 2.0
-
-	# Torches flanking the wall band near each end. Phase 6 pins them to the
-	# brick: the bracket sits TORCH_TOP_MARGIN below the front face's top edge
-	# and the whole sprite stays inside the wall band, so no torch hovers over
-	# the slab top any more.
-	var torch_h: float = TORCH_TEXTURE.get_height()
-	var torch_y: float = -half_h + TORCH_TOP_MARGIN + torch_h / 2.0
-	for tx: float in [-half_w + TORCH_INSET, half_w - TORCH_INSET]:
-		var torch := Sprite2D.new()
-		torch.texture = TORCH_TEXTURE
-		torch.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		torch.position = Vector2(tx, torch_y)
-		_dressing.add_child(torch)
-		_torches.append(torch)
 
 
 ## Per-floor identity color for the band modulates, normalized to a mean of 1.
@@ -755,8 +706,8 @@ func _rebuild_ghosts() -> void:
 	_ghosts.clear()
 	_ghost_layer = Node2D.new()
 	add_child(_ghost_layer)
-	if _dressing != null and is_instance_valid(_dressing):
-		move_child(_ghost_layer, _dressing.get_index() + 1)
+	if _prism != null and is_instance_valid(_prism):
+		move_child(_ghost_layer, _prism.get_index() + 1)
 	_ghost_layer.visible = _show_dressing
 	if polygon_sides < 3:
 		return
