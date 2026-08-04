@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://main"]
+[gd_scene load_steps=15 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/ui/world_labels.gd" id="11"]
 [ext_resource type="Script" path="res://scripts/ui/edge_compass.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/ui/floor_banner.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/ui/hex_compass.gd" id="14"]
 
 [node name="Main" type="Node2D"]
 
@@ -92,6 +93,18 @@ script = ExtResource("13")
 offset_right = 96.0
 offset_bottom = 10.0
 script = ExtResource("12")
+
+[node name="HexCompass" type="Control" parent="UILayer"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -88.0
+offset_right = 88.0
+offset_bottom = -16.0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("14")
 
 [node name="PanelManager" type="Control" parent="UILayer"]
 anchors_preset = 15

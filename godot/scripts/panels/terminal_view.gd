@@ -66,6 +66,9 @@ var _pty_exited_callable: Callable = Callable()
 var _output_label: RichTextLabel = null
 var _input_line: LineEdit = null
 var _poll_timer: Timer = null
+## True while the pointer sits over the output body, which is the mouse-based
+## signal that every keystroke forwards to tmux. See _set_body_hover.
+var _body_hover: bool = false
 
 
 func _ready() -> void:
@@ -156,6 +159,10 @@ func _clear_body() -> void:
 	_output_label = null
 	_input_line = null
 	_poll_timer = null
+	# The hovered body is gone, so the passthrough signal must not linger.
+	_body_hover = false
+	if _panel != null:
+		_panel.set_passthrough_active(false)
 
 
 func _live_pty_available() -> bool:
@@ -304,6 +311,8 @@ func _mount_chat_body(banner: String = "") -> void:
 	output.scroll_active = true
 	output.focus_mode = Control.FOCUS_NONE
 	output.add_theme_color_override("default_color", Color(AnsiSgrScanner.DEFAULT_STANDARD_FG))
+	output.mouse_entered.connect(_set_body_hover.bind(true))
+	output.mouse_exited.connect(_set_body_hover.bind(false))
 	container.add_child(output)
 	_output_label = output
 
@@ -315,7 +324,6 @@ func _mount_chat_body(banner: String = "") -> void:
 	input_line.placeholder_text = "type to the agent..."
 	input_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	input_line.text_submitted.connect(_on_input_submitted)
-	input_line.gui_input.connect(_on_input_gui_input)
 	footer.add_child(input_line)
 	_input_line = input_line
 	input_line.call_deferred("grab_focus")
@@ -394,55 +402,36 @@ func _on_input_submitted(text: String) -> void:
 		_input_line.clear()
 
 
-## Key passthrough for the chat body (Task D).
+## Mouse-based key passthrough for the chat body.
 ##
-## An interactive CLI such as Claude Code draws a trust prompt that only a real
-## key press answers. The chat body posts text, so those presses never reached
-## tmux before this handler existed.
-##
-## The rule: the passthrough fires only while the LineEdit holds focus AND its
-## text is empty. An empty field means the user navigates a prompt, so this
-## handler forwards the press to tmux and consumes the event. A field that
-## holds text means the user writes a line, so every key keeps its normal
-## editing behavior and Enter still submits the typed line.
-const _PASSTHROUGH_KEYS: Dictionary = {
-	KEY_UP: "Up",
-	KEY_DOWN: "Down",
-	KEY_LEFT: "Left",
-	KEY_RIGHT: "Right",
-	KEY_ENTER: "Enter",
-	KEY_KP_ENTER: "Enter",
-	KEY_ESCAPE: "Escape",
-	KEY_TAB: "Tab",
-	KEY_PAGEUP: "PPage",
-	KEY_PAGEDOWN: "NPage",
-	KEY_HOME: "Home",
-	KEY_END: "End",
-}
+## An interactive CLI such as Claude Code draws a trust prompt that only a
+## real key press answers. The old rule keyed off an empty input line and
+## missed Space, Escape and chords. The current rule keys off the mouse:
+## while the pointer sits over the output body, EVERY keystroke forwards to
+## tmux through KeyPassthrough, and the PanelBase border turns amber as the
+## signal. While the pointer sits over the input line, keys edit locally.
+func _set_body_hover(hovering: bool) -> void:
+	_body_hover = hovering
+	if _panel != null:
+		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
+	if _input_line == null:
+		return
+	if hovering:
+		# A focused LineEdit consumes keys before _unhandled_key_input runs.
+		_input_line.release_focus()
+	else:
+		_input_line.grab_focus()
 
 
-func _on_input_gui_input(event: InputEvent) -> void:
-	if _input_line == null or _bridge == null or _agent_id.is_empty():
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not _body_hover or _bridge == null or _agent_id.is_empty():
 		return
-	var key_event := event as InputEventKey
-	if key_event == null or not key_event.pressed or key_event.echo:
-		return
-	if key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
-		return
-	if not _input_line.text.is_empty():
-		return
-	var name: String = ""
-	if _PASSTHROUGH_KEYS.has(key_event.keycode):
-		name = _PASSTHROUGH_KEYS[key_event.keycode]
-	elif key_event.keycode >= KEY_1 and key_event.keycode <= KEY_4:
-		name = String.chr(key_event.keycode)
-	elif key_event.keycode >= KEY_KP_1 and key_event.keycode <= KEY_KP_4:
-		name = str(key_event.keycode - KEY_KP_0)
-	if name.is_empty():
+	var key_name: String = KeyPassthrough.key_name_for(event as InputEventKey)
+	if key_name.is_empty():
 		return
 	if _bridge.has_method("send_key"):
-		_bridge.call("send_key", _agent_id, name)
-	_input_line.accept_event()
+		_bridge.call("send_key", _agent_id, key_name)
+	get_viewport().set_input_as_handled()
 
 
 func _on_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:

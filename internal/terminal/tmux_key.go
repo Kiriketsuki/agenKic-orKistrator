@@ -9,10 +9,11 @@ import (
 
 // allowedKeyNames lists every tmux key name that SendKey accepts.
 //
-// tmux resolves a bare send-keys argument against its key table, so an
-// unchecked value lets a caller send any key, including a tmux command prefix
-// such as C-b. The whitelist keeps the endpoint to the navigation keys the
-// terminal panel needs.
+// tmux resolves a bare send-keys argument against its key table. The
+// whitelist names the multi-character keys the panels forward. Single
+// printable runes and C-/M- chords pass through ValidateKeyName's rune
+// check instead. The agent sessions run with a detached tmux server, so a
+// forwarded C-b lands in the pane, not in a client prefix table.
 var allowedKeyNames = map[string]bool{
 	"Up":     true,
 	"Down":   true,
@@ -27,18 +28,39 @@ var allowedKeyNames = map[string]bool{
 	"NPage":  true,
 	"Home":   true,
 	"End":    true,
+	"BSpace": true,
+	"DC":     true,
+	"IC":     true,
+	"F1":     true,
+	"F2":     true,
+	"F3":     true,
+	"F4":     true,
+	"F5":     true,
+	"F6":     true,
+	"F7":     true,
+	"F8":     true,
+	"F9":     true,
+	"F10":    true,
+	"F11":    true,
+	"F12":    true,
 }
 
 // ValidateKeyName reports whether name is a key SendKey may forward.
 //
-// A name passes when the whitelist contains it, or when it is a single
-// printable character such as a digit or a letter. Everything else fails with
+// A name passes in three cases. The whitelist contains it. It is one
+// printable character such as a digit or a letter. It is a C- or M-
+// prefixed printable character such as C-c, which the full-passthrough
+// panels need for control and alt chords. Everything else fails with
 // ErrInvalidCommand so the HTTP layer answers 400.
 func ValidateKeyName(name string) error {
 	if allowedKeyNames[name] {
 		return nil
 	}
-	if r, size := utf8.DecodeRuneInString(name); size == len(name) && size > 0 {
+	body := name
+	if len(name) > 2 && (name[:2] == "C-" || name[:2] == "M-") {
+		body = name[2:]
+	}
+	if r, size := utf8.DecodeRuneInString(body); size == len(body) && size > 0 {
 		if r != utf8.RuneError && unicode.IsPrint(r) {
 			return nil
 		}

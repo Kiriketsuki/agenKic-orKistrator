@@ -765,7 +765,8 @@ func TestSendInput_EmptyKeys_WithSubstrate(t *testing.T) {
 // other name fails with 400 before the substrate sees it.
 func TestSendInput_KeyWhitelist(t *testing.T) {
 	accepted := []string{"Up", "Down", "Left", "Right", "Enter", "Escape",
-		"Tab", "BTab", "Space", "PPage", "NPage", "Home", "End", "1", "4", "y"}
+		"Tab", "BTab", "Space", "PPage", "NPage", "Home", "End", "1", "4", "y",
+		"BSpace", "DC", "F1", "F12", "C-c", "C-b", "M-x"}
 	for _, key := range accepted {
 		sub := &recordingSubstrate{}
 		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
@@ -790,7 +791,7 @@ func TestSendInput_KeyWhitelist(t *testing.T) {
 		}
 	}
 
-	rejected := []string{"C-b", "C-c", "M-x", "Up Enter", "Delete;q", "", "ab", "\n"}
+	rejected := []string{"Up Enter", "Delete;q", "", "ab", "\n", "C-", "C-ab", "X-c", "F13"}
 	for _, key := range rejected {
 		sub := &recordingSubstrate{}
 		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))

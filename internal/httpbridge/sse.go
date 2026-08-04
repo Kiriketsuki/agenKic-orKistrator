@@ -20,7 +20,7 @@ const (
 // writeSSEEvent renders one StreamEvent onto the wire using the shared
 // mapStoreEvent + SSE wire format, flushing after every write.
 func (b *Bridge) writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, se state.StreamEvent) {
-	sseType, data := mapStoreEvent(se.Event, se.ID, b.agentName)
+	sseType, data := mapStoreEvent(se.Event, se.ID, b.agentName, b.agentProvider)
 	if sseType == "" {
 		return
 	}
@@ -175,11 +175,16 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 // cursor is the Redis stream entry ID, embedded so clients can resume via ?since=.
 // nameFn resolves an agent ID to its display name and returns an empty string
 // when the Bridge knows no name, in which case the client falls back to the
-// agent ID. Returns an empty event type if the event should be skipped.
-func mapStoreEvent(e state.Event, cursor string, nameFn func(string) string) (string, interface{}) {
+// agent ID. providerFn resolves the spawn kind the same way. Returns an empty
+// event type if the event should be skipped.
+func mapStoreEvent(e state.Event, cursor string, nameFn func(string) string, providerFn func(string) string) (string, interface{}) {
 	name := ""
 	if nameFn != nil {
 		name = nameFn(e.AgentID)
+	}
+	provider := ""
+	if providerFn != nil {
+		provider = providerFn(e.AgentID)
 	}
 	switch e.Type {
 	case "agent_registered":
@@ -189,6 +194,7 @@ func mapStoreEvent(e state.Event, cursor string, nameFn func(string) string) (st
 		return "agent.registered", SSEAgentRegistered{
 			ID:            e.AgentID,
 			Name:          name,
+			Provider:      provider,
 			State:         "idle",
 			LastHeartbeat: e.Timestamp,
 			RegisteredAt:  e.Timestamp,

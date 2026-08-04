@@ -247,3 +247,23 @@
 - Branch: main @ f8895e0; feature/163 @ be25071 (T15+T16+T17 in); next T18 (#129, PR #132)
 
 ---
+## 2026-08-04 Handoff (phases 4-6 prism parity)
+
+### Decisions
+- All dressing draws per prism face inside FloorPrism. Static overlays read as floating plates
+- Diagnosis by visual bisect with PNG captures, not geometry guessing
+- Passthrough rule: empty input = navigation forward, text = editing
+- Pagination dots replaced the compass per the user's Phase 6 spec
+- Fantasy names live in a bridge registry, reset on restart
+
+### Failed Approaches
+- Static front dressing with rotation fade: rejected, moved into faces
+- Chamfer theory for the floating octagon: the cornice pair was the cause
+- Passthrough via chat LineEdit only: scroll mode had no field
+
+### Handoff Target
+- Plan file: 2026-08-04-12h10-phase456-prism-parity.md
+- Branch: feature/163-feature-phase-3-magic-polish-t15-t22 (pushed 9ad122f)
+- Next: widen key passthrough (Space, all digits, Backspace) plus a visible passthrough border
+
+---

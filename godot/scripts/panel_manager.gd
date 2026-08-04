@@ -610,8 +610,8 @@ func _toggle_quest_board() -> void:
 ## Only one scroll is ever open: clicking a different agent while a scroll is
 ## already open swaps its content in place instead of opening a second panel.
 func open_scroll_panel(agent_id: String) -> void:
-	var title: String = "%s — Spell Scroll" % agent_id
 	var agent_data: BridgeData.AgentData = _get_agent_data(agent_id)
+	var title: String = "%s — Spell Scroll" % _agent_title(agent_id, agent_data)
 	var preferred_mode: String = _validated_mode(mode_preferences.get(agent_id, "scroll"))
 	if panels_by_id.has(SCROLL_PANEL_ID):
 		var existing: PanelBase = panels_by_id[SCROLL_PANEL_ID]
@@ -691,6 +691,20 @@ func _place_scroll_panel(panel: PanelBase) -> void:
 	tween.finished.connect(_save_layout)
 
 
+## Builds the human title for an agent-scoped panel: fantasy name plus the
+## provider when the bridge knows them, otherwise a shortened id. The raw
+## UUID never reaches a title bar.
+func _agent_title(agent_id: String, agent_data: BridgeData.AgentData) -> String:
+	if agent_data == null:
+		return agent_id.left(8)
+	var shown: String = agent_data.display_name()
+	if shown == agent_id:
+		shown = agent_id.left(8)
+	if not agent_data.provider.is_empty():
+		shown += " · " + agent_data.provider
+	return shown
+
+
 func _get_agent_data(agent_id: String) -> BridgeData.AgentData:
 	if agent_id.is_empty():
 		return null
@@ -716,11 +730,14 @@ func _rebuild_panel_menu() -> void:
 		agent_ids.append(agent_id)
 	agent_ids.sort()
 	for agent_id: String in agent_ids:
-		_panel_menu_list.add_item(agent_id)
+		# The list shows the human title. The raw id rides along as item
+		# metadata so selection still targets the exact agent.
+		var item_index: int = _panel_menu_list.add_item(_agent_title(agent_id, _agent_list[agent_id]))
+		_panel_menu_list.set_item_metadata(item_index, agent_id)
 
 
 func _on_panel_menu_item_selected(index: int) -> void:
-	var agent_id: String = _panel_menu_list.get_item_text(index)
+	var agent_id: String = String(_panel_menu_list.get_item_metadata(index))
 	_panel_menu_popup.hide()
 	_open_agent_panel(agent_id)
 

@@ -22,6 +22,10 @@ const CHARACTER_HALF_HEIGHT: float = 12.0
 const NAMEPLATE_HEAD_GAP: float = 4.0
 
 const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.png")
+## Frame tint for agent plates. The floor banner shares the frame texture in
+## its native gold, so the plates carry a teal wash to read as a different
+## class of label.
+const PLATE_FRAME_TINT: Color = Color("#6fb8a8")
 
 @export var tower_path: NodePath = NodePath("/root/Main/Tower")
 
@@ -108,6 +112,9 @@ func _make_nameplate() -> NinePatchRect:
 	plate.patch_margin_bottom = 4
 	plate.size = NAMEPLATE_SIZE
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The floor banner uses the same frame texture in its native gold. A teal
+	# tint here keeps the small agent plates visually distinct from the banner.
+	plate.self_modulate = PLATE_FRAME_TINT
 	var label := Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.set_anchors_preset(Control.PRESET_FULL_RECT)

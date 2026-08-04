@@ -86,6 +86,7 @@ type ReassignAgentRequest struct {
 type AgentJSON struct {
 	ID            string `json:"id"`
 	Name          string `json:"name,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
@@ -111,6 +112,7 @@ type ErrorResponse struct {
 type SSEAgentRegistered struct {
 	ID            string `json:"id"`
 	Name          string `json:"name,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`

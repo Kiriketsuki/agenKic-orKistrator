@@ -58,6 +58,9 @@ var _pending_live_chunks: Array = []
 ## snapshot mode, because line-oriented history is the better view.
 var _snapshot_mode: bool = false
 var _snapshot_timer: Timer = null
+## True while the pointer sits over the history body, which is the mouse-based
+## signal that every keystroke forwards to tmux. See _set_body_hover.
+var _body_hover: bool = false
 
 
 func _ready() -> void:
@@ -116,7 +119,9 @@ func _wire_input_line() -> void:
 		return
 	if not _input_line.text_submitted.is_connected(_on_input_submitted):
 		_input_line.text_submitted.connect(_on_input_submitted)
-		_input_line.gui_input.connect(_on_input_gui_input)
+	if _history != null and not _history.mouse_entered.is_connected(_on_history_mouse_entered):
+		_history.mouse_entered.connect(_on_history_mouse_entered)
+		_history.mouse_exited.connect(_on_history_mouse_exited)
 	if _send_button != null and not _send_button.pressed.is_connected(_on_send_pressed):
 		_send_button.pressed.connect(_on_send_pressed)
 	_input_line.call_deferred("grab_focus")
@@ -137,31 +142,40 @@ func _on_input_submitted(text: String) -> void:
 		_input_line.clear()
 
 
-## Key passthrough, the same rule as TerminalView (Task D): with an EMPTY input
-## line, navigation keys and bare digits go straight to the tmux session, so a
-## TUI prompt is answerable. With text present, keys keep normal editing.
-func _on_input_gui_input(event: InputEvent) -> void:
-	if _input_line == null or _bridge == null or _agent_id.is_empty():
+## Mouse-based key passthrough, the same rule as TerminalView: while the
+## pointer sits over the parchment history, EVERY keystroke forwards to the
+## agent's tmux session through KeyPassthrough and the PanelBase border turns
+## amber. While the pointer sits over the input line, keys edit locally.
+func _set_body_hover(hovering: bool) -> void:
+	_body_hover = hovering
+	if _panel != null:
+		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
+	if _input_line == null:
 		return
-	var key_event := event as InputEventKey
-	if key_event == null or not key_event.pressed or key_event.echo:
+	if hovering:
+		# A focused LineEdit consumes keys before _unhandled_key_input runs.
+		_input_line.release_focus()
+	else:
+		_input_line.grab_focus()
+
+
+func _on_history_mouse_entered() -> void:
+	_set_body_hover(true)
+
+
+func _on_history_mouse_exited() -> void:
+	_set_body_hover(false)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not _body_hover or _bridge == null or _agent_id.is_empty():
 		return
-	if key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
-		return
-	if not _input_line.text.is_empty():
-		return
-	var key_name: String = ""
-	if TerminalView._PASSTHROUGH_KEYS.has(key_event.keycode):
-		key_name = TerminalView._PASSTHROUGH_KEYS[key_event.keycode]
-	elif key_event.keycode >= KEY_1 and key_event.keycode <= KEY_4:
-		key_name = String.chr(key_event.keycode)
-	elif key_event.keycode >= KEY_KP_1 and key_event.keycode <= KEY_KP_4:
-		key_name = str(key_event.keycode - KEY_KP_0)
+	var key_name: String = KeyPassthrough.key_name_for(event as InputEventKey)
 	if key_name.is_empty():
 		return
 	if _bridge.has_method("send_key"):
 		_bridge.call("send_key", _agent_id, key_name)
-	_input_line.accept_event()
+	get_viewport().set_input_as_handled()
 
 
 ## Called by PanelManager when the singleton scroll panel is retargeted to a

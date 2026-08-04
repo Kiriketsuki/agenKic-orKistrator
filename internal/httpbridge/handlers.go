@@ -38,6 +38,7 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, AgentJSON{
 			ID:            id,
 			Name:          b.agentName(id),
+			Provider:      b.agentProvider(id),
 			State:         fields.State,
 			CurrentTaskID: fields.CurrentTaskID,
 			LastHeartbeat: fields.LastHeartbeat,
@@ -620,6 +621,9 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	// SSE payloads) can show it instead of the raw UUID. See
 	// Bridge.setAgentName for the honest limitation of this registry.
 	b.setAgentName(agentID, req.Name)
+	// The provider shown in the UI is the spawn kind. Same registry
+	// lifetime and gaps as the name.
+	b.setAgentProvider(agentID, req.Kind)
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
 		Kind:    req.Kind,

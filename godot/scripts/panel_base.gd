@@ -474,7 +474,7 @@ func _refresh_effect_processing() -> void:
 func _reset_effect_visuals() -> void:
 	if _visual_root != null:
 		_visual_root.position.y = 0.0
-	if _border_glow != null:
+	if _border_glow != null and not _passthrough_active:
 		_border_glow.modulate.a = 0.0
 	if _drag_trail != null:
 		_drag_trail.emitting = false
@@ -509,6 +509,11 @@ func _apply_bob() -> void:
 
 func _apply_border_shimmer() -> void:
 	if _border_glow == null:
+		return
+	# The passthrough signal owns the border while active. Full alpha, no
+	# shimmer, so the amber reads as a steady state and not an effect.
+	if _passthrough_active:
+		_border_glow.modulate.a = 1.0
 		return
 	_border_glow.modulate.a = PanelFloatMath.shimmer_alpha(_effect_time, _bob_phase)
 
@@ -566,6 +571,40 @@ func _configure_drag_trail() -> void:
 	_drag_trail.damping_min = 12.0
 	_drag_trail.damping_max = 12.0
 	_drag_trail.amount = maxi(_max_drag_trail_particles, 1)
+
+
+## True while a hovered view forwards every keystroke to the agent's tmux
+## session. The border turns solid amber as the visible signal.
+var _passthrough_active: bool = false
+var _passthrough_stylebox: StyleBoxFlat = null
+
+## Amber border color while key passthrough is live. Matches the tower's
+## active-edge accent so the signal reads as "this panel owns the keyboard".
+const PASSTHROUGH_BORDER_COLOR: Color = Color("#FBB13C")
+
+
+## Turns the passthrough border signal on or off. The amber stylebox is a
+## duplicate, because the scene's StyleBoxFlat sub-resource is shared across
+## every PanelBase instance and a direct mutation would tint all of them.
+func set_passthrough_active(active: bool) -> void:
+	if _border_glow == null or _passthrough_active == active:
+		return
+	_passthrough_active = active
+	if active:
+		if _passthrough_stylebox == null:
+			var base: StyleBox = _border_glow.get_theme_stylebox("panel")
+			var amber: StyleBoxFlat = base.duplicate() as StyleBoxFlat
+			if amber == null:
+				amber = StyleBoxFlat.new()
+				amber.draw_center = false
+				amber.set_border_width_all(2)
+			amber.border_color = PASSTHROUGH_BORDER_COLOR
+			_passthrough_stylebox = amber
+		_border_glow.add_theme_stylebox_override("panel", _passthrough_stylebox)
+		_border_glow.modulate.a = 1.0
+	else:
+		_border_glow.remove_theme_stylebox_override("panel")
+		_border_glow.modulate.a = 0.0
 
 
 func _configure_border_glow() -> void:

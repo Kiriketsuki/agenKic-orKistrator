@@ -3,9 +3,10 @@ extends Control
 ##
 ## PARITY (Phase 6 section 3) — the demo shows one pip per edge below the
 ## tower, so the viewer reads at a glance where they look, where the agents
-## are, and how many edges the room has. This node replaces the corner n-gon
-## diagram that used to live here. The spec asks for one indicator, not two,
-## so the diagram is gone and the dots carry the whole readout.
+## are, and how many edges the room has. This node took over this file from
+## the corner n-gon diagram. The user later asked for both indicators, so the
+## diagram lives on as hex_compass.gd in the bottom-left corner and these
+## dots stay the click target.
 ##
 ## Each pip is a flat-top hexagon, the Chrysaki status-pip shape. A click on a
 ## pip turns the room to that edge the short way round.

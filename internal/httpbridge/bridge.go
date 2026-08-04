@@ -39,9 +39,12 @@ type Bridge struct {
 	spawner AgentSpawner
 
 	// names maps agent ID to the fantasy display name chosen by
-	// handleSpawnAgent. See setAgentName for the scope and the limitation.
-	namesMu sync.RWMutex
-	names   map[string]string
+	// handleSpawnAgent. providers maps agent ID to the spawn kind, such as
+	// "claude" or "codex". Both share namesMu and the same lifetime. See
+	// setAgentName for the scope and the limitation.
+	namesMu   sync.RWMutex
+	names     map[string]string
+	providers map[string]string
 
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
 	brokerInterval time.Duration
@@ -99,10 +102,11 @@ func WithBrokerInterval(d time.Duration) BridgeOption {
 // NewBridge creates a Bridge bound to addr. Call Start() to begin serving.
 func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...BridgeOption) *Bridge {
 	b := &Bridge{
-		store: store,
-		dag:   dag,
-		names: make(map[string]string),
-		mux:   http.NewServeMux(),
+		store:     store,
+		dag:       dag,
+		names:     make(map[string]string),
+		providers: make(map[string]string),
+		mux:       http.NewServeMux(),
 	}
 	for _, opt := range opts {
 		opt(b)
@@ -174,6 +178,25 @@ func (b *Bridge) agentName(agentID string) string {
 	b.namesMu.RLock()
 	defer b.namesMu.RUnlock()
 	return b.names[agentID]
+}
+
+// setAgentProvider records the spawn kind ("claude", "codex", ...) for
+// agentID. Same in-process scope and limitations as setAgentName.
+func (b *Bridge) setAgentProvider(agentID, provider string) {
+	if agentID == "" || provider == "" {
+		return
+	}
+	b.namesMu.Lock()
+	b.providers[agentID] = provider
+	b.namesMu.Unlock()
+}
+
+// agentProvider returns the recorded spawn kind for agentID, or an empty
+// string when the Bridge never saw a spawn for it.
+func (b *Bridge) agentProvider(agentID string) string {
+	b.namesMu.RLock()
+	defer b.namesMu.RUnlock()
+	return b.providers[agentID]
 }
 
 // isAgentSession reports whether a terminal session name belongs to a single
