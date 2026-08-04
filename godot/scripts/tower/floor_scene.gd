@@ -56,6 +56,9 @@ const PROP_COUNT: int = 8
 const WINDOW_SPACING: float = 48.0
 const WINDOW_START: float = 24.0
 const TORCH_INSET: float = 12.0
+## Gap between the front face's top edge and the top of a torch bracket, in
+## art px. It keeps the torch on the brick instead of over the slab edge.
+const TORCH_TOP_MARGIN: float = 1.0
 ## Phase 5 section 3 — per-edge dressing bounds. Each edge shows 1 to 3 windows,
 ## each jittered inside its cell, plus one ambient prop. The counts come from a
 ## hash of the floor name and the edge index, so a given edge always looks the
@@ -72,15 +75,13 @@ const ACTIVE_STATES: Array[String] = ["assigned", "working", "reporting"]
 
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
-## Number of angular samples used to represent the floor's polygon boundary.
-## Fixed across all side counts so an old-N and a new-N shape can be lerped
-## element-wise with zero popping (see FloorMorph.resample_ngon).
-const RESAMPLE_K: int = 96
-## Vertex-lerp morph duration (acceptance criterion #124.2: "~0.5s").
+## Breathe/glow morph duration (acceptance criterion #124.2: "~0.5s").
 const MORPH_SEC: float = 0.5
-## Fixed rotation applied to every polygon sample — kept identical across
-## old/new shapes so the morph never introduces a spurious rotation.
-const ROTATION: float = 0.0
+## Phase 6 section 1 — one prism turn takes the demo's 0.55 s. The contents
+## carousel runs on the same clock, so the wall and the desks arrive together.
+const PRISM_TURN_SEC: float = 0.55
+## Ghost agents on the two neighbour faces carry the demo's 0.45 opacity.
+const GHOST_ALPHA: float = 0.45
 
 @export var floor_name: String = ""
 @export var floor_label: String = ""
@@ -123,11 +124,19 @@ var _torches: Array[Sprite2D] = []
 ## dressing layer, because they frame the door instead of the room.
 var _edge_dressing: Node2D = null
 var _flicker_time: float = 0.0
-## Wall scroll position in texture px. This lives on the scene, not on the band,
-## because _rebuild_dressing() frees and recreates the band. A separate tween
-## drives it, so a rebuild during a turn never aborts the carousel tween.
-var _wall_scroll_x: float = 0.0
-var _wall_scroll_tween: Tween = null
+## Phase 6 section 1 — the prism node draws every wall face. It sits between
+## the slab silhouette and the dressing, so the front face's bands paint on top
+## of its own wall quad.
+var _prism: FloorPrism = null
+## Camera rotation in radians, one edge step per turn. A tween drives it, and
+## the prism redraws every frame it moves.
+var _prism_rot: float = 0.0
+var _prism_tween: Tween = null
+## Static dimmed agents on the two neighbour faces. Each entry is
+## {sprite: Sprite2D, face: int}. The layer lives outside _agent_slots_node so
+## the carousel never drags a ghost across the front face.
+var _ghost_layer: Node2D = null
+var _ghosts: Array[Dictionary] = []
 
 # --- T15 load-driven morph state ---
 var _composite_load: float = 0.0
@@ -135,15 +144,12 @@ var _target_sides: int = 6
 var _current_sides: int = 6
 var _effective_width: float = 280.0
 var _morph_tween: Tween = null
-var _morph_old_unit: PackedVector2Array = PackedVector2Array()
-var _morph_new_unit: PackedVector2Array = PackedVector2Array()
 var _morph_old_width: float = 280.0
 var _morph_new_width: float = 280.0
 var _morph_old_glow: float = 0.0
 var _morph_new_glow: float = 0.0
 ## Cached mid-flight state so an in-progress morph can be interrupted by a
-## new one (e.g. rapid load changes) without popping back to a stale shape.
-var _morph_last_unit: PackedVector2Array = PackedVector2Array()
+## new one (e.g. rapid load changes) without popping back to a stale width.
 var _morph_last_width: float = 280.0
 var _morph_last_glow: float = 0.0
 ## Deferred set_floor_dimensions() input, applied once the in-flight morph
@@ -212,6 +218,9 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
 		_kill_morph_tween()
+		if _prism_tween != null and _prism_tween.is_valid():
+			_prism_tween.kill()
+		_prism_tween = null
 
 
 func _kill_morph_tween() -> void:
@@ -234,8 +243,35 @@ func set_active_edge(edge: int) -> void:
 	# (see set_composite_load), so this is always safe even while a morph
 	# animation is still visually catching up.
 	_active_edge = edge % polygon_sides
+	# The prism carries the camera angle. A jump straight to an edge must move
+	# the front face with it, or the dressing and the glow describe one edge
+	# while the full-bright face shows another.
+	_snap_prism_to_active_edge()
 	_rebuild_interior()
 	_update_active_edge_glow()
+
+
+## Radians between two neighbouring faces.
+func _prism_step() -> float:
+	return TAU / float(maxi(polygon_sides, 3))
+
+
+## Face index on the camera axis, expressed on the unbounded turn accumulator.
+## The result always matches _active_edge modulo the side count, and it stays
+## the value nearest the current rotation, so a realign never spins the prism.
+func _aligned_prism_index() -> int:
+	var sides: int = maxi(polygon_sides, 3)
+	var raw: float = _prism_rot / _prism_step()
+	var turns: int = int(round((raw - float(_active_edge)) / float(sides)))
+	return _active_edge + sides * turns
+
+
+## Puts the front face back on _active_edge. A turn already in flight targets
+## the correct face, so this leaves that turn alone.
+func _snap_prism_to_active_edge() -> void:
+	if _prism_tween != null and _prism_tween.is_valid():
+		return
+	_apply_prism_rot(float(_aligned_prism_index()) * _prism_step())
 
 
 ## Turns the room to a new edge. The slab, the silhouette and the dressing stay
@@ -248,7 +284,7 @@ func rotate_to_edge(new_edge: int, direction: int) -> Tween:
 	_agent_slots_node.position.x = 0.0
 	_agent_slots_node.scale.x = 1.0
 	_agent_slots_node.modulate.a = 1.0
-	var edge_w: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
+	var edge_w: float = _face_width()
 	var tw: Tween = create_tween().set_parallel(true) \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_agent_slots_node, "position:x", -direction * edge_w, 0.275)
@@ -256,13 +292,23 @@ func rotate_to_edge(new_edge: int, direction: int) -> Tween:
 	# Optional C. Scale only, no skew and no rotation, so the carousel reads as
 	# depth instead of a bounce.
 	tw.tween_property(_agent_slots_node, "scale:x", 0.9, 0.275)
-	# The wall band streams one edge width of brick across the whole turn. That
-	# sells the cylinder rotation even when both edges hold no agents. It runs on
-	# its own tween for two reasons. A 0.55 s tweener inside the first parallel
-	# step would delay chain() to t=0.55 and stall the carousel. A rebuild of the
-	# dressing layer also frees the band mid-turn, and Godot aborts a tween whose
-	# target it cannot find, which would strand the contents layer hidden.
-	_start_wall_scroll(_wall_scroll_x + direction * edge_w)
+	# The prism turns by one face across the whole 0.55 s. That sells the room
+	# rotation even when both edges hold no agents. It runs on its own tween for
+	# two reasons. A 0.55 s tweener inside the first parallel step would delay
+	# chain() to t=0.55 and stall the carousel. A rebuild of the dressing layer
+	# also frees nodes mid-turn, and Godot aborts a tween whose target it cannot
+	# find, which would strand the contents layer hidden.
+	# Derive the target angle from an edge-aligned accumulator, never from the
+	# mid-flight rotation. A killed turn leaves _prism_rot between two faces, so
+	# adding one step to it would drift the prism off the face grid on every
+	# interrupted turn and desync the front face from _active_edge.
+	var sides: int = maxi(polygon_sides, 3)
+	var steps: int = posmod((new_edge - _active_edge) * direction, sides)
+	if steps == 0:
+		# A turn to the edge already active still moves one face, which matches
+		# the behaviour every caller expects from a rotate input.
+		steps = 1
+	_start_prism_turn(float(_aligned_prism_index() + direction * steps) * _prism_step())
 	tw.chain().tween_callback(func() -> void:
 		set_active_edge(new_edge)
 		_agent_slots_node.position.x = direction * edge_w
@@ -273,20 +319,21 @@ func rotate_to_edge(new_edge: int, direction: int) -> Tween:
 	return tw
 
 
-## Scrolls the wall brick to a new offset over the full 0.55 s turn. The tween
-## writes through _apply_wall_scroll, so a freed band never aborts it.
-func _start_wall_scroll(target_x: float) -> void:
-	if _wall_scroll_tween != null and _wall_scroll_tween.is_valid():
-		_wall_scroll_tween.kill()
-	_wall_scroll_tween = create_tween() \
+## Turns the prism to a new camera angle over the full 0.55 s. The tween writes
+## through _apply_prism_rot, so a rebuilt prism never aborts it.
+func _start_prism_turn(target_rot: float) -> void:
+	if _prism_tween != null and _prism_tween.is_valid():
+		_prism_tween.kill()
+	_prism_tween = create_tween() \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	_wall_scroll_tween.tween_method(_apply_wall_scroll, _wall_scroll_x, target_x, 0.55)
+	_prism_tween.tween_method(_apply_prism_rot, _prism_rot, target_rot, PRISM_TURN_SEC)
 
 
-func _apply_wall_scroll(value: float) -> void:
-	_wall_scroll_x = value
-	if _wall_band != null and is_instance_valid(_wall_band):
-		_wall_band.texture_offset.x = value
+func _apply_prism_rot(value: float) -> void:
+	_prism_rot = value
+	if _prism != null and is_instance_valid(_prism):
+		_prism.set_rotation_value(value)
+	_update_ghost_transforms()
 
 
 func begin_linger(duration: float) -> void:
@@ -381,7 +428,7 @@ func set_composite_load(load: float) -> void:
 		return
 	if sides_changing:
 		_rehome_for_sides(new_target)
-	_start_morph(new_width, sides_changing)
+	_start_morph(new_width)
 
 
 ## Remaps agent slots and the active edge onto a smaller/larger side count
@@ -394,35 +441,38 @@ func _rehome_for_sides(new_sides: int) -> void:
 	_active_edge = _active_edge % new_sides
 	_target_sides = new_sides
 	polygon_sides = new_sides
+	# The step angle changes with the side count, so a rotation held in old-step
+	# multiples now points between faces. Re-derive the rotation from the active
+	# edge at the new step, or the active face renders dimmed and off axis and
+	# the ghosts land on the wrong faces. A turn in flight targets the old grid,
+	# so kill it first.
+	if _prism_tween != null and _prism_tween.is_valid():
+		_prism_tween.kill()
+	_prism_tween = null
+	_apply_prism_rot(float(_active_edge) * _prism_step())
 	# Structural change (edge membership / active edge) — rebuild desks now,
 	# at the OLD effective width; _apply_morph_t reflows their x-positions
 	# smoothly as the width breathes toward new_width over MORPH_SEC.
 	_rebuild_interior()
 
 
-func _start_morph(new_width: float, sides_changing: bool) -> void:
+func _start_morph(new_width: float) -> void:
 	var was_running: bool = _morph_tween != null and _morph_tween.is_valid()
 	# Old state: if a morph is already in flight, resume from its last
-	# rendered frame (not _current_sides/_effective_width, which are stale
-	# until a morph finishes) so an interrupted morph never pops.
+	# rendered frame (not _effective_width, which is stale until a morph
+	# finishes) so an interrupted morph never pops.
 	if was_running:
-		_morph_old_unit = _morph_last_unit
 		_morph_old_width = _morph_last_width
-		_morph_old_glow = _morph_last_glow
 	else:
-		_morph_old_unit = FloorMorph.resample_ngon(_current_sides, RESAMPLE_K, ROTATION)
 		_morph_old_width = _effective_width
-		_morph_old_glow = _morph_last_glow
+	_morph_old_glow = _morph_last_glow
 	_kill_morph_tween()
 
-	_morph_new_unit = FloorMorph.resample_ngon(_target_sides, RESAMPLE_K, ROTATION)
+	# Phase 6 section 1 — the side count no longer reshapes a lens outline. The
+	# prism simply draws N faces, so a bucket change only changes how wide one
+	# face is. Width and glow are all a morph frame has to interpolate.
 	_morph_new_width = new_width
 	_morph_new_glow = _composite_load
-
-	if not sides_changing and _morph_old_unit.size() != _morph_new_unit.size():
-		# Defensive: RESAMPLE_K is fixed so this should never trigger, but if
-		# it ever did, fall back to snapping instead of lerping garbage.
-		_morph_old_unit = _morph_new_unit
 
 	_morph_tween = create_tween()
 	_morph_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -433,19 +483,20 @@ func _start_morph(new_width: float, sides_changing: bool) -> void:
 func _apply_morph_t(t: float) -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
-	var unit_pts: PackedVector2Array = FloorMorph.lerp_unit_arrays(_morph_old_unit, _morph_new_unit, t)
 	var width: float = lerpf(_morph_old_width, _morph_new_width, t)
 	var glow: float = lerpf(_morph_old_glow, _morph_new_glow, t)
-	_morph_last_unit = unit_pts
 	_morph_last_width = width
 	_morph_last_glow = glow
 	_effective_width = width
-	# Silhouette is the fixed chamfered slab; only the width breathes.
-	var scaled: PackedVector2Array = _slab_polygon(width)
+	# Phase 6 — the silhouette is the front prism face, so the slab, the bands
+	# and the glow all follow the face width rather than the whole footprint.
+	var face_w: float = _face_width()
+	var scaled: PackedVector2Array = _slab_polygon(face_w)
 	_background.polygon = scaled
 	# Phase 4 — the slab is a silhouette only. Re-apply the three-band split at
 	# the new width so a morph frame never shows the old full-slab wall.
-	_apply_band_geometry(width)
+	_apply_band_geometry(face_w)
+	_update_prism()
 	if _edge_glow:
 		_edge_glow.points = scaled
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
@@ -460,10 +511,9 @@ func _on_morph_finished() -> void:
 		return
 	_current_sides = _target_sides
 	_morph_tween = null
-	# Endpoint of the tween already equals the exact resample_ngon(target,...)
-	# shape (resample_ngon's t=1 endpoint is identical to a fresh call), so no
-	# further geometry rebuild is needed here — only settle the desks fully
-	# (positions, not the node set, in case anything drifted from rounding).
+	# The tween endpoint already equals the target width exactly, so no further
+	# geometry rebuild belongs here. Only settle the desks fully. That means
+	# their positions, not the node set, in case anything drifted on rounding.
 	_reposition_interior(_effective_width)
 	_update_active_edge_glow()
 	if _pending_dimensions:
@@ -488,8 +538,22 @@ func add_agent_slot(agent_id: String, edge_index: int, character_class: String =
 		"provider": provider,
 		"power_level": power_level,
 	})
-	if edge_index == _active_edge:
+	# A neighbour edge shows ghost sprites, so an agent landing there changes
+	# what the side walls draw. Rebuild for those edges too, or the side wall
+	# stays empty while the edge dot already reports the agent.
+	if _edge_is_visible(edge_index):
 		_rebuild_interior()
+
+
+## True when the edge is the active one or one of the two ghost neighbours.
+func _edge_is_visible(edge_index: int) -> bool:
+	if polygon_sides < 3:
+		return edge_index == _active_edge
+	var edge: int = posmod(edge_index, polygon_sides)
+	for offset: int in [-1, 0, 1]:
+		if edge == posmod(_active_edge + offset, polygon_sides):
+			return true
+	return false
 
 
 func remove_agent_slot(agent_id: String) -> void:
@@ -554,6 +618,8 @@ func set_show_dressing(visible_flag: bool) -> void:
 		_dressing.visible = visible_flag
 	if _edge_dressing != null and is_instance_valid(_edge_dressing):
 		_edge_dressing.visible = visible_flag
+	if _ghost_layer != null and is_instance_valid(_ghost_layer):
+		_ghost_layer.visible = visible_flag
 
 
 func set_show_interior(visible_flag: bool) -> void:
@@ -563,10 +629,10 @@ func set_show_interior(visible_flag: bool) -> void:
 	# mirrors this same distance rule.
 
 
-## Demo-parity slab outline: a rectangle with chamfered short ends (the HTML
-## demo's clip-path), NOT the resampled n-gon lens. T15 load still drives the
-## width (breathe) and edge glow; the side-count bucket no longer changes the
-## silhouette, which the lens shape distorted beyond recognition.
+## Demo-parity front-face outline: a rectangle with chamfered short ends (the
+## HTML demo's clip-path). Callers pass the prism face width, so T15 load
+## reaches it two ways. Breathe scales the whole footprint, and the side-count
+## bucket divides that footprint into more and narrower faces.
 func _slab_polygon(width: float) -> PackedVector2Array:
 	var hw: float = width / 2.0
 	var hh: float = _floor_height / 2.0
@@ -579,8 +645,31 @@ func _slab_polygon(width: float) -> PackedVector2Array:
 	])
 
 
+## Width of one prism face, which is the width of the front room the player
+## looks into. Phase 6 makes this the authoritative on-screen width: the demo
+## face is exactly EdgeLayout.edge_width_for_polygon(sides, floor_width).
+func _face_width() -> float:
+	return EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
+
+
+## Creates the prism node once and pushes the current shape into it. The prism
+## sits directly above the slab silhouette and below the dressing, so the front
+## face's bands cover its own wall quad while the side faces stay bare.
+func _update_prism() -> void:
+	if _prism == null or not is_instance_valid(_prism):
+		_prism = FloorPrism.new()
+		add_child(_prism)
+		move_child(_prism, _background.get_index() + 1)
+	_prism.configure(
+		polygon_sides, _face_width(), _floor_height,
+		WALL_TILES.get(wall_texture, WALL_TILES["stone_wall"]), _identity_tint()
+	)
+	_prism.set_rotation_value(_prism_rot)
+	_update_ghost_transforms()
+
+
 func _rebuild_background() -> void:
-	var scaled: PackedVector2Array = _slab_polygon(_effective_width)
+	var scaled: PackedVector2Array = _slab_polygon(_face_width())
 	# Phase 4 — the slab carries no wall texture any more. It is the silhouette
 	# behind the three bands, so it only fills the gaps the bands leave.
 	_background.polygon = scaled
@@ -592,9 +681,9 @@ func _rebuild_background() -> void:
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
 		if mat:
 			mat.set_shader_parameter("glow", _composite_load)
-	_morph_last_unit = FloorMorph.resample_ngon(_current_sides, RESAMPLE_K, ROTATION)
 	_morph_last_width = _effective_width
 	_morph_last_glow = _composite_load
+	_update_prism()
 	_rebuild_dressing()
 
 
@@ -607,10 +696,11 @@ func _rebuild_dressing() -> void:
 	_torches.clear()
 	_dressing = Node2D.new()
 	add_child(_dressing)
-	move_child(_dressing, _background.get_index() + 1)
+	# The dressing paints the front face, so it must sit above the prism.
+	move_child(_dressing, _prism.get_index() + 1)
 	_dressing.visible = _show_dressing
 
-	var half_w: float = _floor_width / 2.0
+	var half_w: float = _face_width() / 2.0
 	var half_h: float = _floor_height / 2.0
 
 	var tint: Color = _identity_tint()
@@ -622,7 +712,7 @@ func _rebuild_dressing() -> void:
 	_wall_band.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	# The wall is the lit surface, so it carries the higher value.
 	_wall_band.color = Color(tint.r * WALL_VALUE, tint.g * WALL_VALUE, tint.b * WALL_VALUE, 1.0)
-	_wall_band.texture_offset.x = _wall_scroll_x  # a rebuild keeps the scroll
+	# Phase 6 drops the wall UV scroll. The prism rotation carries the turn now.
 	_dressing.add_child(_wall_band)
 
 	# Band B. The 3/4-view walkable plane, inside the slab, below the wall line.
@@ -663,17 +753,22 @@ func _rebuild_dressing() -> void:
 	_cornice_shadow.color = Color(0.086, 0.098, 0.129, 1.0)
 	_dressing.add_child(_cornice_shadow)
 
-	_apply_band_geometry(_effective_width)
+	_apply_band_geometry(_face_width())
 
 	# Windows no longer live here. Phase 5 section 3 moves them into the contents
 	# layer, so a turn carries them across with the agents.
 
-	# Torches flanking the wall band near each end.
+	# Torches flanking the wall band near each end. Phase 6 pins them to the
+	# brick: the bracket sits TORCH_TOP_MARGIN below the front face's top edge
+	# and the whole sprite stays inside the wall band, so no torch hovers over
+	# the slab top any more.
+	var torch_h: float = TORCH_TEXTURE.get_height()
+	var torch_y: float = -half_h + TORCH_TOP_MARGIN + torch_h / 2.0
 	for tx: float in [-half_w + TORCH_INSET, half_w - TORCH_INSET]:
 		var torch := Sprite2D.new()
 		torch.texture = TORCH_TEXTURE
 		torch.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		torch.position = Vector2(tx, -half_h + WALL_BAND_HEIGHT / 2.0)
+		torch.position = Vector2(tx, torch_y)
 		_dressing.add_child(torch)
 		_torches.append(torch)
 
@@ -813,7 +908,7 @@ func _rebuild_edge_dressing() -> void:
 	# flip from set_show_dressing, so an empty node would stay empty until the
 	# next structural rebuild.
 	_edge_dressing.visible = _show_dressing
-	var half_w: float = _effective_width / 2.0
+	var half_w: float = _face_width() / 2.0
 	var half_h: float = _floor_height / 2.0
 	var window_y: float = -half_h + WALL_BAND_HEIGHT / 2.0
 	var span_left: float = -half_w + WINDOW_START
@@ -849,6 +944,85 @@ func _rebuild_edge_dressing() -> void:
 	_edge_dressing.add_child(ambient)
 
 
+## Phase 6 section 1 — dressing for the two neighbour faces. Every agent on
+## edge plus or minus 1 gets one static sprite showing the first idle frame.
+## The sprites carry no animation and no signals. They exist so a turn reveals
+## a room that already looks inhabited.
+func _rebuild_ghosts() -> void:
+	if _ghost_layer != null and is_instance_valid(_ghost_layer):
+		_ghost_layer.queue_free()
+	_ghosts.clear()
+	_ghost_layer = Node2D.new()
+	add_child(_ghost_layer)
+	if _dressing != null and is_instance_valid(_dressing):
+		move_child(_ghost_layer, _dressing.get_index() + 1)
+	_ghost_layer.visible = _show_dressing
+	if polygon_sides < 3:
+		return
+	var face_w: float = _face_width()
+	var char_y: float = _character_y()
+	for offset: int in [-1, 1]:
+		var edge: int = posmod(_active_edge + offset, polygon_sides)
+		if edge == _active_edge:
+			continue
+		var edge_agents: Array[Dictionary] = []
+		for slot: Dictionary in _agent_slots:
+			if slot["edge_index"] == edge:
+				edge_agents.append(slot)
+		if edge_agents.is_empty():
+			continue
+		var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), face_w)
+		for i: int in range(edge_agents.size()):
+			var tex: Texture2D = _idle_frame_for_class(edge_agents[i].get("character_class", "apprentice"))
+			if tex == null:
+				continue
+			var ghost := Sprite2D.new()
+			ghost.texture = tex
+			ghost.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			ghost.position = Vector2(0.0, char_y)
+			_ghost_layer.add_child(ghost)
+			_ghosts.append({
+				"sprite": ghost,
+				"face": edge,
+				"local_x": positions[i].x + EdgeLayout.DESK_WIDTH / 2.0,
+			})
+	_update_ghost_transforms()
+
+
+## First idle frame of a character class, or null when the class has no frames.
+func _idle_frame_for_class(class_name_str: String) -> Texture2D:
+	var class_id: int = AgentCharacter.CLASS_BY_NAME.get(
+		class_name_str, AgentCharacter.CharacterClass.APPRENTICE
+	)
+	var frames: SpriteFrames = AgentCharacter.CLASS_FRAMES.get(class_id, null)
+	if frames == null or not frames.has_animation("idle") or frames.get_frame_count("idle") == 0:
+		return null
+	return frames.get_frame_texture("idle", 0)
+
+
+## Places every ghost on its projected face. A ghost on a back-facing face
+## hides, and the rest squash in x by the face's perspective scale.
+func _update_ghost_transforms() -> void:
+	if _ghosts.is_empty():
+		return
+	var face_w: float = _face_width()
+	for entry: Dictionary in _ghosts:
+		var ghost: Sprite2D = entry["sprite"]
+		if not is_instance_valid(ghost):
+			continue
+		var face: int = entry["face"]
+		if not FloorPrism.face_is_front(polygon_sides, _prism_rot, face):
+			ghost.visible = false
+			continue
+		ghost.visible = true
+		var proj: Vector2 = FloorPrism.face_center_projection(polygon_sides, face_w, _prism_rot, face)
+		var s: float = proj.y
+		ghost.position.x = proj.x + float(entry["local_x"]) * s
+		ghost.scale.x = s
+		var dim: float = FloorPrism.face_dim(polygon_sides, _prism_rot, face)
+		ghost.modulate = Color(dim, dim, dim, GHOST_ALPHA)
+
+
 ## Structural rebuild: destroys and recreates AgentCharacter nodes for the
 ## active edge. Only called when the SET of agents on the active edge (or
 ## which edge is active, or polygon_sides) actually changes — never called
@@ -858,14 +1032,14 @@ func _rebuild_interior() -> void:
 	for child: Node in _agent_slots_node.get_children():
 		child.queue_free()
 	_rebuild_edge_dressing()
+	_rebuild_ghosts()
 	var edge_agents: Array[Dictionary] = []
 	for slot: Dictionary in _agent_slots:
 		if slot["edge_index"] == _active_edge:
 			edge_agents.append(slot)
 	if edge_agents.is_empty():
 		return
-	var edge_width: float = EdgeLayout.edge_width_for_polygon(polygon_sides, _effective_width)
-	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), edge_width)
+	var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), _face_width())
 	# Characters stand ON band B: feet land mid-plane so the down-angle reads,
 	# and heads clear the cornice. Only x comes from EdgeLayout; y is fixed.
 	var char_y: float = _character_y()
@@ -949,25 +1123,21 @@ func _reposition_interior(effective_width: float) -> void:
 			(child as Node2D).position = Vector2(base_x - 10.0, prop_y)
 
 
-## Recomputes the ActiveEdgeGlow outline segment (criterion #124.4 — glow
-## emphasis specifically on the active edge). Uses polygon_sides/_active_edge
-## directly (already the target/final side count — see _rehome_for_sides)
-## rather than the mid-morph resampled curve, so the segment stays a clean
-## single straight edge throughout the animation and only breathes in size.
+## Recomputes the ActiveEdgeGlow segment (criterion #124.4 — glow emphasis
+## specifically on the active edge). Phase 6 makes the active edge the front
+## prism face, so the segment is the bottom edge of that face. It stays a clean
+## straight line through a morph and only breathes in width.
 func _update_active_edge_glow() -> void:
 	if not _active_edge_glow:
 		return
 	if polygon_sides < 3:
 		_active_edge_glow.points = PackedVector2Array()
 		return
-	var unit_pts: PackedVector2Array = FloorMorph.regular_ngon_unit(polygon_sides, ROTATION)
-	var a: Vector2 = unit_pts[_active_edge % polygon_sides]
-	var b: Vector2 = unit_pts[(_active_edge + 1) % polygon_sides]
-	var half_width: float = _effective_width / 2.0
+	var half_width: float = _face_width() / 2.0
 	var half_height: float = _floor_height / 2.0
 	_active_edge_glow.points = PackedVector2Array([
-		Vector2(a.x * half_width, a.y * half_height),
-		Vector2(b.x * half_width, b.y * half_height),
+		Vector2(-half_width, half_height),
+		Vector2(half_width, half_height),
 	])
 	var mat: ShaderMaterial = _active_edge_glow.material as ShaderMaterial
 	if mat:

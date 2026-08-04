@@ -18,6 +18,12 @@ type Substrate interface {
 	// The command is followed by Enter to execute it.
 	SendCommand(ctx context.Context, session string, cmd string) error
 
+	// SendKey sends one key press to the named session's active pane.
+	// The key name must pass ValidateKeyName. Unlike SendCommand, the
+	// substrate does not type the argument literally, so a curses
+	// application reads it as a real key press.
+	SendKey(ctx context.Context, session string, key string) error
+
 	// CaptureOutput reads the last N lines from the named session's active pane.
 	CaptureOutput(ctx context.Context, session string, lines int) (string, error)
 

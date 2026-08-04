@@ -71,6 +71,12 @@ func (f *fakeSubstrate) SendCommand(_ context.Context, _ string, cmd string) err
 	f.sent = append(f.sent, cmd)
 	return nil
 }
+func (f *fakeSubstrate) SendKey(_ context.Context, _ string, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, key)
+	return nil
+}
 func (f *fakeSubstrate) CaptureOutput(context.Context, string, int) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

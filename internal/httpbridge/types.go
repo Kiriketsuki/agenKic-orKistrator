@@ -40,8 +40,23 @@ type DAGEdgeJSON struct {
 }
 
 // SendInputRequest is the JSON body for POST /api/agents/{id}/input.
+//
+// The body carries either text or one key press, never both. Keys and Input
+// name the same text field, so an older client that sends "keys" still works.
+// Key names a single tmux key such as Up or Enter, and the handler forwards it
+// through Substrate.SendKey so a curses prompt reads a real key press.
 type SendInputRequest struct {
-	Keys string `json:"keys"`
+	Keys  string `json:"keys,omitempty"`
+	Input string `json:"input,omitempty"`
+	Key   string `json:"key,omitempty"`
+}
+
+// Text returns the literal text the request carries, from either field name.
+func (r SendInputRequest) Text() string {
+	if r.Input != "" {
+		return r.Input
+	}
+	return r.Keys
 }
 
 // ReassignAgentRequest is the JSON body for POST /api/agents/{id}/reassign

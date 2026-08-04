@@ -315,8 +315,10 @@ func _mount_chat_body(banner: String = "") -> void:
 	input_line.placeholder_text = "type to the agent..."
 	input_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	input_line.text_submitted.connect(_on_input_submitted)
+	input_line.gui_input.connect(_on_input_gui_input)
 	footer.add_child(input_line)
 	_input_line = input_line
+	input_line.call_deferred("grab_focus")
 	var send_button: Button = Button.new()
 	send_button.name = "Send"
 	send_button.text = "Send"
@@ -390,6 +392,57 @@ func _on_input_submitted(text: String) -> void:
 		_bridge.call("send_input", _agent_id, text)
 	if _input_line != null:
 		_input_line.clear()
+
+
+## Key passthrough for the chat body (Task D).
+##
+## An interactive CLI such as Claude Code draws a trust prompt that only a real
+## key press answers. The chat body posts text, so those presses never reached
+## tmux before this handler existed.
+##
+## The rule: the passthrough fires only while the LineEdit holds focus AND its
+## text is empty. An empty field means the user navigates a prompt, so this
+## handler forwards the press to tmux and consumes the event. A field that
+## holds text means the user writes a line, so every key keeps its normal
+## editing behavior and Enter still submits the typed line.
+const _PASSTHROUGH_KEYS: Dictionary = {
+	KEY_UP: "Up",
+	KEY_DOWN: "Down",
+	KEY_LEFT: "Left",
+	KEY_RIGHT: "Right",
+	KEY_ENTER: "Enter",
+	KEY_KP_ENTER: "Enter",
+	KEY_ESCAPE: "Escape",
+	KEY_TAB: "Tab",
+	KEY_PAGEUP: "PPage",
+	KEY_PAGEDOWN: "NPage",
+	KEY_HOME: "Home",
+	KEY_END: "End",
+}
+
+
+func _on_input_gui_input(event: InputEvent) -> void:
+	if _input_line == null or _bridge == null or _agent_id.is_empty():
+		return
+	var key_event := event as InputEventKey
+	if key_event == null or not key_event.pressed or key_event.echo:
+		return
+	if key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
+		return
+	if not _input_line.text.is_empty():
+		return
+	var name: String = ""
+	if _PASSTHROUGH_KEYS.has(key_event.keycode):
+		name = _PASSTHROUGH_KEYS[key_event.keycode]
+	elif key_event.keycode >= KEY_1 and key_event.keycode <= KEY_4:
+		name = String.chr(key_event.keycode)
+	elif key_event.keycode >= KEY_KP_1 and key_event.keycode <= KEY_KP_4:
+		name = str(key_event.keycode - KEY_KP_0)
+	if name.is_empty():
+		return
+	if _bridge.has_method("send_key"):
+		_bridge.call("send_key", _agent_id, name)
+	_input_line.accept_event()
 
 
 func _on_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:

@@ -90,68 +90,8 @@ static func side_count_for_load_hysteresis(load: float, current_sides: int, hyst
 		return current_sides
 
 
-## Raw n-gon vertices on a unit circle (circumradius 1), n points.
-static func regular_ngon_unit(n: int, rotation: float = 0.0) -> PackedVector2Array:
-	var pts: PackedVector2Array = PackedVector2Array()
-	if n < 3:
-		return pts
-	for i: int in range(n):
-		var theta: float = rotation + TAU * float(i) / float(n)
-		pts.append(Vector2(cos(theta), sin(theta)))
-	return pts
-
-
-## Resamples the boundary of a regular n-gon (unit circumradius 1) at k
-## equally-spaced angles. Every returned point lies exactly on the n-gon's
-## edges (not just its vertices), so a fixed k works for any n — this is
-## what lets floor_scene.gd lerp between an old n and a new n without any
-## popping: both arrays have identical length k, and each element is an
-## exact point on its respective polygon boundary.
-static func resample_ngon(n: int, k: int, rotation: float = 0.0) -> PackedVector2Array:
-	var pts: PackedVector2Array = PackedVector2Array()
-	if n < 3 or k < 3:
-		return pts
-	var sector: float = TAU / float(n)
-	var apothem: float = cos(sector / 2.0)  # circumradius 1 -> apothem = cos(pi/n)
-	for i: int in range(k):
-		var theta: float = rotation + TAU * float(i) / float(k)
-		var rel: float = fmod(theta - rotation, sector)
-		if rel < 0.0:
-			rel += sector
-		var theta_local: float = rel - sector / 2.0
-		var r: float = apothem / cos(theta_local)
-		pts.append(Vector2(r * cos(theta), r * sin(theta)))
-	return pts
-
-
 ## Continuous breathe scale — floors "breathe" outward as load rises, even
 ## when the bucketed side count does not change. Linear in load; callers
 ## clamp `load` to [0,1] before calling.
 static func breathe_scale_for_load(load: float, min_scale: float, max_scale: float) -> float:
 	return lerpf(min_scale, max_scale, clampf(load, 0.0, 1.0))
-
-
-## Element-wise lerp between two equal-length unit-shape arrays (as produced
-## by resample_ngon at the same k). Returns `b` unchanged if lengths differ
-## (defensive — should never happen when both arrays came from resample_ngon
-## with the same k).
-static func lerp_unit_arrays(a: PackedVector2Array, b: PackedVector2Array, t: float) -> PackedVector2Array:
-	if a.size() != b.size():
-		return b
-	var out: PackedVector2Array = PackedVector2Array()
-	out.resize(a.size())
-	for i: int in range(a.size()):
-		out[i] = a[i].lerp(b[i], t)
-	return out
-
-
-## Scales a unit-shape array (as produced by resample_ngon /
-## regular_ngon_unit) to the flattened footprint of a floor: x half-extent
-## `half_width`, y half-extent `half_height`.
-static func scale_unit_array(unit_pts: PackedVector2Array, half_width: float, half_height: float) -> PackedVector2Array:
-	var out: PackedVector2Array = PackedVector2Array()
-	out.resize(unit_pts.size())
-	for i: int in range(unit_pts.size()):
-		var p: Vector2 = unit_pts[i]
-		out[i] = Vector2(p.x * half_width, p.y * half_height)
-	return out

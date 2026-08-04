@@ -246,15 +246,42 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Keys == "" {
+	text := req.Text()
+	if req.Key != "" && text != "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "keys is required",
+			Error: "key and input are mutually exclusive",
 			Code:  "invalid_argument",
 		})
 		return
 	}
 
-	if err := b.substrate.SendCommand(r.Context(), "agent-"+agentID, req.Keys); err != nil {
+	// A key request forwards one key press. A text request types a line and
+	// then presses Enter. The two paths never mix in one call.
+	if req.Key != "" {
+		if err := terminal.ValidateKeyName(req.Key); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: err.Error(),
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		if err := b.substrate.SendKey(r.Context(), "agent-"+agentID, req.Key); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if text == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "input or key is required",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+
+	if err := b.substrate.SendCommand(r.Context(), "agent-"+agentID, text); err != nil {
 		writeError(w, err)
 		return
 	}

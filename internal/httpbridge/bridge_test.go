@@ -52,6 +52,9 @@ func (s *stubSubstrate) DestroySession(_ context.Context, _ string) error { retu
 func (s *stubSubstrate) SendCommand(_ context.Context, _ string, _ string) error {
 	return nil
 }
+func (s *stubSubstrate) SendKey(_ context.Context, _ string, _ string) error {
+	return nil
+}
 func (s *stubSubstrate) CaptureOutput(_ context.Context, _ string, _ int) (string, error) {
 	return "", nil
 }
@@ -69,6 +72,13 @@ type recordingSubstrate struct {
 	stubSubstrate
 	sentSession string
 	sentCmd     string
+	sentKeys    []string
+}
+
+func (s *recordingSubstrate) SendKey(_ context.Context, session string, key string) error {
+	s.sentSession = session
+	s.sentKeys = append(s.sentKeys, key)
+	return nil
 }
 
 func (s *recordingSubstrate) SendCommand(_ context.Context, session string, cmd string) error {
@@ -747,6 +757,97 @@ func TestSendInput_EmptyKeys_WithSubstrate(t *testing.T) {
 	// This exercises the validation at handlers.go:200-206.
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (empty keys), got %d", w.Code)
+	}
+}
+
+// TestSendInput_KeyWhitelist checks the key path of POST
+// /api/agents/{id}/input. An allowed key reaches Substrate.SendKey, and any
+// other name fails with 400 before the substrate sees it.
+func TestSendInput_KeyWhitelist(t *testing.T) {
+	accepted := []string{"Up", "Down", "Left", "Right", "Enter", "Escape",
+		"Tab", "BTab", "Space", "PPage", "NPage", "Home", "End", "1", "4", "y"}
+	for _, key := range accepted {
+		sub := &recordingSubstrate{}
+		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+		body, _ := json.Marshal(httpbridge.SendInputRequest{Key: key})
+		req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("key %q: expected 204, got %d", key, w.Code)
+			continue
+		}
+		if len(sub.sentKeys) != 1 || sub.sentKeys[0] != key {
+			t.Errorf("key %q: substrate saw %v", key, sub.sentKeys)
+		}
+		if sub.sentSession != "agent-agent-1" {
+			t.Errorf("key %q: session %q", key, sub.sentSession)
+		}
+		if sub.sentCmd != "" {
+			t.Errorf("key %q: SendCommand ran with %q", key, sub.sentCmd)
+		}
+	}
+
+	rejected := []string{"C-b", "C-c", "M-x", "Up Enter", "Delete;q", "", "ab", "\n"}
+	for _, key := range rejected {
+		sub := &recordingSubstrate{}
+		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+		raw := `{"key":` + mustJSONString(key) + `}`
+		req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader([]byte(raw)))
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("key %q: expected 400, got %d", key, w.Code)
+		}
+		if len(sub.sentKeys) != 0 {
+			t.Errorf("key %q: substrate saw %v", key, sub.sentKeys)
+		}
+	}
+}
+
+func mustJSONString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// TestSendInput_KeyAndInputConflict rejects a body that carries both fields.
+func TestSendInput_KeyAndInputConflict(t *testing.T) {
+	sub := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Key: "Up", Input: "ls"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestSendInput_InputFieldTypesText checks that the newer "input" field
+// reaches SendCommand exactly like the older "keys" field.
+func TestSendInput_InputFieldTypesText(t *testing.T) {
+	sub := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Input: "hello world"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if sub.sentCmd != "hello world" {
+		t.Fatalf("SendCommand cmd = %q", sub.sentCmd)
 	}
 }
 

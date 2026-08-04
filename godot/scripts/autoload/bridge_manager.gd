@@ -407,6 +407,15 @@ func send_input(agent_id: String, keys: String) -> void:
 	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"keys": keys})
 
 
+## Sends one key press to the agent's tmux session. `key_name` must be a tmux
+## key name the orchestrator whitelists, such as Up, Enter or Escape, or a
+## single printable character. The orchestrator runs send-keys without the
+## literal flag, so a curses prompt reads a real key press. Text goes through
+## send_input instead.
+func send_key(agent_id: String, key_name: String) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"key": key_name})
+
+
 ## Requeues agent_id's current task with a tier/provider hint (T14 / #119
 ## "Reassign task"). `target` is passed straight through as the JSON body —
 ## callers set whichever of {"tier": ..., "provider": ...} applies. See

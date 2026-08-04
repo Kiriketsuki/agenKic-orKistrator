@@ -297,3 +297,99 @@ The carousel + UV scroll are implemented — but windows, torches, and the wall 
 - Rotate on an empty floor: the post-turn frame differs visibly from the pre-turn frame (different windows/prop), and the compass telegraphs the step.
 - The slab silhouette is a clean chamfered rectangle — nothing overhangs, nothing flares.
 - With zero agents connected, the focused floor still looks inhabited (ambient prop + torch flicker).
+
+---
+
+# Phase 6 — the prism, the banner, the dots, the treeline fade
+
+Diff review vs push 790a3b8. Four items from the demo's main interface are missing outright. The first one is the big reveal: the demo floor is not a flat slab — it is a **rotating N-gon prism rendered in perspective**, and that's where the "left and right walls" come from.
+
+Demo source (`Tower Demos.dc.html` main interface):
+
+```
+perspective: 1600px; perspective-origin: 50% 20%
+face: 560×160, transform: rotateY(edge*60deg) translateZ(485px)
+camera: rotateY(-active*60deg), 0.55s cubic-bezier(0.16,1,0.3,1)
+non-focused face opacity: 0.45
+```
+
+Divide by 4 for art px: **face 140×40, apothem 121, focal length 400**. Note `140 == EdgeLayout.edge_width_for_polygon(6, 280)` — the prism face IS the current edge width. Everything stays coherent.
+
+---
+
+## 1. FloorPrism — project the prism in 2D, no 3D engine
+
+Replace the flat slab silhouette with a custom-drawn prism per floor (a `_draw()` node between the shaft and the contents layer). ~60 lines:
+
+```gdscript
+# floor_prism.gd — draws an N-face wall prism in fake perspective.
+const FOCAL: float = 400.0            # demo perspective 1600 / 4
+
+func draw_prism(canvas: CanvasItem, sides: int, face_w: float, face_h: float,
+        rot: float, wall_tex: Texture2D, tint: Color) -> void:
+    var apothem: float = face_w / (2.0 * tan(PI / sides))
+    var step: float = TAU / sides
+    # Order faces back-to-front by their center z.
+    var order: Array[int] = range(sides)
+    order.sort_custom(func(a, b): return cos(a * step - rot) < cos(b * step - rot))
+    for k: int in order:
+        var a0: float = k * step - rot - step / 2.0   # left corner angle
+        var a1: float = a0 + step                     # right corner angle
+        var r: float = apothem / cos(step / 2.0)      # corner ring radius
+        var p0 := Vector2(sin(a0) * r, apothem - cos(a0) * r)  # (x, depth z)
+        var p1 := Vector2(sin(a1) * r, apothem - cos(a1) * r)
+        if cos((a0 + a1) / 2.0 + ... ) <= 0.0: continue  # back-facing: skip
+        var s0: float = FOCAL / (FOCAL + p0.y)        # perspective divide
+        var s1: float = FOCAL / (FOCAL + p1.y)
+        var quad := PackedVector2Array([
+            Vector2(p0.x * s0, -face_h / 2.0 * s0), Vector2(p1.x * s1, -face_h / 2.0 * s1),
+            Vector2(p1.x * s1,  face_h / 2.0 * s1), Vector2(p0.x * s0,  face_h / 2.0 * s0),
+        ])
+        var dim: float = lerpf(1.0, 0.45, absf(angle_difference((a0+a1)/2.0, 0.0)) / (PI/2.0))
+        var uvs := PackedVector2Array([Vector2(0,0), Vector2(face_w,0), Vector2(face_w,face_h), Vector2(0,face_h)])
+        canvas.draw_colored_polygon(quad, tint * Color(dim, dim, dim), uvs, wall_tex)
+```
+
+- **Rotation**: tween one `rot` value by `step` per turn, 0.55 s EXPO/OUT, and `queue_redraw()` per frame — the side walls sweep past exactly like the demo. Keep the existing contents-carousel crossfade in sync (same tween duration); drop the wall UV-scroll (the prism motion replaces it).
+- The **front face** (dim == 1) keeps the Phase 4/5 band anatomy: draw wall band + floor plane + lip clipped to the front quad (at `s=1` it's an untransformed rect, so the existing band polygons drop in unchanged). Side faces are wall texture only, dimmed — the demo does the same.
+- **Adjacent-face ghosts** (demo shows dimmed agents on side walls): for each agent on edge ±1, one static `Sprite2D` (first idle frame), positioned at the side face's projected x, `modulate.a = 0.45`, x-squashed by that face's `s` factor. No animation, no signals — pure dressing.
+- **T15 morph**: `sides` is already dynamic (6–12) — the prism just draws N faces; breathe scales `face_w`. The lens-shape resample dies entirely; `FloorMorph` keeps only the side-count/breathe math.
+- Fisheye floors at distance ≥ 1 render the prism at their existing scale — free skyline depth (side walls visible on the small floors too, like the demo's stacked view).
+
+## 2. The nameplate banner — "✧ MAIN HALL · edge 0/6 ✧"
+
+Missing entirely in Godot. UILayer, centered above the focused floor (track the floor's screen pos through the camera):
+
+- `NinePatchRect` with `nameplate_frame.png`, patch margins **4/6** (the demo uses `border-image … 4 6 fill`), interior fill `#1a1626`.
+- Label: Fira Code, gold `#d9a94a`, format `✧ {LABEL} · edge {active+1}/{sides} ✧` — uppercase, letter-spaced. (Demo shows `edge 0/6` zero-indexed; humans read 1-based better, your call — pick one and match the dots.)
+- Re-render text on `floor_focus_changed` and on every rotate; slide/fade it with the refocus tween so it travels with the floor.
+
+## 3. Edge pagination dots
+
+Bottom-center under the focused floor, UILayer: **one flat-top hexagon per edge** (this is the Chrysaki status-pip shape — hexagons are status):
+
+- Active edge: Blonde `#FBB13C` filled.
+- Edge with ≥1 agent: emerald/teal filled (`#1a8a6a` / `#197278` mix like the demo row).
+- Empty edge: outline only, `#363a4f`.
+- ~10px hexes, 6px gap, `draw_polygon` in one Control; click a dot → `rotate_to_edge` (shortest direction). Rebuild on floors_changed / rotation. If `edge_compass.gd` already draws a widget, fold this in as its replacement — one indicator, not two.
+
+## 4. Bottom fade into the treeline
+
+The demo's tower base dissolves into the canopy; in Godot the shaft/base end in a hard cut above the trees.
+
+- Reorder: give the **canopy ParallaxLayer a z_index above the tower** so the treeline overlaps the tower's bottom ~24 px — this alone produces most of the demo read.
+- Add an alpha fade to the shaft's bottom 32 px and the base plinth: a `ShaderMaterial` with `COLOR.a *= smoothstep(1.0, 0.85, UV.y)` on the shaft sprite (or a pre-faded copy of `stair_shaft.png`'s bottom tile).
+- The demo also fades the *sky gradient* slightly darker behind the treeline — already covered by `backdrop_canopy.png` if the overlap lands.
+
+## Order
+
+1. §1 prism — it subsumes the wall/rotation complaints from Phases 4–5 (§3 per-edge dressing from Phase 5 still applies, now per prism face).
+2. §2 banner + §3 dots together (both are UILayer state readouts of the same rotation).
+3. §4 fade — 30-minute close-out.
+
+## Acceptance
+
+- Static frame shows three wall faces: front face full-bright with interior, two receding side walls dimmed to 0.45 with ghost agents.
+- Rotating sweeps the side walls through the front position in one continuous 0.55 s motion; the banner text and active dot update at the moment the turn settles.
+- Dots: gold = where you look, green = where agents are, outline = empty; clicking any dot turns the room the short way.
+- The tower base disappears INTO the trees — no horizontal cut line anywhere below the bottom floor.

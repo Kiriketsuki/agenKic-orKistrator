@@ -21,6 +21,9 @@ const PLINTH_HALF_WIDTH: float = 24.0
 const PLINTH_HEIGHT: float = 12.0
 ## How far the plinth top hides behind the bottom slab.
 const PLINTH_TUCK: float = 4.0
+## Phase 6 section 4. The plinth fades out over its own height, so it dissolves
+## into the treeline instead of ending on a hard edge.
+const BASE_FADE_SHADER: Shader = preload("res://shaders/base_fade.gdshader")
 
 var _polygon_sides: int = 6
 var _tower_radius: float = 40.0
@@ -28,6 +31,7 @@ var _roof_polygon: Polygon2D
 var _roof_outline: Line2D
 var _base_polygon: Polygon2D
 var _base_outline: Line2D
+var _base_fade_material: ShaderMaterial
 
 
 func _ready() -> void:
@@ -39,6 +43,10 @@ func _ready() -> void:
 	_base_polygon.color = PLINTH_COLOR
 	add_child(_base_polygon)
 	_base_outline = _make_outline(PLINTH_OUTLINE)
+	_base_fade_material = ShaderMaterial.new()
+	_base_fade_material.shader = BASE_FADE_SHADER
+	_base_polygon.material = _base_fade_material
+	_base_outline.material = _base_fade_material
 
 
 ## A 1 px darker border keeps a flat fill from reading as raw vector art next to
@@ -92,3 +100,8 @@ func _draw_base() -> void:
 	_base_polygon.polygon = points
 	if _base_outline:
 		_base_outline.points = points
+	if _base_fade_material:
+		# The plinth starts to fade the moment it leaves the slab and reaches
+		# zero alpha at its own bottom edge.
+		_base_fade_material.set_shader_parameter("fade_start_y", top_y)
+		_base_fade_material.set_shader_parameter("fade_end_y", top_y + PLINTH_HEIGHT)

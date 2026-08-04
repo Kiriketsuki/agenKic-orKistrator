@@ -5,12 +5,15 @@
 #
 #   godot --headless --path godot --script tests/floor_morph_test.gd
 #
-# Asserts the invariants that make the vertex-lerp morph pop-free without a
-# running engine to visually confirm: resample_ngon() points lie exactly on
-# the n-gon boundary, lerp_unit_arrays() endpoints match the source arrays
-# exactly (t=0 == old, t=1 == new), the bucket table + hysteresis behave as
-# specified, and breathe/edge-width scaling stays monotonic. Exits 1 on any
-# failure so it can be wired into CI later.
+# Asserts the invariants that keep the load-driven morph coherent without a
+# running engine to visually confirm: the bucket table and its hysteresis
+# behave as specified, breathe and edge-width scaling stay monotonic, and the
+# Phase 6 prism projection culls, orders and dims its faces correctly. Exits 1
+# on any failure so it can be wired into CI later.
+#
+# Phase 6 section 1 deleted the lens resample, so the resample_ngon() boundary
+# case and the lerp_unit_arrays() endpoint case went with it. FloorPrism face
+# cases replace them.
 
 extends SceneTree
 
@@ -21,8 +24,8 @@ func _init() -> void:
 	_run_hysteresis_cases(failures)
 	_run_hysteresis_multi_bucket_cases(failures)
 	_run_nearest_valid_side_count_cases(failures)
-	_run_resample_boundary_cases(failures)
-	_run_lerp_endpoint_cases(failures)
+	_run_prism_face_cases(failures)
+	_run_prism_apothem_case(failures)
 	_run_breathe_cases(failures)
 	_run_edge_width_monotonic_case(failures)
 	if failures.is_empty():
@@ -105,38 +108,53 @@ func _run_nearest_valid_side_count_cases(failures: Array[String]) -> void:
 			failures.append("nearest_valid_side_count(%d): expected %d got %d" % [input_sides, expected, actual])
 
 
-func _run_resample_boundary_cases(failures: Array[String]) -> void:
-	# Every resample_ngon(n, k) point must satisfy the regular n-gon edge
-	# equation for its sector: r * cos(theta_local) == cos(pi/n) (circumradius 1).
-	for n: int in [6, 7, 8, 10, 12]:
-		var pts: PackedVector2Array = FloorMorph.resample_ngon(n, 96, 0.0)
-		if pts.size() != 96:
-			failures.append("resample_ngon(%d,96) wrong length: %d" % [n, pts.size()])
+## Phase 6 section 1 — the lens resample is gone. FloorPrism draws N flat
+## faces instead, so the geometry contract this suite guards is the prism
+## projection: exactly the faces that look at the camera survive culling, the
+## paint order runs back to front, and the front face projects at scale 1.
+func _run_prism_face_cases(failures: Array[String]) -> void:
+	for sides: int in [6, 7, 8, 10, 12]:
+		var face_w: float = EdgeLayout.edge_width_for_polygon(sides, 280.0)
+		# Face 0 at rot 0 looks straight at the camera.
+		var front: Vector2 = FloorPrism.face_center_projection(sides, face_w, 0.0, 0)
+		if not is_equal_approx(front.x, 0.0):
+			failures.append("prism(%d): front face centre x expected 0 got %f" % [sides, front.x])
+		if not is_equal_approx(front.y, 1.0):
+			failures.append("prism(%d): front face scale expected 1 got %f" % [sides, front.y])
+		if not is_equal_approx(FloorPrism.face_dim(sides, 0.0, 0), 1.0):
+			failures.append("prism(%d): front face must keep full value" % sides)
+		# The face behind the camera never draws.
+		var back: int = sides / 2
+		if FloorPrism.face_is_front(sides, 0.0, back):
+			failures.append("prism(%d): face %d faces away and must cull" % [sides, back])
+		# Every drawn face sits nearer than the one before it in paint order.
+		var order: Array[int] = FloorPrism.draw_order(sides, 0.0)
+		if order.size() != sides:
+			failures.append("prism(%d): draw_order returned %d entries" % [sides, order.size()])
 			continue
-		var apothem: float = cos(PI / float(n))
-		for p: Vector2 in pts:
-			var r: float = p.length()
-			if r > 1.0 + 0.0001:
-				failures.append("resample_ngon(%d): point radius %f exceeds circumradius 1" % [n, r])
+		if order[order.size() - 1] != 0:
+			failures.append("prism(%d): front face must paint last, got %d" % [sides, order[order.size() - 1]])
+		var prev: float = -2.0
+		for k: int in order:
+			var c: float = cos(FloorPrism.face_angle(sides, 0.0, k))
+			if c < prev - 0.0001:
+				failures.append("prism(%d): draw order not back to front at face %d" % [sides, k])
 				break
-			if r < apothem - 0.0001:
-				failures.append("resample_ngon(%d): point radius %f below apothem %f" % [n, r, apothem])
-				break
+			prev = c
+		# A neighbour face is dimmer than the front face and still visible.
+		if not FloorPrism.face_is_front(sides, 0.0, 1):
+			failures.append("prism(%d): neighbour face must stay visible" % sides)
+		var dim: float = FloorPrism.face_dim(sides, 0.0, 1)
+		if dim >= 1.0 or dim < FloorPrism.SIDE_DIM:
+			failures.append("prism(%d): neighbour dim %f out of range" % [sides, dim])
 
 
-func _run_lerp_endpoint_cases(failures: Array[String]) -> void:
-	var a: PackedVector2Array = FloorMorph.resample_ngon(6, 96, 0.0)
-	var b: PackedVector2Array = FloorMorph.resample_ngon(12, 96, 0.0)
-	var at_zero: PackedVector2Array = FloorMorph.lerp_unit_arrays(a, b, 0.0)
-	var at_one: PackedVector2Array = FloorMorph.lerp_unit_arrays(a, b, 1.0)
-	for i: int in range(a.size()):
-		if not at_zero[i].is_equal_approx(a[i]):
-			failures.append("lerp_unit_arrays t=0 mismatch at index %d" % i)
-			break
-	for i: int in range(b.size()):
-		if not at_one[i].is_equal_approx(b[i]):
-			failures.append("lerp_unit_arrays t=1 mismatch at index %d" % i)
-			break
+## The apothem must match the demo geometry: a 6-face prism of 140 px faces
+## sits 121 px from the axis.
+func _run_prism_apothem_case(failures: Array[String]) -> void:
+	var apothem: float = FloorPrism.apothem_for(6, 140.0)
+	if absf(apothem - 121.0) > 1.0:
+		failures.append("apothem_for(6, 140): expected about 121 got %f" % apothem)
 
 
 func _run_breathe_cases(failures: Array[String]) -> void:

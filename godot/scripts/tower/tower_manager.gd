@@ -71,9 +71,23 @@ var _master_region: Rect2 = Rect2()
 var _user_zoom_override: bool = false
 ## Per-floor in-flight edge-rotate tween, killed on re-click to prevent drift.
 var _edge_tweens: Dictionary = {}
+## State of a multi-edge walk started by rotate_focused_to_edge.
+var _edge_walk_dir: int = 0
+var _edge_walk_steps: int = 0
+## The floor the walk belongs to. The walk finishes on the floor the user
+## clicked, so a focus change part way through never redirects the remaining
+## steps onto another floor.
+var _edge_walk_floor: Node2D = null
 
 @onready var _floors_container: Node2D = $FloorsContainer
 @onready var _camera: Camera2D = $Camera
+## Phase 6 section 4. Fades the bottom of the stair shaft into the treeline.
+const BASE_FADE_SHADER: Shader = preload("res://shaders/base_fade.gdshader")
+## How many pixels of the shaft bottom the fade covers.
+const SHAFT_FADE_PX: float = 32.0
+
+var _shaft_fade_material: ShaderMaterial = null
+
 @onready var _tower_exterior: Node2D = $TowerExterior
 @onready var _stair_shaft: Sprite2D = $StairShaft
 
@@ -228,6 +242,15 @@ func _update_stair_shaft() -> void:
 	# Phase 5 section 4 — the shaft sits behind the rooms, so it recedes
 	# instead of reading as a monolith in front of the sky.
 	_stair_shaft.modulate = Color(0.8, 0.8, 0.8, 1.0)
+	# Phase 6 section 4 — the last SHAFT_FADE_PX of the shaft fade to nothing, so
+	# the tower has no hard bottom edge under the treeline. Local Y on this
+	# sprite runs from 0 at the top to span at the bottom.
+	if _shaft_fade_material == null:
+		_shaft_fade_material = ShaderMaterial.new()
+		_shaft_fade_material.shader = BASE_FADE_SHADER
+		_stair_shaft.material = _shaft_fade_material
+	_shaft_fade_material.set_shader_parameter("fade_start_y", span - SHAFT_FADE_PX)
+	_shaft_fade_material.set_shader_parameter("fade_end_y", span)
 
 
 ## Tweens scale and opacity of all floors based on distance from _focused_index.
@@ -406,10 +429,68 @@ func _nearest_zoom_index() -> int:
 	return best
 
 
-func _rotate_focused_edge(direction: int) -> void:
+## Turns the focused floor to an absolute edge index, the short way round.
+## Phase 6 section 3 — the edge dots call this on a click. The turn walks one
+## edge per step, so it reuses the same rotate path the keyboard uses and the
+## prism sweeps continuously instead of jumping.
+func rotate_focused_to_edge(edge: int) -> void:
 	if _floors.is_empty() or _focused_index >= _floors.size():
 		return
 	var floor_node: Node2D = _floors[_focused_index]
+	var sides: int = maxi(int(floor_node.polygon_sides), 3)
+	var target: int = posmod(edge, sides)
+	var delta: int = target - int(floor_node.get_active_edge())
+	# Wrap the step into [-sides/2, sides/2], so a 5 to 0 move turns one step
+	# forward instead of five steps back.
+	var half: int = sides / 2
+	while delta > half:
+		delta -= sides
+	while delta < -half:
+		delta += sides
+	if delta == 0:
+		return
+	_edge_walk_dir = signi(delta)
+	_edge_walk_steps = absi(delta)
+	_edge_walk_floor = floor_node
+	_advance_edge_walk()
+
+
+## Runs one step of a multi-edge walk, then queues the next step when the turn
+## settles.
+func _advance_edge_walk() -> void:
+	if _edge_walk_steps <= 0:
+		return
+	if _edge_walk_floor == null or not is_instance_valid(_edge_walk_floor):
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+		return
+	_edge_walk_steps -= 1
+	var floor_node: Node2D = _edge_walk_floor
+	_rotate_floor_edge(floor_node, _edge_walk_dir)
+	var tween: Tween = _edge_tweens.get(floor_node)
+	if tween == null or not tween.is_valid():
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+		return
+	tween.finished.connect(_advance_edge_walk, CONNECT_ONE_SHOT)
+
+
+func _rotate_focused_edge(direction: int, from_walk: bool = false) -> void:
+	if not from_walk:
+		# A direct turn cancels any walk still in flight, so the two inputs
+		# never fight over the same floor.
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+	if _floors.is_empty() or _focused_index >= _floors.size():
+		return
+	_rotate_floor_edge(_floors[_focused_index], direction)
+
+
+## Turns one named floor by one edge. The walk and the keyboard both come here,
+## so the per-floor kill discipline stays in one place.
+func _rotate_floor_edge(floor_node: Node2D, direction: int) -> void:
+	if floor_node == null or not is_instance_valid(floor_node):
+		return
 	var current_edge: int = floor_node.get_active_edge()
 	# T15 (#124) council finding — floor_node.polygon_sides is now dynamic
 	# (6..12, driven by composite_load) rather than the static _config value,
