@@ -254,7 +254,7 @@ func _spawn(kind: String, floor: int) -> void:
 	var tier: String = _config.tier_default(kind)
 	var names: Array = _config.name_pool(kind)
 	var agent_name: String = String(names[randi() % names.size()]) if not names.is_empty() else ""
-	BridgeManager.spawn_agent(kind, agent_name, tier, floor)
+	BridgeManager.spawn_agent(kind, agent_name, tier, floor, _config.workdir)
 	spawn_requested.emit(kind, floor)
 
 

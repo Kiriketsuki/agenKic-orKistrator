@@ -404,8 +404,9 @@ func submit_task(description: String, priority: float, floor: String = "", proje
 ## "omit the field", keeping the server's auto-assignment behavior, per
 ## handleSpawnAgent's contract (floor 0 is reserved and never sent
 ## explicitly). Result surfaces via command_succeeded/command_failed (path
-## "/api/agents/spawn").
-func spawn_agent(kind: String, agent_name: String = "", tier: String = "", floor: int = 0) -> void:
+## "/api/agents/spawn"). `workdir` is the absolute project folder the agent
+## starts in; empty omits the field and keeps the server's scratch default.
+func spawn_agent(kind: String, agent_name: String = "", tier: String = "", floor: int = 0, workdir: String = "") -> void:
 	var body: Dictionary = {
 		"kind": kind,
 		"name": agent_name,
@@ -413,6 +414,8 @@ func spawn_agent(kind: String, agent_name: String = "", tier: String = "", floor
 	}
 	if floor > 0:
 		body["floor"] = floor
+	if not workdir.is_empty():
+		body["workdir"] = workdir
 	_enqueue_command("POST", "/api/agents/spawn", body)
 
 

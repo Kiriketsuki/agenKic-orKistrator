@@ -18,6 +18,52 @@ var order: Array = []
 ## kind -> {"tier": String, "names": Array[String]}. A provider absent here
 ## uses the server's own defaults (empty tier, no name).
 var provider_defaults: Dictionary = {}
+## Absolute path of the project folder agents spawn in. Empty means the
+## server's default (a per-agent scratch directory under the OS temp dir).
+var workdir: String = ""
+
+## The file this config was loaded from, and the one a no-argument
+## save_to_file() writes back to. Remembered so a config loaded from a
+## non-default path (a test fixture, most importantly) can never save
+## itself over the keeper's real settings — the original bug here was a
+## headless test whose in-memory config wrote straight to
+## user://orki_settings.cfg and clobbered a real project folder.
+var config_path: String = DEFAULT_PATH
+
+## How many agent scroll/terminal panels may sit open at once. Opening one
+## past the cap closes the least-recently-focused panel. Clamped to
+## MIN_SCROLL_PANELS..MAX_SCROLL_PANELS on both read and write, so a
+## hand-edited config file can never wedge the UI at zero panels.
+var max_scroll_panels: int = DEFAULT_SCROLL_PANELS
+
+const MIN_SCROLL_PANELS: int = 1
+const MAX_SCROLL_PANELS: int = 3
+const DEFAULT_SCROLL_PANELS: int = 1
+
+## Agent chat panel's default open size, as a fraction of the viewport.
+## These set where a panel STARTS; PanelBase's own drag-resize still applies
+## on top, so this is the default the keeper stops having to re-drag every
+## session rather than a hard limit. Defaults reproduce the original
+## right-40%-full-height placement exactly.
+var scroll_width_ratio: float = DEFAULT_SCROLL_WIDTH_RATIO
+var scroll_height_ratio: float = DEFAULT_SCROLL_HEIGHT_RATIO
+
+const MIN_SCROLL_RATIO: float = 0.2
+const MAX_SCROLL_RATIO: float = 1.0
+const DEFAULT_SCROLL_WIDTH_RATIO: float = 0.4
+const DEFAULT_SCROLL_HEIGHT_RATIO: float = 1.0
+
+
+## Clamps `value` into the supported open-panel range.
+static func clamp_scroll_panels(value: int) -> int:
+	return clampi(value, MIN_SCROLL_PANELS, MAX_SCROLL_PANELS)
+
+
+## Clamps a panel size fraction. A too-small panel would open unusably tiny
+## and a >1.0 one would start off-screen, so both ends are bounded rather
+## than trusting a hand-edited config file.
+static func clamp_scroll_ratio(value: float) -> float:
+	return clampf(value, MIN_SCROLL_RATIO, MAX_SCROLL_RATIO)
 
 
 ## Loads from `path` (defaults to user://orki_settings.cfg). A missing or
@@ -25,26 +71,40 @@ var provider_defaults: Dictionary = {}
 ## than an error, so a first run never blocks the flyout.
 static func load_from_file(path: String = DEFAULT_PATH) -> SigilConfig:
 	var cfg := SigilConfig.new()
+	# Remembered even when the load fails, so a first-run config saves back
+	# to the path it was asked for rather than silently to the default.
+	cfg.config_path = path
 	var file := ConfigFile.new()
 	if file.load(path) != OK:
 		return cfg
 	cfg.enabled = file.get_value(SECTION, "enabled", [])
 	cfg.order = file.get_value(SECTION, "order", [])
 	cfg.provider_defaults = file.get_value(SECTION, "provider_defaults", {})
+	cfg.workdir = String(file.get_value(SECTION, "workdir", ""))
+	cfg.max_scroll_panels = clamp_scroll_panels(int(file.get_value(SECTION, "max_scroll_panels", DEFAULT_SCROLL_PANELS)))
+	cfg.scroll_width_ratio = clamp_scroll_ratio(float(file.get_value(SECTION, "scroll_width_ratio", DEFAULT_SCROLL_WIDTH_RATIO)))
+	cfg.scroll_height_ratio = clamp_scroll_ratio(float(file.get_value(SECTION, "scroll_height_ratio", DEFAULT_SCROLL_HEIGHT_RATIO)))
 	return cfg
 
 
 ## Writes this config to `path`. Returns the ConfigFile save() error code
 ## (OK on success).
-func save_to_file(path: String = DEFAULT_PATH) -> int:
+## An empty `path` means "write back where this config came from" (see
+## config_path). Callers that want a specific file still pass one.
+func save_to_file(path: String = "") -> int:
+	var target: String = path if not path.is_empty() else config_path
 	var file := ConfigFile.new()
 	# Preserve any other section already on disk (e.g. a future [display]
 	# block) instead of clobbering the whole file with just [sigils].
-	file.load(path)
+	file.load(target)
 	file.set_value(SECTION, "enabled", enabled)
 	file.set_value(SECTION, "order", order)
 	file.set_value(SECTION, "provider_defaults", provider_defaults)
-	return file.save(path)
+	file.set_value(SECTION, "workdir", workdir)
+	file.set_value(SECTION, "max_scroll_panels", clamp_scroll_panels(max_scroll_panels))
+	file.set_value(SECTION, "scroll_width_ratio", clamp_scroll_ratio(scroll_width_ratio))
+	file.set_value(SECTION, "scroll_height_ratio", clamp_scroll_ratio(scroll_height_ratio))
+	return file.save(target)
 
 
 ## True when `kind` is in the enabled set, or the set is empty (show-all).
