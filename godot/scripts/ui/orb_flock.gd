@@ -35,19 +35,21 @@ enum State { DOCKED, DRAGGING, FLYING, OPEN }
 static var suspend_hotkeys: bool = false
 
 const ORB_DEFS: Array[Dictionary] = [
-	{"id": "grimoire", "glyph": "✦", "color": Color("#c9a227")},
-	{"id": "panels", "glyph": "◈", "color": Color("#6fb8a8")},
-	{"id": "power", "glyph": "⚡", "color": Color("#a4443a")},
+	{"id": "grimoire", "glyph": "✦", "color": Color("#c9a227"), "tooltip": "Grimoire, summoning and sigils."},
+	{"id": "panels", "glyph": "◈", "color": Color("#6fb8a8"), "tooltip": "Panels, scrolls, quests, layouts."},
+	{"id": "power", "glyph": "⚡", "color": Color("#a4443a"), "tooltip": "Power, restart, banish, settings."},
 ]
 
-const ORB_RADIUS: float = 26.0
-const ORB_SPACING_PX: float = 64.0
-const ROW_TOP_MARGIN_PX: float = 24.0
-const FLYOUT_TOP_MARGIN_PX: float = 12.0
-const FLYOUT_DEFAULT_SIZE: Vector2 = Vector2(420.0, 220.0)
-const DRAG_THRESHOLD_PX: float = 6.0
-const MAX_FLICK_SPEED: float = 2200.0
-const FLICK_MIN_SPEED: float = 40.0
+# Doubled from the pre-2x base resolution (960x540 design reference) to
+# match the doubled project.godot viewport (see defect 3, epic 169).
+const ORB_RADIUS: float = 52.0
+const ORB_SPACING_PX: float = 128.0
+const ROW_TOP_MARGIN_PX: float = 48.0
+const FLYOUT_TOP_MARGIN_PX: float = 24.0
+const FLYOUT_DEFAULT_SIZE: Vector2 = Vector2(840.0, 440.0)
+const DRAG_THRESHOLD_PX: float = 12.0
+const MAX_FLICK_SPEED: float = 4400.0
+const FLICK_MIN_SPEED: float = 80.0
 const CHASE_RATE: float = 14.0
 
 ## Dock-to-row and row-to-dock transition timing. The open uses a back
@@ -56,7 +58,7 @@ const CHASE_RATE: float = 14.0
 const OPEN_TWEEN_S: float = 0.28
 const COLLAPSE_TWEEN_S: float = 0.22
 const FLYOUT_FADE_S: float = 0.16
-const FLYOUT_RISE_PX: float = 10.0
+const FLYOUT_RISE_PX: float = 20.0
 
 var _orbs: Array[Orb] = []
 var _flyouts: Dictionary = {}
@@ -104,6 +106,7 @@ func _ready() -> void:
 		orb.glyph = String(def["glyph"])
 		orb.accent_color = def["color"]
 		orb.orb_radius = ORB_RADIUS
+		orb.tooltip_text = String(def["tooltip"])
 		orb.press_started.connect(_on_orb_press_started)
 		orb.press_moved.connect(_on_orb_press_moved)
 		orb.press_ended.connect(_on_orb_press_ended)
@@ -214,8 +217,11 @@ func _on_viewport_resized() -> void:
 
 
 func _on_orb_press_started(orb: Orb, _at_position: Vector2) -> void:
-	if _state == State.OPEN:
-		return
+	# Track the pressed orb even while OPEN, so a tap on a non-active orb
+	# still reaches _on_orb_press_ended and _on_orb_tapped below. The old
+	# early return here left _dragging_orb_index at -1 through the whole
+	# press while OPEN, so press_ended's own -1 guard swallowed every tap
+	# on Panels or Power once the flock had already expanded.
 	_dragging_orb_index = _orbs.find(orb)
 	_has_dragged = false
 	_drag_start_position = orb.global_position + Vector2(ORB_RADIUS, ORB_RADIUS)
@@ -225,6 +231,11 @@ func _on_orb_press_started(orb: Orb, _at_position: Vector2) -> void:
 
 func _on_orb_press_moved(orb: Orb, at_position: Vector2) -> void:
 	if _dragging_orb_index == -1:
+		return
+	if _state == State.OPEN:
+		# The open row is a fixed layout, not a draggable dock. Ignore
+		# motion so a tap-and-slight-wobble on Panels or Power still ends
+		# as a tap in _on_orb_press_ended, instead of starting a drag.
 		return
 	if not _has_dragged:
 		if at_position.distance_to(_drag_start_position) < DRAG_THRESHOLD_PX:

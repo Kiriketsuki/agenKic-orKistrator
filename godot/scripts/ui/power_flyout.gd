@@ -32,8 +32,8 @@ var _toast_tween: Tween = null
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(260.0, 200.0)
-	size = Vector2(260.0, 200.0)
+	custom_minimum_size = Vector2(520.0, 400.0)
+	size = Vector2(520.0, 400.0)
 
 	_bridge = get_node_or_null("/root/BridgeManager")
 

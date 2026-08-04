@@ -30,8 +30,8 @@ var _preset_name_field: LineEdit = null
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(300.0, 420.0)
-	size = Vector2(300.0, 420.0)
+	custom_minimum_size = Vector2(600.0, 840.0)
+	size = Vector2(600.0, 840.0)
 
 	_bridge = get_node_or_null("/root/BridgeManager")
 	_panel_manager = get_tree().get_first_node_in_group("panel_manager")
@@ -47,7 +47,7 @@ func _ready() -> void:
 	box.add_child(agents_label)
 
 	_agent_list = ItemList.new()
-	_agent_list.custom_minimum_size = Vector2(0.0, 140.0)
+	_agent_list.custom_minimum_size = Vector2(0.0, 280.0)
 	_agent_list.item_selected.connect(_on_agent_row_selected)
 	box.add_child(_agent_list)
 
@@ -66,7 +66,7 @@ func _ready() -> void:
 	box.add_child(presets_label)
 
 	_preset_list = ItemList.new()
-	_preset_list.custom_minimum_size = Vector2(0.0, 100.0)
+	_preset_list.custom_minimum_size = Vector2(0.0, 200.0)
 	_preset_list.item_selected.connect(_on_preset_row_selected)
 	box.add_child(_preset_list)
 

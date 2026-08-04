@@ -63,6 +63,10 @@ func _ready() -> void:
 
 	_sigil_config = SigilConfig.load_from_file()
 	_sigil_config_page = SigilConfigPage.new()
+	# GrimoirePanel already supplies its own bordered backdrop (see
+	# title_screen.tscn), so this page fills that box instead of drawing
+	# the flyout's own dim backdrop and centered panel on top of it.
+	_sigil_config_page.standalone_modal = false
 	_sigil_config_page.closed.connect(_close_grimoire)
 	_grimoire_panel.get_node("Content").add_child(_sigil_config_page)
 	BridgeManager.providers_fetched.connect(_on_providers_fetched)

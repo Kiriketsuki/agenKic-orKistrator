@@ -19,18 +19,19 @@ signal spawn_requested(kind: String, floor: int)
 ## from under it (see orb_flock.gd's _input doc-comment).
 static var is_placing: bool = false
 
-const DRAG_THRESHOLD_PX: float = 6.0
+const DRAG_THRESHOLD_PX: float = 12.0
 const COLOR_ACCEPT: Color = Color(0.435, 0.722, 0.663, 0.35)
 const COLOR_REJECT: Color = Color(0.780, 0.267, 0.227, 0.35)
 const COLOR_NEW_FLOOR: Color = Color(0.788, 0.635, 0.153, 0.35)
 const REJECT_SHAKE_DUR: float = 0.3
-const REJECT_SHAKE_PX: float = 6.0
+const REJECT_SHAKE_PX: float = 12.0
 
 var _config: SigilConfig
 var _providers: Array = []
 var _grid: GridContainer
 var _config_page: SigilConfigPage
 var _config_button: Button
+var _content_box: VBoxContainer
 
 var _dragging: bool = false
 var _drag_kind: String = ""
@@ -45,27 +46,27 @@ func _ready() -> void:
 	# OrbFlock.suspend_hotkeys's own _ready reset for the same reason.
 	is_placing = false
 	set_anchors_preset(Control.PRESET_TOP_WIDE)
-	custom_minimum_size = Vector2(420.0, 160.0)
-	size = Vector2(420.0, 160.0)
+	custom_minimum_size = Vector2(840.0, 320.0)
+	size = Vector2(840.0, 320.0)
 
 	_config = SigilConfig.load_from_file()
 
-	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(box)
+	_content_box = VBoxContainer.new()
+	_content_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_content_box)
 
 	_grid = GridContainer.new()
 	_grid.columns = 5
-	box.add_child(_grid)
+	_content_box.add_child(_grid)
 
 	_config_button = Button.new()
 	_config_button.text = "sigil config..."
 	_config_button.pressed.connect(open_config_page)
-	box.add_child(_config_button)
+	_content_box.add_child(_config_button)
 
 	_config_page = SigilConfigPage.new()
 	_config_page.visible = false
-	_config_page.closed.connect(func() -> void: _config_page.visible = false)
+	_config_page.closed.connect(_on_config_page_closed)
 	add_child(_config_page)
 
 	BridgeManager.providers_fetched.connect(_on_providers_fetched)
@@ -89,18 +90,39 @@ func _build_sigil_button(provider: Dictionary) -> Button:
 	var kind: String = provider["kind"]
 	var button := Button.new()
 	button.text = String(provider["display"])
-	button.custom_minimum_size = Vector2(72.0, 48.0)
+	button.custom_minimum_size = Vector2(144.0, 96.0)
 	var accent: Color = Color(String(provider["accent"]))
 	button.add_theme_color_override("font_color", accent)
 	button.gui_input.connect(func(event: InputEvent) -> void: _on_sigil_input(kind, event))
 	return button
 
 
-## Opens the sigil config page (F3). Public so the Power flyout's SETTINGS
-## action (F4) can reach it after switching the flock to the Grimoire orb.
+## Opens the sigil config page (F3) as a true modal. Public so the Power
+## flyout's SETTINGS action (F4) can reach it after switching the flock to
+## the Grimoire orb.
+##
+## The page reparents onto the scene's top-level "modal_layer" CanvasLayer
+## (main.tscn's OverlayLayer, layer 20) when one is reachable, so it draws
+## above every HUD layer instead of sharing OrbFlock's own layer 10 with
+## the still-visible world banner. A headless or test scene with no such
+## layer falls back to showing the page in place, still as a backdrop +
+## centered panel, just without the layer promotion.
 func open_config_page() -> void:
+	var modal_layer: Node = get_tree().get_first_node_in_group("modal_layer")
+	if modal_layer != null and _config_page.get_parent() != modal_layer:
+		_config_page.get_parent().remove_child(_config_page)
+		modal_layer.add_child(_config_page)
+	_content_box.visible = false
 	_config_page.open_page(_providers, _config)
 	_config_page.visible = true
+
+
+## Restores the sigil grid and config button once the modal closes, whether
+## it closed through BACK or Escape (see sigil_config_page.gd's closed
+## signal).
+func _on_config_page_closed() -> void:
+	_config_page.visible = false
+	_content_box.visible = true
 
 
 func _on_sigil_input(kind: String, event: InputEvent) -> void:
@@ -232,7 +254,7 @@ func _draw() -> void:
 		var shake_offset: Vector2 = Vector2.ZERO
 		if _reject_shake_t >= 0.0:
 			shake_offset.x = sin(_reject_shake_t * 60.0) * REJECT_SHAKE_PX
-		draw_circle(local_pos + shake_offset, 14.0, Color(1.0, 1.0, 1.0, 0.6))
+		draw_circle(local_pos + shake_offset, 28.0, Color(1.0, 1.0, 1.0, 0.6))
 
 	# Floor highlight overlay, drawn full-width at the hit floor's screen Y.
 	var tower: Node = get_tree().get_first_node_in_group("tower_manager")

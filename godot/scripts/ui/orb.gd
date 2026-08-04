@@ -24,7 +24,7 @@ const PRESSED_SCALE: float = 0.92
 
 var _pressed: bool = false
 var _font: Font = ThemeDB.fallback_font
-var _font_size: int = 20
+var _font_size: int = 40
 
 
 func _ready() -> void:
@@ -60,9 +60,9 @@ func _draw() -> void:
 	var radius: float = minf(size.x, size.y) * 0.5
 	var draw_radius: float = radius * (PRESSED_SCALE if _pressed else 1.0)
 	# Outer glow: a wider, faint ring behind the fill.
-	draw_circle(center, draw_radius + 6.0, GLOW_COLOR)
+	draw_circle(center, draw_radius + 12.0, GLOW_COLOR)
 	draw_circle(center, draw_radius, accent_color)
-	draw_arc(center, draw_radius, 0.0, TAU, 48, RIM_COLOR, 2.0, true)
+	draw_arc(center, draw_radius, 0.0, TAU, 48, RIM_COLOR, 4.0, true)
 	if _font != null and not glyph.is_empty():
 		var text_size: Vector2 = _font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_CENTER, -1.0, _font_size)
 		var text_origin: Vector2 = center - Vector2(text_size.x * 0.5, -text_size.y * 0.32)
