@@ -38,8 +38,24 @@ const PROVIDER_GLYPHS: Dictionary = {
 	"": {"glyph": "○", "color": Color(0.7, 0.7, 0.7, 1.0)},
 }
 
-@onready var _class_badge: ColorRect = $Header/ClassBadge
-@onready var _class_badge_label: Label = $Header/ClassBadge/ClassBadgeLabel
+## Send button chrome (#169 style pass) — dark-parchment fill with a gold
+## border, the same palette sigil_config_page.gd uses for its panel/border
+## (PANEL_BG_COLOR/PANEL_BORDER_COLOR), duplicated locally here rather than
+## shared: this codebase styles each view's own Controls in code
+## independently (see quest_board_view.gd's _style_line_edit), and Send is
+## the only button this view builds itself (Enchant lives on the .tscn
+## header and stays the default T8 title-bar button style).
+const ACTION_BUTTON_BG_COLOR: Color = Color(0.075, 0.082, 0.125, 0.985)
+const ACTION_BUTTON_HOVER_COLOR: Color = Color(0.118, 0.129, 0.188, 1.0)
+const ACTION_BUTTON_PRESSED_COLOR: Color = Color(0.235, 0.196, 0.086, 1.0)
+const ACTION_BUTTON_DISABLED_COLOR: Color = Color(0.075, 0.082, 0.125, 0.5)
+const SEND_BUTTON_BORDER_COLOR: Color = Color(0.788, 0.635, 0.153, 1.0)
+const ACTION_BUTTON_FONT_COLOR: Color = Color(0.855, 0.867, 0.914, 1.0)
+const ACTION_BUTTON_BORDER_WIDTH: int = 2
+const ACTION_BUTTON_CORNER_RADIUS: int = 6
+const ACTION_BUTTON_MARGIN_H: float = 18.0
+const ACTION_BUTTON_MARGIN_V: float = 8.0
+
 @onready var _name_label: Label = $Header/NameLabel
 @onready var _provider_badge: Label = $Header/ProviderBadge
 @onready var _state_label: Label = $Header/StateLabel
@@ -111,8 +127,6 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 		_agent_id = ""
 		_name_label.text = "Unknown Agent"
 		_state_label.text = ""
-		_class_badge.color = Color(0.5, 0.5, 0.5, 1.0)
-		_class_badge_label.text = "?"
 		_provider_badge.text = ""
 		if _panel != null:
 			_panel.set_panel_title("Raw Terminal")
@@ -123,11 +137,6 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	var shown_name: String = agent_data.display_name()
 	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
-	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
-		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
-	)
-	_class_badge.color = AgentCharacter.CLASS_COLORS[class_enum]
-	_class_badge_label.text = AgentCharacter.CLASS_LABELS[class_enum]
 	var provider_info: Dictionary = PROVIDER_GLYPHS.get(agent_data.provider, PROVIDER_GLYPHS[""])
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])
@@ -335,6 +344,7 @@ func _mount_chat_body(banner: String = "") -> void:
 	send_button.name = "Send"
 	send_button.text = "Send"
 	send_button.pressed.connect(_on_send_pressed)
+	_style_action_button(send_button, SEND_BUTTON_BORDER_COLOR, ACTION_BUTTON_HOVER_COLOR, ACTION_BUTTON_PRESSED_COLOR)
 	footer.add_child(send_button)
 
 	# The timer is a child of the body, so _clear_body() frees it. The poll
@@ -443,3 +453,35 @@ func _on_state_changed(agent_id: String, _old_state: String, new_state: String, 
 	if agent_id != _agent_id:
 		return
 	_state_label.text = new_state.capitalize()
+
+
+# ---------------------------------------------------------------------------
+# Button chrome
+# ---------------------------------------------------------------------------
+
+## Applies dark-parchment/gold normal/hover/pressed/disabled StyleBoxFlats to
+## `button` — see the ACTION_BUTTON_* consts' doc-comment for why this is
+## duplicated per-view rather than shared.
+func _style_action_button(button: Button, border_color: Color, hover_bg: Color, pressed_bg: Color) -> void:
+	if button == null:
+		return
+	button.add_theme_stylebox_override("normal", _build_action_button_style(ACTION_BUTTON_BG_COLOR, border_color))
+	button.add_theme_stylebox_override("hover", _build_action_button_style(hover_bg, border_color))
+	button.add_theme_stylebox_override("pressed", _build_action_button_style(pressed_bg, border_color))
+	button.add_theme_stylebox_override("disabled", _build_action_button_style(ACTION_BUTTON_DISABLED_COLOR, border_color))
+	button.add_theme_color_override("font_color", ACTION_BUTTON_FONT_COLOR)
+	button.add_theme_color_override("font_hover_color", border_color)
+	button.add_theme_color_override("font_pressed_color", border_color)
+
+
+func _build_action_button_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.border_color = border_color
+	style.set_border_width_all(ACTION_BUTTON_BORDER_WIDTH)
+	style.set_corner_radius_all(ACTION_BUTTON_CORNER_RADIUS)
+	style.content_margin_left = ACTION_BUTTON_MARGIN_H
+	style.content_margin_right = ACTION_BUTTON_MARGIN_H
+	style.content_margin_top = ACTION_BUTTON_MARGIN_V
+	style.content_margin_bottom = ACTION_BUTTON_MARGIN_V
+	return style

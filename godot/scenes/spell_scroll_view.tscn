@@ -36,26 +36,6 @@ grow_horizontal = 2
 mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="ClassBadge" type="ColorRect" parent="Header"]
-custom_minimum_size = Vector2(52, 52)
-layout_mode = 2
-size_flags_vertical = 4
-mouse_filter = 2
-color = Color(0.65, 0.65, 0.75, 1)
-
-[node name="ClassBadgeLabel" type="Label" parent="Header/ClassBadge"]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.22, 0.15, 0.08, 1)
-horizontal_alignment = 1
-vertical_alignment = 1
-text = "APP"
-
 [node name="NameLabel" type="Label" parent="Header"]
 layout_mode = 2
 size_flags_vertical = 4
