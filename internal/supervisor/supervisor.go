@@ -183,6 +183,37 @@ func (sv *Supervisor) Stop() {
 	}
 }
 
+// RemoveAgent forgets one agent: it destroys the agent's tmux session and
+// deletes its per-agent mutex, cooldown, and circuit-breaker entries. Unlike
+// Stop, RemoveAgent targets exactly one agent and leaves the supervisor
+// running for every other agent and for RegisterAgent calls that follow.
+//
+// A DestroySession failure is logged and the map cleanup still proceeds, so
+// a wedged tmux session never blocks the agent from being forgotten. Callers
+// that also need the agent gone from the store must call
+// StateStore.DeleteAgent separately: RemoveAgent only owns the supervisor's
+// own in-memory bookkeeping and the terminal session.
+func (sv *Supervisor) RemoveAgent(ctx context.Context, agentID string) {
+	sv.mu.Lock()
+	delete(sv.agentMu, agentID)
+	delete(sv.agentCooldown, agentID)
+	delete(sv.circuitOpen, agentID)
+	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		sessionName := "agent-" + agentID
+		if err := sv.substrate.DestroySession(ctx, sessionName); err != nil {
+			log.Printf("supervisor: RemoveAgent: DestroySession %q failed (agent %s): %v", sessionName, agentID, err)
+		} else {
+			_ = sv.store.PublishEvent(ctx, state.Event{
+				Type:      "floor_removed",
+				Payload:   sessionName,
+				Timestamp: time.Now().UnixMilli(),
+			})
+		}
+	}
+}
+
 // Run starts the heartbeat and task-assignment loops. Blocks until ctx is done.
 func (sv *Supervisor) Run(ctx context.Context) error {
 	var wg sync.WaitGroup

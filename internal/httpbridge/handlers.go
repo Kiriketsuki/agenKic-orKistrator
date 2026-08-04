@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
@@ -533,6 +534,97 @@ func (b *Bridge) handleReassignAgent(w http.ResponseWriter, r *http.Request) {
 		"provider": provider,
 		"requeued": true,
 	})
+}
+
+// restartDelay is how long handleRestartAdmin waits, after writing the 202
+// response, before it calls restartFn. The delay gives the response time to
+// reach the client before the process shuts down and re-execs.
+const restartDelay = 200 * time.Millisecond
+
+// handleDespawnAgent removes one agent everywhere (F4 / power controls).
+//
+// This reuses handleCancelAgent's PTY-interrupt and task-detach steps, but
+// drops the task instead of leaving it cancellable-and-idle: despawn is a
+// permanent removal, so no code path here ever calls EnqueueTask for the
+// dropped task. Unlike handleCancelAgent, an agent with no current task is
+// not an error. The order matters for the partial-failure case (T1 risk in
+// the spec): the tmux session destroy (inside Supervisor.RemoveAgent) and
+// the store delete run before the Bridge's own name/provider/floor registry
+// deletes, and the agent_deregistered event publishes last, regardless of
+// whether an earlier step logged a failure. This way a client that only
+// observes the SSE stream never sees agent.deregistered before the agent is
+// actually gone from the substrate and the store.
+//
+// Idempotent: despawning an agent ID the store no longer knows about returns
+// 404 and calls nothing else.
+func (b *Bridge) handleDespawnAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agentID := r.PathValue("id")
+
+	fields, err := b.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if fields.CurrentTaskID != "" {
+		if b.substrate != nil {
+			if serr := b.substrate.SendCommand(ctx, "agent-"+agentID, "\x03"); serr != nil {
+				log.Printf("httpbridge: despawn agent %s: best-effort PTY interrupt failed: %v", agentID, serr)
+			}
+		}
+		if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
+			log.Printf("httpbridge: despawn agent %s: ClearCurrentTask: %v", agentID, err)
+		}
+	}
+
+	if b.supervisor != nil {
+		b.supervisor.RemoveAgent(ctx, agentID)
+	}
+
+	if err := b.store.DeleteAgent(ctx, agentID); err != nil {
+		log.Printf("httpbridge: despawn agent %s: DeleteAgent: %v", agentID, err)
+	}
+
+	b.namesMu.Lock()
+	delete(b.names, agentID)
+	delete(b.providers, agentID)
+	delete(b.floors, agentID)
+	b.namesMu.Unlock()
+
+	if err := b.store.PublishEvent(ctx, state.Event{
+		Type:    "agent_deregistered",
+		AgentID: agentID,
+	}); err != nil {
+		log.Printf("httpbridge: despawn agent %s: PublishEvent: %v", agentID, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"agent_id":  agentID,
+		"despawned": true,
+	})
+}
+
+// handleRestartAdmin responds 202 immediately, then runs restartFn (the
+// graceful shutdown sequence followed by a re-exec of the same binary) from
+// a separate goroutine after restartDelay. Responding before the restart
+// runs is deliberate: the process may shut down its own HTTP listener
+// before the client reads the response otherwise (T4 risk in the spec).
+// With no restartFn wired (WithRestartFunc never called), the endpoint still
+// responds 202 but performs no restart.
+func (b *Bridge) handleRestartAdmin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusAccepted)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	if b.restartFn == nil {
+		return
+	}
+	restartFn := b.restartFn
+	go func() {
+		time.Sleep(restartDelay)
+		restartFn()
+	}()
 }
 
 // settleToIdle drives agentID from prevState to state.AgentStateIdle via

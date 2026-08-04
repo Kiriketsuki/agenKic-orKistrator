@@ -38,6 +38,20 @@ type Bridge struct {
 	// worker agent (demo scaffolding, not a real external agent).
 	spawner AgentSpawner
 
+	// supervisor is optional; nil means POST /api/agents/{id}/despawn skips
+	// the supervisor-side cleanup (per-agent mutex, cooldown, and
+	// circuit-breaker map entries, and the agent's tmux session) and only
+	// removes the agent from the store and the Bridge's own name/provider/
+	// floor registries. Wired via WithSupervisor.
+	supervisor *supervisor.Supervisor
+
+	// restartFn is optional; nil means POST /api/admin/restart responds 202
+	// but performs no actual restart. Wired from main via WithRestartFunc —
+	// it runs the graceful shutdown sequence and then re-execs the binary.
+	// Kept as an injectable function so a test can assert the endpoint
+	// triggers the shutdown path without ever calling syscall.Exec.
+	restartFn func()
+
 	// names maps agent ID to the fantasy display name chosen by
 	// handleSpawnAgent. providers maps agent ID to the spawn kind, such as
 	// "claude" or "codex". Both share namesMu and the same lifetime. See
@@ -95,6 +109,25 @@ func WithAgentSpawner(s AgentSpawner) BridgeOption {
 	return func(b *Bridge) { b.spawner = s }
 }
 
+// WithSupervisor wires the orchestrator's Supervisor into the Bridge, so
+// POST /api/agents/{id}/despawn can call Supervisor.RemoveAgent to clean up
+// the agent's tmux session and per-agent bookkeeping. Optional: without it,
+// despawn still deletes the agent from the store and the Bridge's own
+// registries, but leaves any supervisor-side state and tmux session behind.
+func WithSupervisor(sv *supervisor.Supervisor) BridgeOption {
+	return func(b *Bridge) { b.supervisor = sv }
+}
+
+// WithRestartFunc wires the function POST /api/admin/restart runs after
+// responding 202. The Bridge always responds 202 first and calls restartFn
+// from a separate goroutine after a short delay, so a restart never blocks
+// the HTTP response and a slow or hanging restartFn never wedges the
+// handler. Optional: without it, the endpoint still responds 202 but
+// performs no restart.
+func WithRestartFunc(restartFn func()) BridgeOption {
+	return func(b *Bridge) { b.restartFn = restartFn }
+}
+
 // WithBrokerInterval overrides the SSE broker's poll interval (default
 // ssePollInterval). Primarily for tests that need deterministic control over
 // the broker's poll timing — e.g. asserting on behavior that only manifests
@@ -135,7 +168,9 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b.mux.HandleFunc("POST /api/agents/{id}/input", b.handleSendInput)
 	b.mux.HandleFunc("POST /api/agents/{id}/cancel", b.handleCancelAgent)
 	b.mux.HandleFunc("POST /api/agents/{id}/reassign", b.handleReassignAgent)
+	b.mux.HandleFunc("POST /api/agents/{id}/despawn", b.handleDespawnAgent)
 	b.mux.HandleFunc("POST /api/agents/spawn", b.handleSpawnAgent)
+	b.mux.HandleFunc("POST /api/admin/restart", b.handleRestartAdmin)
 
 	// SSE stream
 	b.mux.HandleFunc("GET /events/stream", b.handleSSE)

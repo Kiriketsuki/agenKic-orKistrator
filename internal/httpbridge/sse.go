@@ -247,6 +247,17 @@ func mapStoreEvent(e state.Event, cursor string, nameFn func(string) string, pro
 			Cursor:    cursor,
 		}
 
+	case "agent_deregistered":
+		// Published by handleDespawnAgent once the agent is gone from the
+		// tmux substrate, the supervisor, and the store. The Godot client's
+		// BridgeManager already erases its local agent record and re-emits
+		// agent_deregistered as a Godot signal on this event, per
+		// bridge_manager.gd.
+		return "agent.deregistered", SSEAgentDeregistered{
+			AgentID: e.AgentID,
+			Cursor:  cursor,
+		}
+
 	case "task_cancelled":
 		// Published by handleCancelAgent/handleReassignAgent (T14 / #119) once
 		// the task has been detached from the agent and the agent's state has

@@ -146,6 +146,12 @@ type SSEAgentOutput struct {
 	Cursor    string `json:"cursor,omitempty"`
 }
 
+// SSEAgentDeregistered is the payload for agent.deregistered events.
+type SSEAgentDeregistered struct {
+	AgentID string `json:"agent_id"`
+	Cursor  string `json:"cursor,omitempty"`
+}
+
 // SSEFloorCreated is the payload for floor.created events.
 type SSEFloorCreated struct {
 	Name       string `json:"name"`
