@@ -13,12 +13,21 @@ const MASTER_RATIO_SNAP_POINTS: Array[float] = [0.25, 0.5, 0.75]
 const DIVIDER_WIDTH: float = 16.0
 const DOCK_PREVIEW_WIDTH: float = 144.0
 
-## Singleton panel id for the spell scroll — only one may be open at a time;
-## opening a different agent's scroll retargets this panel instead of
-## spawning a second one.
+## Base panel id for the spell scroll. With SigilConfig.max_scroll_panels
+## clamped to 1 (the default), every agent scroll shares this exact id, so
+## opening a different agent's scroll retargets the one existing panel in
+## place instead of spawning a second one — the original T9 singleton
+## behavior. Above 1, _scroll_panel_id_for_agent() suffixes this with the
+## agent id so up to MAX_SCROLL_PANELS can coexist; see that function's
+## doc-comment for why the cap itself decides which id scheme applies.
 const SCROLL_PANEL_ID: String = "spell-scroll"
 const SCROLL_WIDTH_RATIO: float = 0.4
 const SCROLL_SLIDE_DURATION: float = 0.28
+## Per-panel position/size shift applied to the 2nd, 3rd, ... open scroll
+## panel so simultaneously open panels cascade instead of stacking exactly on
+## top of one another. Values mirror the scale of _default_floating_position's
+## own per-index offset (28px/24px) below.
+const SCROLL_CASCADE_OFFSET: Vector2 = Vector2(36.0, 28.0)
 ## Minimum terminal columns the scroll's default open width must fit without
 ## wrapping, at spell_scroll_view.gd's terminal font (Monospace family,
 ## SCROLL_TERMINAL_FONT_SIZE). Matches spell_scroll_view.gd's
@@ -68,6 +77,11 @@ var _restoring_layout: bool = false
 var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
 var _agent_list: Dictionary = {}
 var _tower_config: TowerConfig = null
+## Least-recently-focused-first ordering of currently open scroll panel ids
+## (per-agent or the shared singleton id, whichever _scroll_panel_id_for_agent
+## is currently handing out). Updated by focus_panel() on every focus and
+## pruned in close_panel() — see _touch_scroll_focus().
+var _scroll_focus_order: Array[String] = []
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -155,6 +169,7 @@ func close_panel(panel_id: String) -> void:
 	# panels_by_id is the sole source of truth for scroll-singleton tracking
 	# (see open_scroll_panel) — erasing here is sufficient to "close" it.
 	panels_by_id.erase(panel_id)
+	_scroll_focus_order.erase(panel_id)
 	panel.queue_free()
 	_refresh_layout()
 	_save_layout()
@@ -165,6 +180,29 @@ func focus_panel(panel: PanelBase) -> void:
 	var parent: Node = panel.get_parent()
 	if parent is Control:
 		(parent as Control).move_child(panel, parent.get_child_count() - 1)
+	_touch_scroll_focus(panel.panel_id)
+
+
+## Moves `panel_id` to the most-recently-focused end of _scroll_focus_order.
+## Non-scroll panels (quest board, anything else future) are ignored — the
+## eviction cap in _evict_scroll_panel_if_at_cap() only ever targets agent
+## scroll panels.
+func _touch_scroll_focus(panel_id: String) -> void:
+	if not panel_id.begins_with(SCROLL_PANEL_ID):
+		return
+	_scroll_focus_order.erase(panel_id)
+	_scroll_focus_order.append(panel_id)
+
+
+## The currently-open scroll panel id that was focused most recently, or ""
+## if none are open. Used by _apply_focus_layout() (FOCUS preset) in place of
+## the old single hardcoded SCROLL_PANEL_ID lookup.
+func _most_recent_scroll_panel_id() -> String:
+	for i: int in range(_scroll_focus_order.size() - 1, -1, -1):
+		var panel_id: String = _scroll_focus_order[i]
+		if panels_by_id.has(panel_id):
+			return panel_id
+	return ""
 
 
 func has_panel(panel_id: String) -> bool:
@@ -439,14 +477,17 @@ func _focus_owner_accepts_text() -> bool:
 	return _focus_owner_is_live_terminal()
 
 
-## Ctrl+T global toggle — flips the scroll-singleton panel (falling back to
-## whichever panel is currently focused) between "scroll" and "terminal"
-## mode, mirroring the Disenchant/Enchant buttons. Routes through
-## PanelBase.set_mode() -> mode_changed so mounting and mode_preferences
-## persistence happen through the existing _wire_panel plumbing.
+## Ctrl+T global toggle — flips the currently focused agent scroll panel
+## between "scroll" and "terminal" mode, mirroring the Disenchant/Enchant
+## buttons. Routes through PanelBase.set_mode() -> mode_changed so mounting
+## and mode_preferences persistence happen through the existing _wire_panel
+## plumbing. With up to MAX_SCROLL_PANELS scroll panels open at once (#169),
+## there is no longer one single "the" scroll panel to fall back to — the
+## focused panel is the only unambiguous target, so a non-scroll active panel
+## (or no active panel) is simply a no-op.
 func _toggle_active_panel_terminal_mode() -> void:
-	var panel: PanelBase = panels_by_id.get(SCROLL_PANEL_ID, _active_panel) as PanelBase
-	if panel == null or panel.agent_id.is_empty():
+	var panel: PanelBase = _active_panel
+	if panel == null or panel.agent_id.is_empty() or not panel.panel_id.begins_with(SCROLL_PANEL_ID):
 		return
 	panel.set_mode("terminal" if panel.mode == "scroll" else "scroll")
 
@@ -644,18 +685,48 @@ func _toggle_quest_board() -> void:
 		open_quest_board()
 
 
-## Opens (or retargets) the singleton spell-scroll panel for `agent_id`.
-## Only one scroll is ever open: clicking a different agent while a scroll is
-## already open swaps its content in place instead of opening a second panel.
+## Reads the keeper's open-panel cap fresh from disk on every call rather than
+## caching it in a field. PanelManager and SigilConfigPage are wired
+## independently (see that page's OPEN PANELS row) with no signal between
+## them, so a cache here would go stale the moment the keeper changes the
+## setting without a restart. ConfigFile.load() is one small parse — cheap
+## enough to pay on every scroll-panel open.
+func _max_scroll_panels() -> int:
+	return SigilConfig.load_from_file().max_scroll_panels
+
+
+## Panel id for `agent_id`'s scroll/terminal panel. Below/at a cap of 1, every
+## agent shares the exact same id (SCROLL_PANEL_ID) — the dictionary lookups
+## in open_scroll_panel() below then always find "the" existing panel and
+## retarget it in place, reproducing T9's original singleton behavior
+## byte-for-byte with no separate code path to keep in sync. Above 1, each
+## agent gets its own suffixed id so multiple panels coexist in panels_by_id.
+func _scroll_panel_id_for_agent(agent_id: String) -> String:
+	if _max_scroll_panels() <= 1:
+		return SCROLL_PANEL_ID
+	return "%s:%s" % [SCROLL_PANEL_ID, agent_id]
+
+
+## Opens (or retargets/focuses) the spell-scroll panel for `agent_id`. Up to
+## SigilConfig.max_scroll_panels may be open at once (#169); clicking an
+## agent that already has one open focuses it instead of duplicating, and
+## opening a new one past the cap closes the least-recently-focused scroll
+## panel first (_evict_scroll_panel_if_at_cap()).
 func open_scroll_panel(agent_id: String) -> void:
 	var agent_data: BridgeData.AgentData = _get_agent_data(agent_id)
 	var title: String = "%s — Spell Scroll" % _agent_title(agent_id, agent_data)
 	var preferred_mode: String = _validated_mode(mode_preferences.get(agent_id, "scroll"))
-	if panels_by_id.has(SCROLL_PANEL_ID):
-		var existing: PanelBase = panels_by_id[SCROLL_PANEL_ID]
+	var panel_id: String = _scroll_panel_id_for_agent(agent_id)
+	if panels_by_id.has(panel_id):
+		var existing: PanelBase = panels_by_id[panel_id]
 		if existing.agent_id == agent_id:
 			focus_panel(existing)
 			return
+		# Only reachable at cap 1, where panel_id is the bare shared
+		# SCROLL_PANEL_ID and this is a different agent's panel — retarget it
+		# in place instead of closing, so the singleton case never pays a
+		# close+reopen slide animation for what looks to the keeper like a
+		# single panel being repointed.
 		existing.agent_id = agent_id
 		existing.set_panel_title(title)
 		# "terminal" is now a legitimate mode (T10) alongside "scroll", so a
@@ -679,22 +750,44 @@ func open_scroll_panel(agent_id: String) -> void:
 		focus_panel(existing)
 		_save_layout()
 		return
-	var panel: PanelBase = open_panel(SCROLL_PANEL_ID, title, agent_id, preferred_mode)
+	_evict_scroll_panel_if_at_cap()
+	var panel: PanelBase = open_panel(panel_id, title, agent_id, preferred_mode)
 	if panel.mode != preferred_mode:
 		# Same validated-preference honoring as above, for the fresh-open path.
 		panel.set_mode(preferred_mode)
 	_place_scroll_panel(panel)
 
 
-## Opens the singleton scroll panel for `agent_id` and forces it into
-## terminal mode (T14 / #119 "Open terminal" context-menu action). Reuses
-## open_scroll_panel for singleton creation/targeting/placement, then flips
-## the mode if it isn't already "terminal" — set_mode routes through the
-## existing mode_changed -> PanelContentRouter.mount() + mode_preferences
-## persistence, so this needs no separate mounting logic.
+## Closes the least-recently-focused open scroll panel when opening one more
+## would exceed the keeper's cap. No-op below the cap, and a no-op if nothing
+## is open yet (both fall out of the size check naturally). Runs BEFORE the
+## new panel is created, so a cap of N never briefly holds N+1 panels.
+func _evict_scroll_panel_if_at_cap() -> void:
+	var cap: int = _max_scroll_panels()
+	var open_ids: Array[String] = []
+	for panel_id: String in _scroll_focus_order:
+		if panels_by_id.has(panel_id):
+			open_ids.append(panel_id)
+	# Evicts in a LOOP, not once: the keeper can lower the cap in sigil
+	# config while more panels than the new cap are already open (3 open,
+	# cap dropped to 1). A single close would then leave cap+1 panels up
+	# once the new one opens. Closing oldest-first until there is room for
+	# exactly one more converges on the new cap instead.
+	var evict_index: int = 0
+	while open_ids.size() - evict_index >= cap and evict_index < open_ids.size():
+		close_panel(open_ids[evict_index])
+		evict_index += 1
+
+
+## Opens (or retargets/focuses) the scroll panel for `agent_id` and forces it
+## into terminal mode (T14 / #119 "Open terminal" context-menu action). Reuses
+## open_scroll_panel for creation/targeting/placement/eviction, then flips the
+## mode if it isn't already "terminal" — set_mode routes through the existing
+## mode_changed -> PanelContentRouter.mount() + mode_preferences persistence,
+## so this needs no separate mounting logic.
 func open_agent_terminal(agent_id: String) -> void:
 	open_scroll_panel(agent_id)
-	var panel: PanelBase = panels_by_id.get(SCROLL_PANEL_ID) as PanelBase
+	var panel: PanelBase = panels_by_id.get(_scroll_panel_id_for_agent(agent_id)) as PanelBase
 	if panel != null and panel.mode != "terminal":
 		panel.set_mode("terminal")
 
@@ -709,13 +802,24 @@ func _validated_mode(value: String) -> String:
 	return "scroll"
 
 
-## Sizes/places the scroll panel at the right ~40% of the viewport (full
-## height) and slides it in from off the right edge, composing over
-## PanelBase's own materialize fade/scale (already playing from _ready()).
+## Sizes/places the scroll panel at the right ~40% of the viewport and slides
+## it in from off the right edge, composing over PanelBase's own materialize
+## fade/scale (already playing from _ready()). When other scroll panels are
+## already open (#169, up to MAX_SCROLL_PANELS), this one's rect is cascaded
+## via PanelManagerMath.tile_scroll_rect() by its position in
+## _scroll_focus_order so simultaneously open panels do not perfectly overlap.
 func _place_scroll_panel(panel: PanelBase) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var width: float = maxf(_scroll_min_open_width(), maxf(panel.custom_minimum_size.x, viewport_size.x * SCROLL_WIDTH_RATIO))
-	var target_rect: Rect2 = Rect2(Vector2(viewport_size.x - width, 0.0), Vector2(width, viewport_size.y))
+	# Width/height come from the keeper's sigil config (read fresh, same
+	# reasoning as _max_scroll_panels): they set where a panel OPENS, and
+	# PanelBase's drag-resize still applies on top. The min-open-width floor
+	# still wins so a narrow configured width can never wrap the terminal
+	# below SCROLL_MIN_COLUMNS.
+	var config: SigilConfig = SigilConfig.load_from_file()
+	var width: float = maxf(_scroll_min_open_width(), maxf(panel.custom_minimum_size.x, viewport_size.x * config.scroll_width_ratio))
+	var height: float = viewport_size.y * config.scroll_height_ratio
+	var cascade_index: int = maxi(_scroll_focus_order.find(panel.panel_id), 0)
+	var target_rect: Rect2 = PanelManagerMath.tile_scroll_rect(viewport_size, width, cascade_index, SCROLL_CASCADE_OFFSET, height)
 	panel.set_floating_at(target_rect)
 	panel.position = Vector2(viewport_size.x + 24.0, target_rect.position.y)
 	var tween: Tween = create_tween()
@@ -854,18 +958,30 @@ func _restore_layout() -> void:
 	var floating_by_id: Dictionary = {}
 	for entry: Dictionary in data.get("floating", []):
 		floating_by_id[entry.get("panel_id", "")] = entry
-	for entry: Dictionary in data.get("panels", []):
-		var panel_id: String = entry.get("panel_id", "")
+	# Drop any saved panel whose agent_id names an agent that no longer exists
+	# (server restarted with a fresh roster, etc.) — restoring it would open a
+	# dead-content agent panel. _agent_list is already populated from
+	# get_registered_agents() above in _ready() by the time this runs.
+	# Reuses the same filter capture_arrangement()/restore_arrangement() use
+	# for F5 presets, so "skip a banished agent on restore" is one tested rule
+	# (PanelManagerMath.filter_arrangement_for_agents) instead of two.
+	var known_agent_ids: Array = _agent_list.keys()
+	var filtered_panels: Dictionary = filter_arrangement_for_agents(
+		{"panels": data.get("panels", [])}, known_agent_ids
+	)
+	for entry: Variant in filtered_panels.get("panels", []):
+		var panel_entry: Dictionary = entry as Dictionary
+		var panel_id: String = panel_entry.get("panel_id", "")
 		if panel_id.is_empty():
 			continue
-		var agent_id: String = entry.get("agent_id", "")
+		var agent_id: String = panel_entry.get("agent_id", "")
 		if not agent_id.is_empty():
-			mode_preferences[agent_id] = entry.get("mode", mode_preferences.get(agent_id, "scroll"))
+			mode_preferences[agent_id] = panel_entry.get("mode", mode_preferences.get(agent_id, "scroll"))
 		var panel: PanelBase = open_panel(
 			panel_id,
-			entry.get("title", panel_id),
+			panel_entry.get("title", panel_id),
 			agent_id,
-			entry.get("mode", "scroll")
+			panel_entry.get("mode", "scroll")
 		)
 		if floating_by_id.has(panel_id):
 			var floating_entry: Dictionary = floating_by_id[panel_id]
@@ -1021,7 +1137,9 @@ func _apply_focus_layout() -> void:
 	ids.sort()
 	if ids.is_empty():
 		return
-	var focus_id: String = SCROLL_PANEL_ID if panels_by_id.has(SCROLL_PANEL_ID) else ids[0]
+	var focus_id: String = _most_recent_scroll_panel_id()
+	if focus_id.is_empty() or not panels_by_id.has(focus_id):
+		focus_id = ids[0]
 	var focus_width: float = viewport_size.x * FOCUS_WIDTH_RATIO
 	var rail_width: float = viewport_size.x - focus_width
 	var focus_panel_ref: PanelBase = panels_by_id[focus_id]
