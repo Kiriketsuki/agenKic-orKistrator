@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -113,7 +114,7 @@ func main() {
 		}
 		return fields.CurrentTaskID, meta.Description, nil
 	}
-	bridgeOpts = append(bridgeOpts, httpbridge.WithAgentSpawner(func(kind, name, tier string) (string, error) {
+	bridgeOpts = append(bridgeOpts, httpbridge.WithAgentSpawner(func(kind, name, tier, workdir string) (string, error) {
 		if kind == "sim" {
 			return simagent.Spawn(ctx, loopbackAddr, name, tier)
 		}
@@ -121,15 +122,44 @@ func main() {
 		if sub, ok := sv.Substrate(); ok {
 			cliOpts = append(cliOpts, cliagent.WithSubstrate(sub))
 		}
+		if workdir != "" {
+			cliOpts = append(cliOpts, cliagent.WithWorkdir(workdir))
+		}
 		return cliagent.Spawn(ctx, loopbackAddr, kind, name, tier, promptFn, cliOpts...)
 	}))
+	bridgeOpts = append(bridgeOpts, httpbridge.WithSupervisor(sv))
 	if apiKey := os.Getenv("BRIDGE_API_KEY"); apiKey != "" {
 		bridgeOpts = append(bridgeOpts, httpbridge.WithAPIKey(apiKey))
 		log.Println("HTTP bridge: bearer-token auth enabled")
 	} else {
 		log.Println("HTTP bridge: no BRIDGE_API_KEY set — running without auth")
 	}
-	bridge := httpbridge.NewBridge(bridgeAddr, store, executor, bridgeOpts...)
+
+	// bridge is declared before assignment so restartFn's closure can
+	// reference it. restartFn only runs after POST /api/admin/restart, by
+	// which point NewBridge below has already assigned it.
+	var bridge *httpbridge.Bridge
+	restartFn := func() {
+		// Resolve the binary path before any shutdown step runs. os.Args[0]
+		// is often a bare name ("orchestrator") with no directory component,
+		// and syscall.Exec never consults PATH the way a shell does, so a
+		// bare-name invocation fails with ENOENT after shutdown has already
+		// stopped the servers, leaving the process simply exiting instead of
+		// restarting (finding 7). Resolving first and aborting on failure
+		// keeps the process serving.
+		bin, err := resolveRestartBinary()
+		if err != nil {
+			log.Printf("restart aborted: cannot resolve binary path: %v", err)
+			return
+		}
+		gracefulShutdown(cancel, server, httpHealth, bridge, executor, sv)
+		time.Sleep(200 * time.Millisecond)
+		if err := syscall.Exec(bin, os.Args, os.Environ()); err != nil { //nolint:gosec // re-exec of our own already-running binary
+			log.Printf("re-exec failed: %v", err)
+		}
+	}
+	bridgeOpts = append(bridgeOpts, httpbridge.WithRestartFunc(restartFn))
+	bridge = httpbridge.NewBridge(bridgeAddr, store, executor, bridgeOpts...)
 
 	// Run supervisor loops in background.
 	go func() {
@@ -156,26 +186,49 @@ func main() {
 	}()
 
 	// Graceful shutdown on signal.
-	// Order: cancel context first (stops all context-dependent loops such as
-	// the supervisor and health updater), then drain external-facing servers,
-	// then shut down internal components.
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 		<-sigCh
-		fmt.Println("shutting down...")
-		cancel()
-		server.GracefulStop()
-		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutCancel()
-		_ = httpHealth.Shutdown(shutCtx)
-		_ = bridge.Shutdown(shutCtx)
-		executor.Shutdown()
-		sv.Stop()
+		gracefulShutdown(cancel, server, httpHealth, bridge, executor, sv)
 	}()
 
 	fmt.Printf("agenKic-orKistrator gRPC on %s, health HTTP on %s, bridge HTTP on %s\n", addr, healthAddr, bridgeAddr)
 	if err := server.StartGRPC(addr); err != nil {
 		log.Fatalf("gRPC server failed: %v", err)
 	}
+}
+
+// resolveRestartBinary finds an absolute, executable path for the currently
+// running binary, for use with syscall.Exec. It tries os.Executable first,
+// then falls back to exec.LookPath(os.Args[0]) for a bare-name invocation
+// (os.Args[0] with no directory separator), which syscall.Exec cannot
+// resolve on its own because it never consults PATH the way a shell does.
+func resolveRestartBinary() (string, error) {
+	if bin, err := os.Executable(); err == nil {
+		return bin, nil
+	}
+	bin, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		return "", fmt.Errorf("resolve restart binary: %w", err)
+	}
+	return bin, nil
+}
+
+// gracefulShutdown drains and stops every long-running component in the
+// order the shutdown path has always used: cancel context first (stops all
+// context-dependent loops such as the supervisor and health updater), then
+// drain external-facing servers, then shut down internal components. Shared
+// by the SIGTERM/SIGINT signal handler and POST /api/admin/restart's
+// restartFn (F4 / power controls), so both shutdown paths stay identical.
+func gracefulShutdown(cancel context.CancelFunc, server *ipc.OrchestratorServer, httpHealth *ipc.HealthHTTPServer, bridge *httpbridge.Bridge, executor *dag.Executor, sv *supervisor.Supervisor) {
+	fmt.Println("shutting down...")
+	cancel()
+	server.GracefulStop()
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutCancel()
+	_ = httpHealth.Shutdown(shutCtx)
+	_ = bridge.Shutdown(shutCtx)
+	executor.Shutdown()
+	sv.Stop()
 }

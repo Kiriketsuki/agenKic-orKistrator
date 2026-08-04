@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://main"]
+[gd_scene load_steps=17 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -7,13 +7,17 @@
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/floor_tabs.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/overlays/agent_context_menu.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/ui/summon_bar.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/ui/grimoire_flyout.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/tower/backdrop_parallax.gd" id="9"]
 [ext_resource type="Texture2D" path="res://assets/backdrops/stair_shaft.png" id="10"]
 [ext_resource type="Script" path="res://scripts/ui/world_labels.gd" id="11"]
 [ext_resource type="Script" path="res://scripts/ui/edge_compass.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/ui/floor_banner.gd" id="13"]
 [ext_resource type="Script" path="res://scripts/ui/hex_compass.gd" id="14"]
+[ext_resource type="Script" path="res://scripts/ui/orb_flock.gd" id="15"]
+[ext_resource type="Script" path="res://scripts/ui/power_flyout.gd" id="16"]
+[ext_resource type="Script" path="res://scripts/ui/panels_flyout.gd" id="17"]
+[ext_resource type="Theme" path="res://themes/orki_theme.tres" id="18"]
 
 [node name="Main" type="Node2D"]
 
@@ -41,13 +45,40 @@ zoom = Vector2(1, 1)
 [node name="UILayer" type="CanvasLayer" parent="."]
 layer = 10
 
-[node name="SummonBar" type="HBoxContainer" parent="UILayer"]
-offset_left = 16.0
-offset_top = 16.0
-offset_right = 700.0
-offset_bottom = 48.0
-theme_override_constants/separation = 8
+[node name="OrbFlock" type="Control" parent="UILayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+z_index = 5
+theme = ExtResource("18")
+script = ExtResource("15")
+
+[node name="GrimoireFlyout" type="Control" parent="UILayer/OrbFlock"]
+visible = false
+offset_left = 32.0
+offset_top = 32.0
+offset_right = 872.0
+offset_bottom = 352.0
 script = ExtResource("8")
+
+[node name="PowerFlyout" type="Control" parent="UILayer/OrbFlock"]
+visible = false
+offset_left = 32.0
+offset_top = 32.0
+offset_right = 552.0
+offset_bottom = 432.0
+script = ExtResource("16")
+
+[node name="PanelsFlyout" type="Control" parent="UILayer/OrbFlock"]
+visible = false
+offset_left = 32.0
+offset_top = 32.0
+offset_right = 632.0
+offset_bottom = 872.0
+script = ExtResource("17")
 
 [node name="Minimap" type="Control" parent="UILayer"]
 visible = false
@@ -111,6 +142,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+theme = ExtResource("18")
 script = ExtResource("3")
 
 [node name="Dimmer" type="ColorRect" parent="UILayer/PanelManager"]
@@ -190,17 +222,6 @@ offset_bottom = 1080.0
 mouse_filter = 0
 color = Color(0.9, 0.95, 1, 0.26)
 
-[node name="PanelMenuButton" type="Button" parent="UILayer/PanelManager"]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -124.0
-offset_top = 16.0
-offset_right = -16.0
-offset_bottom = 48.0
-grow_horizontal = 0
-text = "Panels"
-
 [node name="PanelMenuPopup" type="PopupPanel" parent="UILayer/PanelManager"]
 initial_position = 1
 size = Vector2i(280, 320)
@@ -214,6 +235,7 @@ grow_vertical = 2
 
 [node name="OverlayLayer" type="CanvasLayer" parent="."]
 layer = 20
+groups = ["modal_layer"]
 
 [node name="StatusOverlayManager" type="Control" parent="OverlayLayer"]
 anchors_preset = 15
@@ -222,9 +244,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = ExtResource("18")
 script = ExtResource("4")
 
 [node name="AgentContextMenu" type="PopupMenu" parent="OverlayLayer"]
+theme = ExtResource("18")
 script = ExtResource("7")
 
 [node name="ReassignSubmenu" type="PopupMenu" parent="OverlayLayer/AgentContextMenu"]

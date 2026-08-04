@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3 uid="uid://tower_backdrop"]
+
+[ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/tower/backdrop_parallax.gd" id="3"]
+[ext_resource type="Texture2D" path="res://assets/backdrops/stair_shaft.png" id="4"]
+
+[node name="TowerBackdrop" type="Node2D"]
+script = ExtResource("1")
+display_only = true
+
+[node name="Backdrop" type="Node2D" parent="."]
+script = ExtResource("3")
+
+[node name="StairShaft" type="Sprite2D" parent="."]
+texture_filter = 1
+texture_repeat = 2
+centered = false
+texture = ExtResource("4")
+
+[node name="TowerExterior" type="Node2D" parent="."]
+script = ExtResource("2")
+
+[node name="FloorsContainer" type="Node2D" parent="."]
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(0, 0)
+zoom = Vector2(1, 1)

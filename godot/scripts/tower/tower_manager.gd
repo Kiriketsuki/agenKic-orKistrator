@@ -30,6 +30,10 @@ const ADJACENT_SCALE: float = 0.4
 ## is the only magnifier. Zoom is always an integer from this set, so the pixel
 ## grid never shimmers. 6 is the 1080p base (1080 / 180 = 6).
 const ZOOM_LEVELS: Array[int] = [4, 5, 6, 8]
+## Free-zoom bounds for ctrl+wheel. ZOOM_LEVELS stays as the base-zoom
+## ladder for viewport sizing; the user's wheel roams the full range.
+const MIN_ZOOM: int = 1
+const MAX_ZOOM: int = 64
 const MAX_QUEUE_SIZE: int = 2
 ## Art-px world truth. These are absolute, never derived from viewport size.
 const BASE_FLOOR_WIDTH: float = 280.0
@@ -41,6 +45,13 @@ const FLOOR_SPACING: float = 56.0
 const REFOCUS_DUR: float = 0.55
 
 @export var config_path: String = "res://config/tower.json"
+## True when this TowerManager renders a display-only copy of the tower (the
+## title-screen backdrop, T-item-1). A display-only instance never connects
+## to BridgeManager's signals, since the real Tower in main.tscn already
+## owns that connection. Two live listeners on the same bridge signal would
+## double-handle every agent event. It also never reads input, so the title
+## menu keeps sole ownership of the keyboard and mouse.
+@export var display_only: bool = false
 
 var _config: TowerConfig
 var _floors: Array[Node2D] = []  # ordered bottom to top
@@ -93,6 +104,10 @@ var _shaft_fade_material: ShaderMaterial = null
 
 
 func _ready() -> void:
+	# Grimoire Summoning (F3) — the flyout looks this node up by group instead
+	# of a hardcoded scene path, so it works from any UI layer without a
+	# direct node reference.
+	add_to_group("tower_manager")
 	_config = TowerConfig.from_file(config_path)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	_apply_base_zoom()
@@ -107,6 +122,8 @@ func _ready() -> void:
 	_load_recompute_timer.autostart = true
 	_load_recompute_timer.timeout.connect(_on_load_recompute_timer_timeout)
 	add_child(_load_recompute_timer)
+	if display_only:
+		return
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -119,6 +136,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if display_only:
+		return
 	if event.is_action_pressed("rotate_left"):
 		_rotate_focused_edge(-1)
 		get_viewport().set_input_as_handled()
@@ -136,13 +155,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.pressed:
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				if mb.ctrl_pressed:
-					_zoom(-1)
+					# Ctrl+wheel up zooms IN (a larger camera zoom magnifies).
+					_zoom(1)
 				else:
 					_scroll_focus(1)
 				get_viewport().set_input_as_handled()
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.ctrl_pressed:
-					_zoom(1)
+					_zoom(-1)
 				else:
 					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()
@@ -387,17 +407,23 @@ func get_floor_infos() -> Array[Dictionary]:
 
 
 ## Snaps the camera to the base zoom for the current viewport height. The base
-## is floorf(viewport_h / 180) pulled down to the nearest ZOOM_LEVELS entry at
-## or below it, so 1080p lands on 6 and a small window still gets 4.
+## is floorf(viewport_h / 360) pulled down to the nearest ZOOM_LEVELS entry at
+## or below it, so 2160p (the doubled design canvas) lands on 6 and a small
+## window still gets 4.
 func _apply_base_zoom() -> void:
 	if _user_zoom_override:
 		return
-	# Zoom derives from the DESIGN canvas (1080 -> 6), not the OS window: the
-	# canvas_items stretch already maps design px to window px, so using the
-	# window height here would double-scale (a 1066px tile picked 5, not 6).
-	var raw: float = floorf(get_tree().root.content_scale_size.y / 180.0)
+	# Zoom derives from the DESIGN canvas, not the OS window: the canvas_items
+	# stretch already maps design px to window px, so using the window height
+	# here would double-scale. The design canvas doubled from 1920x1080 to
+	# 3840x2160 (project.godot), so the divisor doubled from 180 to 360 to
+	# keep the same base zoom (and the same on-screen world size) at every
+	# window size the divisor by 180 used to produce. Using 180 unchanged
+	# would compute a base zoom twice as large as before, zooming the world
+	# in instead of leaving it the same size, only sharper.
+	var raw: float = floorf(get_tree().root.content_scale_size.y / 360.0)
 	if raw < 1.0:
-		raw = floorf(get_viewport_rect().size.y / 180.0)
+		raw = floorf(get_viewport_rect().size.y / 360.0)
 	var z: int = ZOOM_LEVELS[0]
 	for level: int in ZOOM_LEVELS:
 		if float(level) <= raw:
@@ -405,14 +431,21 @@ func _apply_base_zoom() -> void:
 	_camera.zoom = Vector2(z, z)
 
 
-## Steps one entry through ZOOM_LEVELS. Zoom is never fractional.
+## Steps the zoom multiplicatively between MIN_ZOOM and MAX_ZOOM. Zoom
+## stays integer so pixel art renders crisp, but the range is wide open:
+## MAX_ZOOM puts the camera right up against a single agent. Each wheel
+## step scales by about 25 percent, with a guaranteed minimum step of 1.
 func _zoom(direction: int) -> void:
-	var current: int = _nearest_zoom_index()
-	var next: int = clampi(current + signi(direction), 0, ZOOM_LEVELS.size() - 1)
+	var current: int = maxi(1, roundi(_camera.zoom.x))
+	var next: int = current
+	if direction > 0:
+		next = maxi(current + 1, roundi(float(current) * 1.25))
+	else:
+		next = mini(current - 1, roundi(float(current) / 1.25))
+	next = clampi(next, MIN_ZOOM, MAX_ZOOM)
 	if next == current:
 		return
-	var z: int = ZOOM_LEVELS[next]
-	_camera.zoom = Vector2(z, z)
+	_camera.zoom = Vector2(next, next)
 	_user_zoom_override = true
 	# The offset formula divides by zoom.x, so a new zoom invalidates the old offset.
 	_aim_camera_at_region()
@@ -568,6 +601,14 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if _agent_assignments.has(agent_data.id):
 		return
 	var floor_name: String = agent_data.floor_name
+	# Grimoire Summoning (F3) — agent_data.floor is the numeric tower-index
+	# the keeper dropped the sigil on. It names a slot in _floors by array
+	# index rather than by floor_name, and it may point above the top of the
+	# stack today (the "new floor" drop zone), so the stack grows to meet it.
+	if agent_data.floor > 0:
+		_ensure_floor_count(agent_data.floor + 1)
+		if agent_data.floor < _floors.size():
+			floor_name = _floors[agent_data.floor].get_meta("floor_name", "")
 	if floor_name.is_empty() or not _has_floor(floor_name):
 		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
@@ -795,6 +836,64 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 			if char_node != null:
 				return char_node
 	return null
+
+
+## Grimoire Summoning (F3) — grows the floor stack with synthetic non-permanent
+## floors ("floor-N") until _floors.size() >= target_count, so a drop on the
+## "new floor" gap above the top always has a real floor node waiting for it.
+func _ensure_floor_count(target_count: int) -> void:
+	while _floors.size() < target_count:
+		var index: int = _floors.size()
+		var synthetic_name: String = "floor-%d" % index
+		var floor_node: Node2D = _create_floor(synthetic_name, "Floor %d" % index, false)
+		_floors.append(floor_node)
+	_layout_floors()
+	_apply_fisheye_layout()
+	_update_tower_frame()
+	_sync_tower_exterior()
+	floors_changed.emit()
+
+
+## Grimoire Summoning (F3) — converts a screen-space position (e.g. the
+## mouse) into Tower-local world space, through the same camera the tower
+## renders with, so placement-mode hit-testing never fights zoom or the
+## panel-docking offset (see set_master_region/_aim_camera_at_region).
+func world_position_from_screen(screen_pos: Vector2) -> Vector2:
+	return _camera.get_screen_transform().affine_inverse() * screen_pos
+
+
+## The inverse of world_position_from_screen — used to draw the placement-mode
+## highlight overlay at the right screen Y for a given world-space Y.
+func screen_position_from_world(world_pos: Vector2) -> Vector2:
+	return _camera.get_screen_transform() * world_pos
+
+
+## Floor geometry the flyout needs to draw its highlight overlay, without it
+## having to know about _floor_spacing/_floor_height directly.
+func get_floor_spacing() -> float:
+	return _floor_spacing
+
+
+func get_floor_height() -> float:
+	return _floor_height
+
+
+## Grimoire Summoning (F3) — classifies a world-space position against the
+## floor stack (see FloorHitTest.classify) and enriches a FLOOR result with
+## live desk-count/full-floor data so the flyout can show "floor N, x/4" and
+## the reject state under the cursor. Floor 0 always reports RESERVED, even
+## before any floor node occupies it.
+func hit_test_floor(world_pos: Vector2) -> Dictionary:
+	var result: Dictionary = FloorHitTest.classify(
+		world_pos.y, maxi(_floors.size(), 1), _floor_spacing, _floor_height
+	)
+	if result["type"] == FloorHitTest.ZoneType.FLOOR:
+		var index: int = result["index"]
+		var floor_node: Node2D = _floors[index]
+		result["agent_count"] = floor_node.get_agent_count() if floor_node.has_method("get_agent_count") else 0
+		result["capacity"] = floor_node.get_desk_capacity() if floor_node.has_method("get_desk_capacity") else 4
+		result["is_full"] = floor_node.is_floor_full() if floor_node.has_method("is_floor_full") else false
+	return result
 
 
 func _has_floor(floor_name: String) -> bool:

@@ -87,7 +87,7 @@ func TestAgentOutput_ScreenModeFallsBackWithoutCapability(t *testing.T) {
 func TestSpawnAgent_PiKindAccepted(t *testing.T) {
 	var gotKind string
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(kind, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(kind, _, _, _ string) (string, error) {
 			gotKind = kind
 			return "agent-pi", nil
 		}))
@@ -106,7 +106,7 @@ func TestSpawnAgent_PiKindAccepted(t *testing.T) {
 
 func TestSpawnAgent_UnknownKindListsPi(t *testing.T) {
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) { return "x", nil }))
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) { return "x", nil }))
 
 	req := httptest.NewRequest("POST", "/api/agents/spawn", bytes.NewReader([]byte(`{"kind":"bogus"}`)))
 	w := httptest.NewRecorder()

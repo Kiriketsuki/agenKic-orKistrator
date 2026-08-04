@@ -20,12 +20,14 @@ const PATCH_V: int = 4
 const PATCH_H: int = 6
 const INTERIOR_COLOR: Color = Color("#1a1626")
 const TEXT_COLOR: Color = Color("#d9a94a")
-const TEXT_SIZE: int = 14
-const PLATE_HEIGHT: float = 26.0
-const PLATE_PADDING: float = 18.0
-## Screen-space offset from the floor origin, in window pixels. The plate sits
-## above the floor label, which WorldLabels puts at y -150.
-const PLATE_OFFSET_Y: float = -188.0
+const TEXT_SIZE: int = 28
+const PLATE_HEIGHT: float = 52.0
+const PLATE_PADDING: float = 36.0
+## Screen-space offset from the floor origin, in window (design-canvas)
+## pixels. The plate sits above the floor label. Doubled alongside every
+## other screen-space UI size when project.godot's design canvas doubled
+## from 1920x1080 to 3840x2160.
+const PLATE_OFFSET_Y: float = -376.0
 ## Fade applied when no floor is in focus yet.
 const FADE_DURATION: float = 0.2
 
@@ -37,6 +39,11 @@ var _interior: ColorRect = null
 var _label: Label = null
 var _font: Font = null
 var _last_text: String = ""
+## The zoom factor a layout was last built for. _track_floor() only rebuilds
+## the font size and plate layout when the bucketed zoom factor changes, so
+## the font is not resized every frame (see class doc-comment: "Re-layout
+## only when the zoom bucket changes").
+var _last_zoom_scale: float = -1.0
 
 
 func _ready() -> void:
@@ -153,20 +160,51 @@ func _refresh_text() -> void:
 		return
 	_last_text = text
 	_label.text = text
-	_resize_plate()
+	# The text changed independently of zoom, so the plate width must be
+	# recomputed even when the zoom bucket did not change.
+	_resize_plate(maxf(_last_zoom_scale, PLATE_SCALE_MIN))
 
 
-func _resize_plate() -> void:
+## Rebuilds the plate's font size and layout for `zoom_scale`. `_frame.scale`
+## stays at 1.0 always — scaling the LAYOUT (font size, plate height,
+## padding) instead of stretching a rasterized-at-28px label is what keeps
+## the glyphs crisp at any zoom (see class doc-comment, item 3). Only called
+## when the text changed or the bucketed zoom factor changed, never every
+## frame, since resizing a font is expensive.
+func _resize_plate(zoom_scale: float) -> void:
+	var font_size: int = maxi(8, roundi(TEXT_SIZE * zoom_scale))
+	_label.add_theme_font_size_override("font_size", font_size)
+	var padding: float = PLATE_PADDING * zoom_scale
+	var plate_height: float = PLATE_HEIGHT * zoom_scale
 	var width: float = _font.get_string_size(
-		_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, TEXT_SIZE).x + PLATE_PADDING * 2.0
-	_frame.size = Vector2(maxf(width, 96.0), PLATE_HEIGHT)
+		_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x + padding * 2.0
+	_frame.size = Vector2(maxf(width, 192.0 * zoom_scale), plate_height)
+
+
+## Camera zoom at which the plate renders at its authored 1:1 size. Above
+## it the plate grows with the world, below it the plate shrinks, so the
+## banner always reads as part of the scene instead of a fixed overlay.
+const REFERENCE_ZOOM: float = 6.0
+const PLATE_SCALE_MIN: float = 0.4
+const PLATE_SCALE_MAX: float = 10.0
+## Zoom is quantized to this step before the layout rebuild check, so a
+## smooth camera zoom tween triggers a handful of font rebuilds instead of
+## one every frame.
+const ZOOM_BUCKET_STEP: float = 0.1
 
 
 ## Follows the focused floor every frame, so the plate rides the refocus tween
-## and the elastic overscroll without a second animation.
+## and the elastic overscroll without a second animation. The plate scales
+## with the camera zoom relative to REFERENCE_ZOOM. The font/layout rebuild
+## only runs when the bucketed zoom factor actually changed.
 func _track_floor() -> void:
 	var floor_node: Node = _focused_floor()
 	if floor_node == null or not (floor_node is Node2D):
 		return
-	var origin: Vector2 = (floor_node as Node2D).get_global_transform_with_canvas().origin
-	_frame.position = origin + Vector2(-_frame.size.x / 2.0, PLATE_OFFSET_Y)
+	var xf: Transform2D = (floor_node as Node2D).get_global_transform_with_canvas()
+	var raw_zoom_scale: float = clampf(xf.get_scale().x / REFERENCE_ZOOM, PLATE_SCALE_MIN, PLATE_SCALE_MAX)
+	var bucketed_zoom_scale: float = roundf(raw_zoom_scale / ZOOM_BUCKET_STEP) * ZOOM_BUCKET_STEP
+	if not is_equal_approx(bucketed_zoom_scale, _last_zoom_scale):
+		_last_zoom_scale = bucketed_zoom_scale
+		_resize_plate(bucketed_zoom_scale)
+	_frame.position = xf.origin + Vector2(-_frame.size.x / 2.0, PLATE_OFFSET_Y * bucketed_zoom_scale)

@@ -71,6 +71,13 @@ const EDGE_WINDOW_CENTER_GAP: float = 28.0
 ## Idle and crashed agents read as dim on the minimap/badges.
 const ACTIVE_STATES: Array[String] = ["assigned", "working", "reporting"]
 
+## Grimoire Summoning (F3) — the maximum number of desks EdgeLayout renders
+## per floor, across every edge. Mirrors internal/httpbridge/bridge.go's
+## floorCapacity constant; the Go side is the enforcement point (409 on a
+## full floor), this constant only drives the GUI's own desk-count display
+## and reject state so both sides agree on the number the keeper sees.
+const MAX_DESKS_PER_FLOOR: int = 4
+
 enum FloorState { ACTIVE, LINGERING, DISSOLVING }
 
 ## Breathe/glow morph duration (acceptance criterion #124.2: "~0.5s").
@@ -545,6 +552,17 @@ func remove_agent_slot(agent_id: String) -> void:
 ## Total agents assigned to this floor, across all edges.
 func get_agent_count() -> int:
 	return _agent_slots.size()
+
+
+## Grimoire Summoning (F3) — desk capacity for this floor, across all edges.
+func get_desk_capacity() -> int:
+	return MAX_DESKS_PER_FLOOR
+
+
+## True once this floor holds MAX_DESKS_PER_FLOOR agents. The Grimoire
+## placement mode reads this to show the reject state under the cursor.
+func is_floor_full() -> bool:
+	return get_agent_count() >= get_desk_capacity()
 
 
 ## Agents on this floor currently in an active state (assigned/working/reporting).

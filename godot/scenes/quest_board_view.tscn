@@ -33,18 +33,18 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
 
 [node name="Root" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 20
 
 [node name="ModeToggle" type="HBoxContainer" parent="Margin/Root"]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 12
 
 [node name="SingleModeButton" type="Button" parent="Margin/Root/ModeToggle"]
 layout_mode = 2
@@ -61,13 +61,13 @@ text = "Quest Chain"
 [node name="StatusLabel" type="Label" parent="Margin/Root"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.28, 0.18, 0.08, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 26
 autowrap_mode = 2
 text = ""
 
 [node name="SingleForm" type="VBoxContainer" parent="Margin/Root"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 16
 
 [node name="DescriptionLabel" type="Label" parent="Margin/Root/SingleForm"]
 layout_mode = 2
@@ -75,14 +75,14 @@ theme_override_colors/font_color = Color(0.28, 0.18, 0.08, 1)
 text = "Quest Description"
 
 [node name="DescriptionEdit" type="TextEdit" parent="Margin/Root/SingleForm"]
-custom_minimum_size = Vector2(0, 90)
+custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
 wrap_mode = 1
 placeholder_text = "Describe the quest to commission..."
 
 [node name="RowFloorProject" type="HBoxContainer" parent="Margin/Root/SingleForm"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 16
 
 [node name="FloorLabel" type="Label" parent="Margin/Root/SingleForm/RowFloorProject"]
 layout_mode = 2
@@ -105,7 +105,7 @@ placeholder_text = "optional"
 
 [node name="RowPriorityId" type="HBoxContainer" parent="Margin/Root/SingleForm"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 16
 
 [node name="PriorityLabel" type="Label" parent="Margin/Root/SingleForm/RowPriorityId"]
 layout_mode = 2
@@ -130,7 +130,7 @@ layout_mode = 2
 alignment = 1
 
 [node name="SingleSeal" type="Button" parent="Margin/Root/SingleForm/SingleSubmitRow"]
-custom_minimum_size = Vector2(84, 84)
+custom_minimum_size = Vector2(168, 168)
 layout_mode = 2
 tooltip_text = "Commission this quest"
 script = ExtResource("3")
@@ -138,7 +138,7 @@ script = ExtResource("3")
 [node name="ChainForm" type="VBoxContainer" parent="Margin/Root"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 16
 
 [node name="TaskListLabel" type="Label" parent="Margin/Root/ChainForm"]
 layout_mode = 2
@@ -147,7 +147,7 @@ text = "Tasks"
 
 [node name="TaskRows" type="VBoxContainer" parent="Margin/Root/ChainForm"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 8
 
 [node name="AddTaskButton" type="Button" parent="Margin/Root/ChainForm"]
 layout_mode = 2
@@ -160,7 +160,7 @@ text = "Links (from → to)"
 
 [node name="EdgeRow" type="HBoxContainer" parent="Margin/Root/ChainForm"]
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 12
 
 [node name="EdgeFromOption" type="OptionButton" parent="Margin/Root/ChainForm/EdgeRow"]
 layout_mode = 2
@@ -181,14 +181,14 @@ text = "Link"
 
 [node name="EdgeList" type="VBoxContainer" parent="Margin/Root/ChainForm"]
 layout_mode = 2
-theme_override_constants/separation = 2
+theme_override_constants/separation = 4
 
 [node name="ChainSubmitRow" type="HBoxContainer" parent="Margin/Root/ChainForm"]
 layout_mode = 2
 alignment = 1
 
 [node name="ChainSeal" type="Button" parent="Margin/Root/ChainForm/ChainSubmitRow"]
-custom_minimum_size = Vector2(84, 84)
+custom_minimum_size = Vector2(168, 168)
 layout_mode = 2
 tooltip_text = "Commission this quest chain"
 script = ExtResource("3")

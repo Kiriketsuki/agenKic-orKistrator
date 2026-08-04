@@ -1,0 +1,125 @@
+[gd_resource type="Theme" load_steps=8 format=3]
+
+[sub_resource type="FontVariation" id="FontVariation_caps"]
+spacing_glyph = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_normal"]
+bg_color = Color(0.075, 0.086, 0.102, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.44, 0.72, 0.66, 0.6)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+bg_color = Color(0.106, 0.122, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.46, 0.85, 0.78, 1)
+shadow_color = Color(0.44, 0.85, 0.78, 0.55)
+shadow_size = 12
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
+bg_color = Color(0.04, 0.05, 0.06, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 0.92, 0.85, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 0.92, 0.85, 0.9)
+shadow_color = Color(0.44, 0.85, 0.78, 0.45)
+shadow_size = 10
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_disabled"]
+bg_color = Color(0.06, 0.06, 0.07, 0.6)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.4, 0.4, 0.3)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.055, 0.063, 0.075, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.44, 0.72, 0.66, 0.35)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_left = 3
+corner_radius_bottom_right = 3
+
+[resource]
+; orki_theme.tres — F5 Panels Orb and Restyle: the bordered-glow button
+; language shared by every legacy UI surface (quest board, dialogs, scroll
+; chrome, and any remaining flat button). Dark fill, 1px accent border, a
+; glow on hover and focus (StyleBoxFlat shadow), and letter-spaced caps via
+; a shared FontVariation. Button text is already authored in ALL CAPS across
+; the codebase (e.g. power_flyout.gd's "BANISH ALL AGENTS"), so this theme
+; supplies the spacing only and does not attempt a text-transform.
+default_font = SubResource("FontVariation_caps")
+default_font_size = 26
+Button/styles/normal = SubResource("StyleBoxFlat_btn_normal")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
+Button/styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+Button/styles/focus = SubResource("StyleBoxFlat_btn_focus")
+Button/styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+Button/colors/font_color = Color(0.82, 0.88, 0.86, 1)
+Button/colors/font_hover_color = Color(0.95, 1, 0.98, 1)
+Button/colors/font_pressed_color = Color(1, 1, 1, 1)
+Button/colors/font_disabled_color = Color(0.5, 0.5, 0.5, 0.6)
+Button/fonts/font = SubResource("FontVariation_caps")
+Button/font_sizes/font_size = 26
+Label/colors/font_color = Color(0.82, 0.88, 0.86, 1)
+Label/fonts/font = SubResource("FontVariation_caps")
+Panel/styles/panel = SubResource("StyleBoxFlat_panel")
+PopupPanel/styles/panel = SubResource("StyleBoxFlat_panel")
+LineEdit/styles/normal = SubResource("StyleBoxFlat_btn_normal")
+LineEdit/styles/focus = SubResource("StyleBoxFlat_btn_focus")
+ItemList/styles/panel = SubResource("StyleBoxFlat_panel")

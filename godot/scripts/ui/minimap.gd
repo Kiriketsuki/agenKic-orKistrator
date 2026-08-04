@@ -9,13 +9,16 @@ const ACTIVE_COLOR: Color = Color(0.85, 0.6, 0.16, 1.0)  # warm amber/gold
 const BRACKET_COLOR: Color = Color(0.95, 0.85, 0.45, 1.0)  # bright rune gold
 const BAND_TINT: Color = Color(1.0, 1.0, 1.0, 0.12)
 const ACTIVITY_SCALE: float = 3.0
-const CELL_MARGIN: float = 1.0
-const BRACKET_WIDTH: float = 2.0
+const CELL_MARGIN: float = 2.0
+const BRACKET_WIDTH: float = 4.0
 
 var _tower: Node = null
 
 
 func _ready() -> void:
+	# F5 Panels Orb — panels_flyout.gd looks this group up to mirror the
+	# "toggle_minimap" hotkey path from the flyout's MINIMAP button.
+	add_to_group("minimap")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_tower = get_node_or_null("../../Tower")
 	if _tower:

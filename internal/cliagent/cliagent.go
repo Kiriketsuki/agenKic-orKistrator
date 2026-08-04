@@ -92,6 +92,7 @@ func Supported(kind string) bool {
 // spawnCfg holds the optional dependencies of Spawn.
 type spawnCfg struct {
 	substrate terminal.Substrate
+	workdir   string
 }
 
 // SpawnOption configures a Spawn call.
@@ -101,6 +102,14 @@ type SpawnOption func(*spawnCfg)
 // launches inside the agent tmux session, and prompts are typed into it.
 func WithSubstrate(s terminal.Substrate) SpawnOption {
 	return func(c *spawnCfg) { c.substrate = s }
+}
+
+// WithWorkdir starts the agent in dir instead of the default per-agent
+// scratch directory under the OS temp dir. The directory must already
+// exist — Spawn stats it and fails rather than silently creating a project
+// directory the keeper mistyped.
+func WithWorkdir(dir string) SpawnOption {
+	return func(c *spawnCfg) { c.workdir = dir }
 }
 
 // Spawn checks the CLI binary is installed, registers one agent over gRPC at
@@ -132,10 +141,16 @@ func Spawn(ctx context.Context, addr, kind, name, tier string, promptFn PromptFu
 		return "", fmt.Errorf("cliagent register %q: %w", name, err)
 	}
 
-	workdir := filepath.Join(os.TempDir(), "agenkic-agents", resp.AgentId)
-	if err := os.MkdirAll(workdir, 0o755); err != nil {
+	workdir := cfg.workdir
+	if workdir == "" {
+		workdir = filepath.Join(os.TempDir(), "agenkic-agents", resp.AgentId)
+		if err := os.MkdirAll(workdir, 0o755); err != nil {
+			_ = conn.Close()
+			return "", fmt.Errorf("cliagent workdir: %w", err)
+		}
+	} else if info, err := os.Stat(workdir); err != nil || !info.IsDir() {
 		_ = conn.Close()
-		return "", fmt.Errorf("cliagent workdir: %w", err)
+		return "", fmt.Errorf("cliagent workdir %q is not an existing directory", workdir)
 	}
 
 	session := "agent-" + resp.AgentId

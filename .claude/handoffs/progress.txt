@@ -267,3 +267,24 @@
 - Next: widen key passthrough (Space, all digits, Backspace) plus a visible passthrough border
 
 ---
+## 2026-08-04 Handoff (12h19)
+
+### Decisions
+- Passthrough activeness is mouse-based. Body hover forwards every key, input-line hover edits.
+- KeyPassthrough.hover_active static suspends PanelManager hotkeys, else Escape closes the panel.
+- Go key whitelist: BSpace, DC, IC, F1-F12, C-/M- single-rune chords.
+- Provider = spawn kind, in-process Bridge registry beside names.
+- Compass polygon never rotates. Highlight walks. Both compass and dots stay.
+- Scroll strips CLI bottom chrome via topmost rule line in the last 12 rows.
+
+### Failed Approaches
+- Whitelist passthrough missed Space/Escape/chords. Replaced by the mouse rule.
+- Ungated panel hotkeys ate Escape before _unhandled_key_input.
+- Rotating compass rejected twice.
+- Per-file git add: a pre-commit hook auto-stages the whole worktree.
+
+### Handoff Target
+- Plan file: 2026-08-04-12h19-phase3-merged-tower-post-next.md
+- Branch: main at 8322290 (PR #164 merged as e361829, v26.3.1.0)
+
+---

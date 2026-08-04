@@ -25,9 +25,31 @@ const PROVIDER_GLYPHS: Dictionary = {
 	"": {"glyph": "○", "color": Color(0.4, 0.35, 0.3, 1.0)},
 }
 
+## Send/Disenchant button chrome (#169 style pass) — dark-parchment fill with
+## a gold border, the same palette sigil_config_page.gd uses for its own
+## panel/border (PANEL_BG_COLOR/PANEL_BORDER_COLOR). Duplicated locally
+## rather than shared, matching this codebase's convention of each view
+## styling its own Controls in code independently (see
+## quest_board_view.gd's _style_line_edit/_style_text_edit). Disenchant is a
+## real mode switch (scroll -> raw terminal), not a delete, but it reads to
+## the keeper as the "leave" action next to Send's "act" action, so it gets
+## a distinct warm ember accent instead of gold — the two must never be
+## visually interchangeable at a glance.
+const ACTION_BUTTON_BG_COLOR: Color = Color(0.075, 0.082, 0.125, 0.985)
+const ACTION_BUTTON_HOVER_COLOR: Color = Color(0.118, 0.129, 0.188, 1.0)
+const ACTION_BUTTON_PRESSED_COLOR: Color = Color(0.235, 0.196, 0.086, 1.0)
+const ACTION_BUTTON_DISABLED_COLOR: Color = Color(0.075, 0.082, 0.125, 0.5)
+const ACTION_BUTTON_FONT_COLOR: Color = Color(0.855, 0.867, 0.914, 1.0)
+const ACTION_BUTTON_BORDER_WIDTH: int = 2
+const ACTION_BUTTON_CORNER_RADIUS: int = 6
+const ACTION_BUTTON_MARGIN_H: float = 18.0
+const ACTION_BUTTON_MARGIN_V: float = 8.0
+const SEND_BUTTON_BORDER_COLOR: Color = Color(0.788, 0.635, 0.153, 1.0)
+const DISENCHANT_BUTTON_BORDER_COLOR: Color = Color(0.75, 0.28, 0.16, 1.0)
+const DISENCHANT_BUTTON_HOVER_COLOR: Color = Color(0.235, 0.11, 0.08, 1.0)
+const DISENCHANT_BUTTON_PRESSED_COLOR: Color = Color(0.32, 0.13, 0.09, 1.0)
+
 @onready var _parchment: ColorRect = $Parchment
-@onready var _class_badge: ColorRect = $Header/ClassBadge
-@onready var _class_badge_label: Label = $Header/ClassBadge/ClassBadgeLabel
 @onready var _name_label: Label = $Header/NameLabel
 @onready var _provider_badge: Label = $Header/ProviderBadge
 @onready var _state_label: Label = $Header/StateLabel
@@ -106,6 +128,7 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_restyle_close_button()
 	_disable_mode_toggle()
 	_wire_disenchant_button()
+	_style_scroll_buttons()
 	_clear_history()
 	_apply_agent(agent_data)
 	_connect_bridge_signals()
@@ -249,8 +272,8 @@ func _configure_font() -> void:
 	font.allow_system_fallback = true
 	_history.add_theme_font_override("normal_font", font)
 	_history.add_theme_font_override("bold_font", font)
-	_history.add_theme_font_size_override("normal_font_size", 14)
-	_history.add_theme_font_size_override("bold_font_size", 14)
+	_history.add_theme_font_size_override("normal_font_size", 28)
+	_history.add_theme_font_size_override("bold_font_size", 28)
 	_name_label.add_theme_font_override("font", font)
 
 
@@ -297,13 +320,51 @@ func _on_disenchant_pressed() -> void:
 		_panel.set_mode("terminal")
 
 
+# ---------------------------------------------------------------------------
+# Button chrome
+# ---------------------------------------------------------------------------
+
+## Styles the Footer/Send and Header/DisenchantButton nodes from
+## spell_scroll_view.tscn — see the ACTION_BUTTON_*/SEND_BUTTON_*/
+## DISENCHANT_BUTTON_* consts' doc-comment for the palette and why Disenchant
+## carries a distinct accent from Send.
+func _style_scroll_buttons() -> void:
+	_style_action_button(_send_button, SEND_BUTTON_BORDER_COLOR, ACTION_BUTTON_HOVER_COLOR, ACTION_BUTTON_PRESSED_COLOR)
+	_style_action_button(
+		_disenchant_button, DISENCHANT_BUTTON_BORDER_COLOR, DISENCHANT_BUTTON_HOVER_COLOR, DISENCHANT_BUTTON_PRESSED_COLOR
+	)
+
+
+func _style_action_button(button: Button, border_color: Color, hover_bg: Color, pressed_bg: Color) -> void:
+	if button == null:
+		return
+	button.add_theme_stylebox_override("normal", _build_action_button_style(ACTION_BUTTON_BG_COLOR, border_color))
+	button.add_theme_stylebox_override("hover", _build_action_button_style(hover_bg, border_color))
+	button.add_theme_stylebox_override("pressed", _build_action_button_style(pressed_bg, border_color))
+	button.add_theme_stylebox_override("disabled", _build_action_button_style(ACTION_BUTTON_DISABLED_COLOR, border_color))
+	button.add_theme_color_override("font_color", ACTION_BUTTON_FONT_COLOR)
+	button.add_theme_color_override("font_hover_color", border_color)
+	button.add_theme_color_override("font_pressed_color", border_color)
+
+
+func _build_action_button_style(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.border_color = border_color
+	style.set_border_width_all(ACTION_BUTTON_BORDER_WIDTH)
+	style.set_corner_radius_all(ACTION_BUTTON_CORNER_RADIUS)
+	style.content_margin_left = ACTION_BUTTON_MARGIN_H
+	style.content_margin_right = ACTION_BUTTON_MARGIN_H
+	style.content_margin_top = ACTION_BUTTON_MARGIN_V
+	style.content_margin_bottom = ACTION_BUTTON_MARGIN_V
+	return style
+
+
 func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	if agent_data == null:
 		_agent_id = ""
 		_name_label.text = "Unknown Agent"
 		_state_label.text = ""
-		_class_badge.color = Color(0.5, 0.5, 0.5, 1.0)
-		_class_badge_label.text = "?"
 		_provider_badge.text = ""
 		if _panel != null:
 			_panel.set_panel_title("Spell Scroll")
@@ -314,11 +375,6 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	var shown_name: String = agent_data.display_name()
 	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
-	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
-		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
-	)
-	_class_badge.color = AgentCharacter.CLASS_COLORS[class_enum]
-	_class_badge_label.text = AgentCharacter.CLASS_LABELS[class_enum]
 	var provider_info: Dictionary = PROVIDER_GLYPHS.get(agent_data.provider, PROVIDER_GLYPHS[""])
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])

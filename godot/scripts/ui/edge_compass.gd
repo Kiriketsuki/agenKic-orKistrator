@@ -26,12 +26,12 @@ const ACTIVE_COLOR: Color = Color("#FBB13C")
 const AGENT_COLOR: Color = Color("#1a7e71")
 ## Outline only. An empty edge.
 const EMPTY_COLOR: Color = Color("#363a4f")
-const HEX_WIDTH: float = 10.0
-const HEX_GAP: float = 6.0
+const HEX_WIDTH: float = 20.0
+const HEX_GAP: float = 12.0
 ## Screen-space offset from the floor origin, in window pixels. The row clears
 ## the slab bottom edge.
-const ROW_OFFSET_Y: float = 116.0
-const OUTLINE_WIDTH: float = 1.5
+const ROW_OFFSET_Y: float = 232.0
+const OUTLINE_WIDTH: float = 3.0
 
 @export var tower_path: NodePath = NodePath("/root/Main/Tower")
 

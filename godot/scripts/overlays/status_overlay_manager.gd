@@ -7,8 +7,8 @@ extends Control
 
 const STATUS_OVERLAY_SCENE: PackedScene = preload("res://scenes/status_overlay.tscn")
 const UPTIME_TICK_INTERVAL: float = 1.0
-const HOVER_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -14.0)
-const VIEWPORT_MARGIN: float = 4.0
+const HOVER_ANCHOR_OFFSET: Vector2 = Vector2(0.0, -28.0)
+const VIEWPORT_MARGIN: float = 8.0
 
 var _tower_manager: Node = null
 var _bridge_manager: Node = null

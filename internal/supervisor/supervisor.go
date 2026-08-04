@@ -30,6 +30,7 @@ type Supervisor struct {
 	heartbeatInterval time.Duration
 	staleThreshold    time.Duration
 	taskPollInterval  time.Duration
+	reapInterval      time.Duration
 
 	mu            sync.RWMutex
 	agentMu       map[string]*sync.Mutex // per-agentID mutex for Machine.ApplyEvent serialization
@@ -82,6 +83,7 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 		store:             store,
 		policy:            policy,
 		heartbeatInterval: defaultHeartbeatInterval,
+		reapInterval:      defaultReapInterval,
 		staleThreshold:    defaultStaleThreshold,
 		taskPollInterval:  defaultTaskPollInterval,
 		agentMu:           make(map[string]*sync.Mutex),
@@ -183,6 +185,37 @@ func (sv *Supervisor) Stop() {
 	}
 }
 
+// RemoveAgent forgets one agent: it destroys the agent's tmux session and
+// deletes its per-agent mutex, cooldown, and circuit-breaker entries. Unlike
+// Stop, RemoveAgent targets exactly one agent and leaves the supervisor
+// running for every other agent and for RegisterAgent calls that follow.
+//
+// A DestroySession failure is logged and the map cleanup still proceeds, so
+// a wedged tmux session never blocks the agent from being forgotten. Callers
+// that also need the agent gone from the store must call
+// StateStore.DeleteAgent separately: RemoveAgent only owns the supervisor's
+// own in-memory bookkeeping and the terminal session.
+func (sv *Supervisor) RemoveAgent(ctx context.Context, agentID string) {
+	sv.mu.Lock()
+	delete(sv.agentMu, agentID)
+	delete(sv.agentCooldown, agentID)
+	delete(sv.circuitOpen, agentID)
+	sv.mu.Unlock()
+
+	if sv.substrate != nil {
+		sessionName := "agent-" + agentID
+		if err := sv.substrate.DestroySession(ctx, sessionName); err != nil {
+			log.Printf("supervisor: RemoveAgent: DestroySession %q failed (agent %s): %v", sessionName, agentID, err)
+		} else {
+			_ = sv.store.PublishEvent(ctx, state.Event{
+				Type:      "floor_removed",
+				Payload:   sessionName,
+				Timestamp: time.Now().UnixMilli(),
+			})
+		}
+	}
+}
+
 // Run starts the heartbeat and task-assignment loops. Blocks until ctx is done.
 func (sv *Supervisor) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
@@ -198,6 +231,16 @@ func (sv *Supervisor) Run(ctx context.Context) error {
 		defer wg.Done()
 		sv.taskAssignLoop(ctx)
 	}()
+
+	// A non-positive interval disables the reaper, which keeps tests that
+	// construct a Supervisor without a substrate free of a background sweep.
+	if sv.reapInterval > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sv.reapLoop(ctx)
+		}()
+	}
 
 	wg.Wait()
 	return nil

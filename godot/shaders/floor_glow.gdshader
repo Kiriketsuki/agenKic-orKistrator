@@ -11,7 +11,10 @@ uniform vec4 glow_color : source_color = vec4(0.55, 0.85, 1.0, 1.0);
 uniform float pulse_speed : hint_range(0.0, 8.0) = 2.0;
 
 void fragment() {
-	float pulse = 0.6 + 0.4 * sin(TIME * pulse_speed);
+	// Steady light. 0.6 is the mean of the old `0.6 + 0.4 * sin(TIME)`
+	// pulse, so brightness matches what the pulse averaged to rather than
+	// pinning at its peak.
+	float pulse = 0.6;
 	vec3 lit = glow_color.rgb * glow * pulse;
 	COLOR = vec4(lit, COLOR.a * glow_color.a);
 }

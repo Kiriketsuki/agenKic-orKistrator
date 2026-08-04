@@ -399,7 +399,7 @@ func _add_task_row() -> void:
 
 	var id_label: Label = Label.new()
 	id_label.text = node_id
-	id_label.custom_minimum_size = Vector2(32, 0)
+	id_label.custom_minimum_size = Vector2(64, 0)
 	id_label.add_theme_color_override("font_color", INK_COLOR)
 	hbox.add_child(id_label)
 

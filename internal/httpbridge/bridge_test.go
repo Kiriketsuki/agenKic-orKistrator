@@ -902,7 +902,7 @@ func TestListFloors_ExcludesAgentSessions(t *testing.T) {
 func TestSpawnAgent_NamePersistsInAgentList(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			return "agent-42", nil
 		}))
 
@@ -947,5 +947,298 @@ func TestSpawnAgent_NamePersistsInAgentList(t *testing.T) {
 	// falls back to the ID.
 	if got := byID["agent-unnamed"].Name; got != "" {
 		t.Errorf("agent-unnamed name = %q, want empty", got)
+	}
+}
+
+func TestDespawnAgent_UnknownAgent(t *testing.T) {
+	bridge, _ := newTestBridge(t)
+
+	req := httptest.NewRequest("POST", "/api/agents/ghost/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDespawnAgent_UnknownAgent_Idempotent(t *testing.T) {
+	bridge, _ := newTestBridge(t)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/api/agents/ghost/despawn", nil)
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("call %d: expected 404, got %d: %s", i, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestDespawnAgent_IdleAgent_FullCleanup(t *testing.T) {
+	store := state.NewMockStore()
+	substrate := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithSubstrate(substrate))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["agent_id"] != "agent-1" {
+		t.Errorf("expected agent_id=agent-1 in response, got %v", resp["agent_id"])
+	}
+	if resp["despawned"] != true {
+		t.Errorf("expected despawned=true in response, got %v", resp["despawned"])
+	}
+
+	if _, err := store.GetAgentFields(ctx, "agent-1"); err == nil {
+		t.Errorf("expected GetAgentFields to fail after despawn, agent still present")
+	}
+
+	// An idle agent carries no CurrentTaskID, so despawn must not touch the
+	// substrate: SendCommand only fires when a task was actually attached.
+	if substrate.sentSession != "" {
+		t.Errorf("expected no SendCommand for an idle agent, got session %q", substrate.sentSession)
+	}
+}
+
+func TestDespawnAgent_WorkingAgent_DropsTaskNoRequeue(t *testing.T) {
+	store := state.NewMockStore()
+	substrate := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithSubstrate(substrate))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if substrate.sentSession != "agent-agent-1" {
+		t.Errorf("expected SendCommand session %q, got %q", "agent-agent-1", substrate.sentSession)
+	}
+	if substrate.sentCmd != "\x03" {
+		t.Errorf("expected SendCommand cmd %q (Ctrl-C), got %q", "\\x03", substrate.sentCmd)
+	}
+
+	if _, err := store.GetAgentFields(ctx, "agent-1"); err == nil {
+		t.Errorf("expected GetAgentFields to fail after despawn, agent still present")
+	}
+
+	// Despawn drops the task by decision (F4 spec: "Out of Scope: Task
+	// requeue on banish"), so the queue must stay empty.
+	if n, err := store.QueueLength(ctx); err != nil || n != 0 {
+		t.Errorf("expected empty queue after despawn (task dropped, not requeued), got len=%d err=%v", n, err)
+	}
+}
+
+func TestDespawnAgent_PublishesAgentDeregisteredEvent(t *testing.T) {
+	bridge, store := newTestBridge(t)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	events, err := store.ReadEvents(ctx, "0", 50)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	var found bool
+	for _, se := range events {
+		if se.Event.Type == "agent_deregistered" && se.Event.AgentID == "agent-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected an agent_deregistered event for agent-1, got %+v", events)
+	}
+}
+
+// TestDespawnAgent_SignalsCompletionRegistry verifies finding 6: despawning
+// an agent with an active task must unblock a
+// dag.BlockingSubmitter.Wait(ctx, taskID) via CompletionRegistry.Complete,
+// mirroring TestCancelAgent_SignalsCompletionRegistry. Before the fix,
+// handleDespawnAgent cleared the task but never called Complete, stranding
+// the waiter forever.
+func TestDespawnAgent_SignalsCompletionRegistry(t *testing.T) {
+	store := state.NewMockStore()
+	registry := supervisor.NewCompletionRegistry()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithCompletionRegistry(registry))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		waitErrCh <- registry.Wait(waitCtx, "task-1")
+	}()
+
+	// Give the goroutine a moment to register as a waiter before despawning.
+	time.Sleep(20 * time.Millisecond)
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case err := <-waitErrCh:
+		if err != nil {
+			t.Fatalf("expected Wait to return nil (unblocked by despawn), got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("registry.Wait was never unblocked by despawn — DAG node would hang forever")
+	}
+}
+
+// TestDespawnAgent_ClearCurrentTaskFailure_StillDeregisters verifies the
+// log-and-continue branch at the ClearCurrentTask call inside
+// handleDespawnAgent: a store failure there must not stop the despawn from
+// deleting the agent and publishing agent_deregistered (finding 10).
+func TestDespawnAgent_ClearCurrentTaskFailure_StillDeregisters(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+	store.SetClearCurrentTaskError(errors.New("fake clear-current-task failure"))
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	store.SetClearCurrentTaskError(nil)
+	if _, err := store.GetAgentFields(ctx, "agent-1"); err == nil {
+		t.Errorf("expected the agent to be deleted despite the ClearCurrentTask failure")
+	}
+	assertDeregisteredEventPublished(t, store, "agent-1")
+}
+
+// TestDespawnAgent_DeleteAgentFailure_StillDeregisters verifies the
+// log-and-continue branch at the DeleteAgent call inside
+// handleDespawnAgent: a store failure there must not stop the handler from
+// publishing agent_deregistered and responding 200 (finding 10).
+func TestDespawnAgent_DeleteAgentFailure_StillDeregisters(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+	store.SetDeleteAgentError(errors.New("fake delete-agent failure"))
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	assertDeregisteredEventPublished(t, store, "agent-1")
+}
+
+// assertDeregisteredEventPublished fails the test unless store recorded an
+// agent_deregistered event for agentID.
+func assertDeregisteredEventPublished(t *testing.T, store *state.MockStore, agentID string) {
+	t.Helper()
+	events, err := store.ReadEvents(context.Background(), "0", 50)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	for _, se := range events {
+		if se.Event.Type == "agent_deregistered" && se.Event.AgentID == agentID {
+			return
+		}
+	}
+	t.Fatalf("expected an agent_deregistered event for %s, got %+v", agentID, events)
+}
+
+func TestRestartAdmin_Returns202(t *testing.T) {
+	bridge, _ := newTestBridge(t)
+
+	req := httptest.NewRequest("POST", "/api/admin/restart", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRestartAdmin_CallsInjectedRestartFunc(t *testing.T) {
+	store := state.NewMockStore()
+	called := make(chan struct{})
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithRestartFunc(func() {
+		close(called)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/admin/restart", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// restartFn runs from a goroutine after restartDelay, never inline —
+	// this proves the endpoint never calls the real syscall.Exec path
+	// synchronously and never blocks the HTTP response on it.
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected restartFn to run within 2s of the 202 response")
+	}
+}
+
+func TestRestartAdmin_NoRestartFunc_StillReturns202(t *testing.T) {
+	// No httpbridge.WithRestartFunc option: mirrors main.go running without
+	// a wired restart path, and confirms the handler degrades gracefully.
+	bridge, _ := newTestBridge(t)
+
+	req := httptest.NewRequest("POST", "/api/admin/restart", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 }

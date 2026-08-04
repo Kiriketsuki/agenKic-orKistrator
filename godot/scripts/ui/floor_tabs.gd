@@ -78,7 +78,7 @@ func _build_tab(info: Dictionary) -> PanelContainer:
 	# behavior instead of hardcoding a fixed per-tab height that would
 	# overflow the strip (and go unreachable) once floor count grows.
 	tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tab.custom_minimum_size = Vector2(0.0, 14.0)
+	tab.custom_minimum_size = Vector2(0.0, 28.0)
 	tab.add_theme_stylebox_override("panel", _make_tab_style(false))
 	tab.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton:
@@ -88,10 +88,10 @@ func _build_tab(info: Dictionary) -> PanelContainer:
 	)
 
 	var margin: MarginContainer = MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 4)
-	margin.add_theme_constant_override("margin_bottom", 4)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tab.add_child(margin)
 
@@ -110,11 +110,11 @@ func _build_tab(info: Dictionary) -> PanelContainer:
 	badge_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var badge_style: StyleBoxFlat = StyleBoxFlat.new()
 	badge_style.bg_color = BADGE_BG
-	badge_style.set_corner_radius_all(6)
-	badge_style.content_margin_left = 6.0
-	badge_style.content_margin_right = 6.0
-	badge_style.content_margin_top = 1.0
-	badge_style.content_margin_bottom = 1.0
+	badge_style.set_corner_radius_all(12)
+	badge_style.content_margin_left = 12.0
+	badge_style.content_margin_right = 12.0
+	badge_style.content_margin_top = 2.0
+	badge_style.content_margin_bottom = 2.0
 	badge_panel.add_theme_stylebox_override("panel", badge_style)
 	hbox.add_child(badge_panel)
 
@@ -122,7 +122,7 @@ func _build_tab(info: Dictionary) -> PanelContainer:
 	badge.text = str(int(info.get("agent_count", 0)))
 	badge.add_theme_color_override("font_color", BADGE_COLOR)
 	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	badge.custom_minimum_size = Vector2(16, 0)
+	badge.custom_minimum_size = Vector2(32, 0)
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge_panel.add_child(badge)
 
@@ -143,7 +143,7 @@ func _restyle_focus() -> void:
 func _make_tab_style(focused: bool) -> StyleBoxFlat:
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = TAB_BG
-	sb.set_corner_radius_all(4)
-	sb.set_border_width_all(2 if focused else 1)
+	sb.set_corner_radius_all(8)
+	sb.set_border_width_all(4 if focused else 2)
 	sb.border_color = TAB_BORDER_FOCUSED if focused else TAB_BORDER
 	return sb

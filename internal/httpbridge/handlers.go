@@ -6,9 +6,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
@@ -43,6 +46,7 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			CurrentTaskID: fields.CurrentTaskID,
 			LastHeartbeat: fields.LastHeartbeat,
 			RegisteredAt:  fields.RegisteredAt,
+			Floor:         b.agentFloor(id),
 		})
 	}
 
@@ -534,6 +538,110 @@ func (b *Bridge) handleReassignAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// restartDelay is how long handleRestartAdmin waits, after writing the 202
+// response, before it calls restartFn. The delay gives the response time to
+// reach the client before the process shuts down and re-execs.
+const restartDelay = 200 * time.Millisecond
+
+// handleDespawnAgent removes one agent everywhere (F4 / power controls).
+//
+// This reuses handleCancelAgent's PTY-interrupt and task-detach steps, but
+// drops the task instead of leaving it cancellable-and-idle: despawn is a
+// permanent removal, so no code path here ever calls EnqueueTask for the
+// dropped task. Unlike handleCancelAgent, an agent with no current task is
+// not an error. The order matters for the partial-failure case (T1 risk in
+// the spec): the tmux session destroy (inside Supervisor.RemoveAgent) and
+// the store delete run before the Bridge's own name/provider/floor registry
+// deletes, and the agent_deregistered event publishes last, regardless of
+// whether an earlier step logged a failure. This way a client that only
+// observes the SSE stream never sees agent.deregistered before the agent is
+// actually gone from the substrate and the store.
+//
+// Idempotent: despawning an agent ID the store no longer knows about returns
+// 404 and calls nothing else.
+func (b *Bridge) handleDespawnAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agentID := r.PathValue("id")
+
+	fields, err := b.store.GetAgentFields(ctx, agentID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	if fields.CurrentTaskID != "" {
+		taskID := fields.CurrentTaskID
+		if b.substrate != nil {
+			if serr := b.substrate.SendCommand(ctx, "agent-"+agentID, "\x03"); serr != nil {
+				log.Printf("httpbridge: despawn agent %s: best-effort PTY interrupt failed: %v", agentID, serr)
+			}
+		}
+		if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
+			log.Printf("httpbridge: despawn agent %s: ClearCurrentTask: %v", agentID, err)
+		}
+		if b.completionRegistry != nil {
+			// Unblock any dag.BlockingSubmitter.Wait(ctx, taskID), mirroring
+			// handleCancelAgent. Without this a DAG node waiting on a
+			// despawned agent's task hangs forever (finding 6, mirrors T14
+			// council finding #2).
+			b.completionRegistry.Complete(taskID)
+		}
+	}
+
+	if b.supervisor != nil {
+		b.supervisor.RemoveAgent(ctx, agentID)
+	}
+
+	if err := b.store.DeleteAgent(ctx, agentID); err != nil {
+		log.Printf("httpbridge: despawn agent %s: DeleteAgent: %v", agentID, err)
+	}
+
+	b.namesMu.Lock()
+	delete(b.names, agentID)
+	delete(b.providers, agentID)
+	delete(b.floors, agentID)
+	b.namesMu.Unlock()
+
+	if err := b.store.PublishEvent(ctx, state.Event{
+		Type:    "agent_deregistered",
+		AgentID: agentID,
+	}); err != nil {
+		log.Printf("httpbridge: despawn agent %s: PublishEvent: %v", agentID, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"agent_id":  agentID,
+		"despawned": true,
+	})
+}
+
+// handleRestartAdmin responds 202 immediately, then runs restartFn (the
+// graceful shutdown sequence followed by a re-exec of the same binary) from
+// a separate goroutine after restartDelay. Responding before the restart
+// runs is deliberate: the process may shut down its own HTTP listener
+// before the client reads the response otherwise (T4 risk in the spec).
+// With no restartFn wired (WithRestartFunc never called), the endpoint still
+// responds 202 but performs no restart.
+//
+// A GUI-triggered restart re-execs into a fresh process, so the Bridge's
+// names, providers, and floors registries start empty again even though the
+// agents themselves survive in the store (finding 9, persistence deferred by
+// design — see the Bridge struct field docs).
+func (b *Bridge) handleRestartAdmin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusAccepted)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	if b.restartFn == nil {
+		return
+	}
+	restartFn := b.restartFn
+	go func() {
+		time.Sleep(restartDelay)
+		restartFn()
+	}()
+}
+
 // settleToIdle drives agentID from prevState to state.AgentStateIdle via
 // CompareAndSetAgentState, tolerating a lost race against a concurrent
 // transition IF that transition already landed the agent on idle (the
@@ -567,6 +675,25 @@ func (b *Bridge) settleToIdle(ctx context.Context, w http.ResponseWriter, agentI
 var spawnNames = []string{
 	"Emberwick", "Thornquill", "Moonshard", "Grimtome", "Silverbough",
 	"Ashveil", "Runeholt", "Duskmantle", "Brightforge", "Stormvellum",
+}
+
+// providerRoster is the single source of truth for the spawn-kind sigils the
+// Grimoire flyout draws from. It shares its kind list with the switch in
+// handleSpawnAgent, so a new adapter here appears in the GUI with no GUI
+// change, per the Grimoire Summoning spec.
+var providerRoster = []ProviderJSON{
+	{Kind: "sim", Display: "Simulacrum", Accent: "#8892b0"},
+	{Kind: "claude", Display: "Claude", Accent: "#cc785c"},
+	{Kind: "codex", Display: "Codex", Accent: "#10a37f"},
+	{Kind: "opencode", Display: "OpenCode", Accent: "#4f8cff"},
+	{Kind: "pi", Display: "Pi", Accent: "#b967ff"},
+}
+
+// handleListProviders returns the spawn-kind roster the Grimoire flyout uses
+// to build its sigil grid. The Godot config page filters and orders this
+// list locally, so the bridge always serves the full set.
+func (b *Bridge) handleListProviders(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{"providers": providerRoster})
 }
 
 var spawnCounter atomic.Int64
@@ -609,8 +736,69 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		req.Tier = []string{"haiku", "sonnet", "opus"}[int(n)%3]
 	}
 
-	agentID, err := b.spawner(req.Kind, req.Name, req.Tier)
+	// Workdir is validated at the boundary: it must name an existing
+	// directory by absolute path, because the spawner cd's the agent's
+	// shell into it and a bad path would only surface as a broken pane.
+	if req.Workdir != "" {
+		if !filepath.IsAbs(req.Workdir) {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "workdir must be an absolute path",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		info, err := os.Stat(req.Workdir)
+		if err != nil || !info.IsDir() {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "workdir does not exist or is not a directory",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+	}
+
+	// Floor 0 (ground) is reserved for the future archmage and never accepts
+	// a spawn. A nonzero floor must have room under floorCapacity. An
+	// omitted floor makes the bridge pick the lowest non-full floor >= 1
+	// itself (see nextAvailableFloor), so every agent ends up with a
+	// bridge-side floor and the capacity check counts everyone (finding 8).
+	//
+	// The slot is reserved atomically here, before the spawner call, and
+	// only committed to the real agent ID on spawner success. This closes
+	// the TOCTOU window where two concurrent spawns both read the floor as
+	// having room, then both write past floorCapacity (finding 5).
+	var floor int
+	var token string
+	var reserved bool
+	if req.Floor != nil {
+		floor = *req.Floor
+		if floor <= groundFloor {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "floor 0 is reserved for the archmage and never accepts a spawn",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		var ok bool
+		token, ok = b.reserveFloorSlot(floor)
+		if !ok {
+			writeJSON(w, http.StatusConflict, ErrorResponse{
+				Error: "floor is full",
+				Code:  "floor_full",
+			})
+			return
+		}
+		reserved = true
+	} else {
+		floor, token = b.reserveNextAvailableFloor()
+		reserved = true
+	}
+
+	agentID, err := b.spawner(req.Kind, req.Name, req.Tier, req.Workdir)
 	if err != nil {
+		if reserved {
+			b.releaseFloorReservation(token)
+		}
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{
 			Error: err.Error(),
 			Code:  "spawn_failed",
@@ -624,10 +812,15 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	// The provider shown in the UI is the spawn kind. Same registry
 	// lifetime and gaps as the name.
 	b.setAgentProvider(agentID, req.Kind)
+	if reserved {
+		b.commitFloorReservation(token, agentID, floor)
+	}
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
 		Kind:    req.Kind,
 		Name:    req.Name,
 		Tier:    req.Tier,
+		Floor:   floor,
+		Workdir: req.Workdir,
 	})
 }

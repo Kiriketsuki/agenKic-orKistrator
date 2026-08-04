@@ -13,13 +13,18 @@ extends Control
 
 const FOCUS_COLOR: Color = Color("#c8a84e")
 const DIM_COLOR: Color = Color("#8a9a7a")
-const NAMEPLATE_TEXT_SIZE: int = 11
-const NAMEPLATE_SIZE: Vector2 = Vector2(96.0, 20.0)
-## Half-height of a character sprite, in art px. The plate hangs above the
-## head, so its offset scales with the camera zoom instead of a fixed pixel
-## count that lands on the face at high zoom.
+const NAMEPLATE_TEXT_SIZE: int = 22
+const NAMEPLATE_SIZE: Vector2 = Vector2(192.0, 40.0)
+## Half-height of a character sprite, in art px (sprite asset space, not the
+## design-canvas UI space). The plate hangs above the head, so its offset
+## scales with the camera zoom instead of a fixed pixel count that lands on
+## the face at high zoom. The character sprite asset did not change size
+## when project.godot's design canvas doubled, so this constant is not
+## doubled.
 const CHARACTER_HALF_HEIGHT: float = 12.0
-const NAMEPLATE_HEAD_GAP: float = 4.0
+## Screen-space gap between the sprite head and the nameplate, in design-
+## canvas pixels. Doubled alongside every other screen-space UI size.
+const NAMEPLATE_HEAD_GAP: float = 8.0
 
 const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.png")
 ## Frame tint for agent plates. The floor banner shares the frame texture in
