@@ -16,6 +16,9 @@ var _tower: Node = null
 
 
 func _ready() -> void:
+	# F5 Panels Orb — panels_flyout.gd looks this group up to mirror the
+	# "toggle_minimap" hotkey path from the flyout's MINIMAP button.
+	add_to_group("minimap")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_tower = get_node_or_null("../../Tower")
 	if _tower:

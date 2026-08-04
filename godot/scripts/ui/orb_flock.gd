@@ -110,6 +110,12 @@ func _ready() -> void:
 	if power_flyout is Control:
 		register_flyout("power", power_flyout as Control)
 
+	# Panels Orb and Restyle (F5) — agent list, quest board/minimap toggles,
+	# and layout presets, hosted in the flyout the same way as the two above.
+	var panels_flyout: Node = get_node_or_null("PanelsFlyout")
+	if panels_flyout is Control:
+		register_flyout("panels", panels_flyout as Control)
+
 
 ## Registers `control` as the flyout panel for `orb_id`. The control is
 ## reparented under this flock's flyout host and hidden until that orb's

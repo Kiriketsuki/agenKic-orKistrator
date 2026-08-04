@@ -24,6 +24,14 @@ const SCROLL_SLIDE_DURATION: float = 0.28
 ## agent_id) mounted via PanelContentRouter's "quest" mode.
 const QUEST_BOARD_PANEL_ID: String = "quest-board"
 
+## F5 Panels Orb — built-in layout preset names, alongside any named custom
+## save a keeper makes through the flyout (see LayoutPresets).
+const GRID_PRESET_NAME: String = "GRID"
+const FOCUS_PRESET_NAME: String = "FOCUS"
+const GRID_COLUMNS: int = 2
+const GRID_PADDING: float = 12.0
+const FOCUS_WIDTH_RATIO: float = 0.65
+
 ## T18 (#129) — panel effect knobs live in the same tower.json the tower
 ## layer reads. PanelManager loads its own TowerConfig instance rather than
 ## reaching into ProviderPalette's static cache: that cache is a tower-layer
@@ -67,6 +75,10 @@ var _tower_config: TowerConfig = null
 
 
 func _ready() -> void:
+	# F5 Panels Orb — panels_flyout.gd looks this group up rather than
+	# walking a fragile absolute node path, mirroring grimoire_flyout.gd's
+	# "tower_manager" group lookup.
+	add_to_group("panel_manager")
 	anchors_preset = Control.PRESET_FULL_RECT
 	offset_left = 0.0
 	offset_top = 0.0
@@ -607,6 +619,13 @@ func open_quest_board() -> PanelBase:
 	return open_panel(QUEST_BOARD_PANEL_ID, "Quest Board", "", "quest")
 
 
+## F5 Panels Orb — public wrapper so panels_flyout.gd's QUEST BOARD toggle
+## mirrors the "toggle_quest_board" hotkey path exactly (_handle_hotkeys
+## calls the same private method).
+func toggle_quest_board() -> void:
+	_toggle_quest_board()
+
+
 func _toggle_quest_board() -> void:
 	if panels_by_id.has(QUEST_BOARD_PANEL_ID):
 		close_panel(QUEST_BOARD_PANEL_ID)
@@ -838,3 +857,160 @@ func _restore_layout() -> void:
 		if panels_by_id.has(panel_id):
 			panels_by_id[panel_id].dock_side = "right"
 	_restoring_layout = false
+
+
+## F5 Panels Orb — captures the current floating panel arrangement as
+## {"panels": [{panel_id, agent_id, title, mode, position, size}, ...]},
+## reusing the same restore_rect serialization _save_layout() already builds
+## for its "floating" block (per the spec's technical plan). Docked panels
+## are left out: a preset replays the freeform floating case, matching the
+## GRID/FOCUS built-ins below.
+func capture_arrangement() -> Dictionary:
+	var panels: Array[Dictionary] = []
+	for panel_id: String in panels_by_id:
+		var panel: PanelBase = panels_by_id[panel_id]
+		if not panel.dock_side.is_empty():
+			continue
+		var layout_rect: Rect2 = Rect2(panel.position, panel.size)
+		if panel.state == PanelBase.PanelState.FULLSCREEN:
+			layout_rect = panel.restore_rect
+		panels.append({
+			"panel_id": panel.panel_id,
+			"agent_id": panel.agent_id,
+			"title": panel.panel_title,
+			"mode": panel.mode,
+			"position": [layout_rect.position.x, layout_rect.position.y],
+			"size": [layout_rect.size.x, layout_rect.size.y],
+		})
+	return {"panels": panels}
+
+
+## Drops any arrangement entry whose agent_id names an agent absent from
+## `known_agent_ids`. An empty agent_id (the quest board, say) always
+## survives, since it names no agent. Pulled out as a static pure function so
+## the "restore skips a banished agent without error" rule is testable
+## headlessly (tests/layout_presets_test.gd), mirroring power_flyout.gd's
+## banish_all_ids.
+static func filter_arrangement_for_agents(arrangement: Dictionary, known_agent_ids: Array) -> Dictionary:
+	var kept: Array[Dictionary] = []
+	for entry: Variant in arrangement.get("panels", []):
+		if not (entry is Dictionary):
+			continue
+		var agent_id: String = (entry as Dictionary).get("agent_id", "")
+		if agent_id.is_empty() or known_agent_ids.has(agent_id):
+			kept.append(entry as Dictionary)
+	return {"panels": kept}
+
+
+## Restores a captured (or preset) arrangement, opening or moving each panel
+## to its saved position and size. Entries naming a banished agent are
+## dropped first (filter_arrangement_for_agents), so a missing agent is
+## skipped without error rather than opening a broken panel.
+func restore_arrangement(arrangement: Dictionary) -> void:
+	var known_agent_ids: Array = []
+	for agent_id: String in _agent_list:
+		known_agent_ids.append(agent_id)
+	var filtered: Dictionary = filter_arrangement_for_agents(arrangement, known_agent_ids)
+	for entry: Variant in filtered.get("panels", []):
+		var panel_entry: Dictionary = entry as Dictionary
+		var panel_id: String = panel_entry.get("panel_id", "")
+		if panel_id.is_empty():
+			continue
+		var panel: PanelBase = open_panel(
+			panel_id,
+			panel_entry.get("title", panel_id),
+			panel_entry.get("agent_id", ""),
+			panel_entry.get("mode", "scroll")
+		)
+		var position_values: Array = panel_entry.get("position", [panel.position.x, panel.position.y])
+		var size_values: Array = panel_entry.get("size", [panel.size.x, panel.size.y])
+		panel.dock_side = ""
+		panel.position = Vector2(position_values[0], position_values[1])
+		panel.size = Vector2(size_values[0], size_values[1])
+		panel.set_panel_state(PanelBase.PanelState.FLOATING)
+	_save_layout()
+
+
+## Applies a layout preset by name. GRID and FOCUS are the built-in
+## procedural layouts computed fresh against the current viewport; any other
+## name looks up a keeper-saved custom preset in LayoutPresets and restores
+## it via restore_arrangement (which already skips a banished agent).
+func apply_named_preset(preset_name: String) -> void:
+	match preset_name:
+		GRID_PRESET_NAME:
+			_apply_grid_layout()
+		FOCUS_PRESET_NAME:
+			_apply_focus_layout()
+		_:
+			var presets: LayoutPresets = LayoutPresets.load_from_file()
+			if presets.has_preset(preset_name):
+				restore_arrangement(presets.get_preset(preset_name))
+
+
+## Saves the current arrangement under `preset_name` in LayoutPresets,
+## persisted to user://orki_settings.cfg's [layouts] section.
+func save_named_preset(preset_name: String) -> void:
+	var presets: LayoutPresets = LayoutPresets.load_from_file()
+	presets.set_preset(preset_name, capture_arrangement())
+	presets.save_to_file()
+
+
+## Names of every keeper-saved custom preset (GRID/FOCUS excluded — those
+## are always available and are not stored in LayoutPresets).
+func custom_preset_names() -> Array:
+	return LayoutPresets.load_from_file().preset_names()
+
+
+## GRID: tiles every open floating panel into an even grid across the
+## viewport. Deterministic panel order (sorted ids) keeps repeated calls
+## stable for the same open panel set.
+func _apply_grid_layout() -> void:
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var ids: Array = panels_by_id.keys()
+	ids.sort()
+	var count: int = ids.size()
+	if count == 0:
+		return
+	var columns: int = mini(GRID_COLUMNS, count)
+	var rows: int = ceili(float(count) / float(columns))
+	var cell_w: float = (viewport_size.x - GRID_PADDING * float(columns + 1)) / float(columns)
+	var cell_h: float = (viewport_size.y - GRID_PADDING * float(rows + 1)) / float(rows)
+	for i: int in range(count):
+		var panel: PanelBase = panels_by_id[ids[i]]
+		var col: int = i % columns
+		var row: int = i / columns
+		panel.dock_side = ""
+		panel.position = Vector2(GRID_PADDING + float(col) * (cell_w + GRID_PADDING), GRID_PADDING + float(row) * (cell_h + GRID_PADDING))
+		panel.size = Vector2(cell_w, cell_h)
+		panel.set_panel_state(PanelBase.PanelState.FLOATING)
+	_save_layout()
+
+
+## FOCUS: the scroll panel (or, absent one, the first panel) takes a wide
+## right-anchored column; every other open panel stacks in a rail on the
+## left.
+func _apply_focus_layout() -> void:
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var ids: Array = panels_by_id.keys()
+	ids.sort()
+	if ids.is_empty():
+		return
+	var focus_id: String = SCROLL_PANEL_ID if panels_by_id.has(SCROLL_PANEL_ID) else ids[0]
+	var focus_width: float = viewport_size.x * FOCUS_WIDTH_RATIO
+	var rail_width: float = viewport_size.x - focus_width
+	var focus_panel_ref: PanelBase = panels_by_id[focus_id]
+	focus_panel_ref.dock_side = ""
+	focus_panel_ref.position = Vector2(rail_width, 0.0)
+	focus_panel_ref.size = Vector2(focus_width, viewport_size.y)
+	focus_panel_ref.set_panel_state(PanelBase.PanelState.FLOATING)
+	var rail_ids: Array = ids.filter(func(id: Variant) -> bool: return id != focus_id)
+	var rail_count: int = rail_ids.size()
+	if rail_count > 0:
+		var rail_cell_h: float = viewport_size.y / float(rail_count)
+		for i: int in range(rail_count):
+			var panel: PanelBase = panels_by_id[rail_ids[i]]
+			panel.dock_side = ""
+			panel.position = Vector2(0.0, float(i) * rail_cell_h)
+			panel.size = Vector2(rail_width, rail_cell_h)
+			panel.set_panel_state(PanelBase.PanelState.FLOATING)
+	_save_layout()

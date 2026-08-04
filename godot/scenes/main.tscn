@@ -16,6 +16,8 @@
 [ext_resource type="Script" path="res://scripts/ui/hex_compass.gd" id="14"]
 [ext_resource type="Script" path="res://scripts/ui/orb_flock.gd" id="15"]
 [ext_resource type="Script" path="res://scripts/ui/power_flyout.gd" id="16"]
+[ext_resource type="Script" path="res://scripts/ui/panels_flyout.gd" id="17"]
+[ext_resource type="Theme" path="res://themes/orki_theme.tres" id="18"]
 
 [node name="Main" type="Node2D"]
 
@@ -50,6 +52,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = ExtResource("18")
 script = ExtResource("15")
 
 [node name="GrimoireFlyout" type="Control" parent="UILayer/OrbFlock"]
@@ -67,6 +70,14 @@ offset_top = 16.0
 offset_right = 276.0
 offset_bottom = 216.0
 script = ExtResource("16")
+
+[node name="PanelsFlyout" type="Control" parent="UILayer/OrbFlock"]
+visible = false
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 316.0
+offset_bottom = 436.0
+script = ExtResource("17")
 
 [node name="Minimap" type="Control" parent="UILayer"]
 visible = false
@@ -130,6 +141,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+theme = ExtResource("18")
 script = ExtResource("3")
 
 [node name="Dimmer" type="ColorRect" parent="UILayer/PanelManager"]
@@ -241,9 +253,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = ExtResource("18")
 script = ExtResource("4")
 
 [node name="AgentContextMenu" type="PopupMenu" parent="OverlayLayer"]
+theme = ExtResource("18")
 script = ExtResource("7")
 
 [node name="ReassignSubmenu" type="PopupMenu" parent="OverlayLayer/AgentContextMenu"]
