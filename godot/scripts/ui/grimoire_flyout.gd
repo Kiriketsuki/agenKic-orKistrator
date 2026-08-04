@@ -136,6 +136,11 @@ func _on_sigil_input(kind: String, event: InputEvent) -> void:
 			_drag_pos = mb.global_position
 		elif _dragging and _drag_kind == kind:
 			_end_placement(mb.global_position)
+		elif _drag_kind == kind:
+			# Release without a drag is a plain click: quick summon with the
+			# bridge's auto floor assignment. Drag keeps the placement flow.
+			_drag_kind = ""
+			_spawn(kind, 0)
 		else:
 			_drag_kind = ""
 	elif event is InputEventMouseMotion and not _drag_kind.is_empty():

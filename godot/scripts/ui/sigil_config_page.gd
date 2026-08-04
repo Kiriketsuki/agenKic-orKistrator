@@ -64,15 +64,18 @@ func _ready() -> void:
 		backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 		add_child(backdrop)
 
+		# A full-rect CenterContainer keeps the panel centered at ANY content
+		# size. Center anchors with fixed offsets drift once the content grows
+		# past PANEL_MIN_SIZE, which the doubled fonts always do.
+		var center := CenterContainer.new()
+		center.set_anchors_preset(Control.PRESET_FULL_RECT)
+		center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(center)
+
 		_panel = PanelContainer.new()
-		_panel.set_anchors_preset(Control.PRESET_CENTER)
 		_panel.custom_minimum_size = PANEL_MIN_SIZE
-		_panel.offset_left = -PANEL_MIN_SIZE.x * 0.5
-		_panel.offset_top = -PANEL_MIN_SIZE.y * 0.5
-		_panel.offset_right = PANEL_MIN_SIZE.x * 0.5
-		_panel.offset_bottom = PANEL_MIN_SIZE.y * 0.5
 		_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-		add_child(_panel)
+		center.add_child(_panel)
 		_panel.add_child(content)
 	else:
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL

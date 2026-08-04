@@ -162,11 +162,22 @@ func _resize_plate() -> void:
 	_frame.size = Vector2(maxf(width, 96.0), PLATE_HEIGHT)
 
 
+## Camera zoom at which the plate renders at its authored 1:1 size. Above
+## it the plate grows with the world, below it the plate shrinks, so the
+## banner always reads as part of the scene instead of a fixed overlay.
+const REFERENCE_ZOOM: float = 6.0
+const PLATE_SCALE_MIN: float = 0.4
+const PLATE_SCALE_MAX: float = 10.0
+
+
 ## Follows the focused floor every frame, so the plate rides the refocus tween
-## and the elastic overscroll without a second animation.
+## and the elastic overscroll without a second animation. The plate scales
+## with the camera zoom relative to REFERENCE_ZOOM.
 func _track_floor() -> void:
 	var floor_node: Node = _focused_floor()
 	if floor_node == null or not (floor_node is Node2D):
 		return
-	var origin: Vector2 = (floor_node as Node2D).get_global_transform_with_canvas().origin
-	_frame.position = origin + Vector2(-_frame.size.x / 2.0, PLATE_OFFSET_Y)
+	var xf: Transform2D = (floor_node as Node2D).get_global_transform_with_canvas()
+	var zoom_scale: float = clampf(xf.get_scale().x / REFERENCE_ZOOM, PLATE_SCALE_MIN, PLATE_SCALE_MAX)
+	_frame.scale = Vector2(zoom_scale, zoom_scale)
+	_frame.position = xf.origin + Vector2(-_frame.size.x * zoom_scale / 2.0, PLATE_OFFSET_Y * zoom_scale)
