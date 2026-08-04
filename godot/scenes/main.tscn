@@ -52,6 +52,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+z_index = 5
 theme = ExtResource("18")
 script = ExtResource("15")
 
