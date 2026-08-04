@@ -174,9 +174,11 @@ static func momentum_settled(velocity: Vector2) -> bool:
 ## replaced the two-phase momentum-then-spring flight (keeper feedback,
 ## round 6). The ratio is underdamped (7 / (2 * sqrt(90)) ~= 0.37) so a
 ## flick keeps visible momentum and lands with a small physical bounce
-## instead of stopping dead mid-air before the pull starts.
-const GLIDE_STIFFNESS: float = 90.0
-const GLIDE_DAMPING: float = 7.0
+## instead of stopping dead mid-air before the pull starts. The ratio
+## (4.7 / (2 * sqrt(40)) ~= 0.37) is preserved from the 90/7 original;
+## only the pull strength was reduced — gravity felt too strong in play.
+const GLIDE_STIFFNESS: float = 40.0
+const GLIDE_DAMPING: float = 4.7
 const GLIDE_SETTLE_DISTANCE: float = 1.0
 const GLIDE_SETTLE_SPEED: float = 8.0
 
