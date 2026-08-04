@@ -7,7 +7,7 @@
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/floor_tabs.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/overlays/agent_context_menu.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/ui/summon_bar.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/ui/grimoire_flyout.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/tower/backdrop_parallax.gd" id="9"]
 [ext_resource type="Texture2D" path="res://assets/backdrops/stair_shaft.png" id="10"]
 [ext_resource type="Script" path="res://scripts/ui/world_labels.gd" id="11"]
@@ -51,13 +51,12 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("15")
 
-[node name="SummonBar" type="HBoxContainer" parent="UILayer/OrbFlock"]
+[node name="GrimoireFlyout" type="Control" parent="UILayer/OrbFlock"]
 visible = false
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 420.0
-offset_bottom = 48.0
-theme_override_constants/separation = 8
+offset_right = 436.0
+offset_bottom = 176.0
 script = ExtResource("8")
 
 [node name="Minimap" type="Control" parent="UILayer"]

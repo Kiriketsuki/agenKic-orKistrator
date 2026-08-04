@@ -34,11 +34,17 @@ enum TitleMenuEntry { ENTER, GRIMOIRE, DEPART }
 @onready var _rune_label: Label = %RuneLabel
 @onready var _grimoire_panel: Control = %GrimoirePanel
 @onready var _grimoire_back_button: Button = %GrimoireBackButton
+@onready var _grimoire_body: Label = %GrimoireBody
 @onready var _menu_root: Control = %MenuRoot
 
 var _focused_index: int = 0
 var _rune_poll_timer: float = 0.0
 var _transitioning: bool = false
+## Grimoire Summoning (F3) — the sigil config page replaces the F1
+## placeholder GrimoireBody label the first time the keeper opens GRIMOIRE.
+var _sigil_config_page: SigilConfigPage
+var _sigil_config: SigilConfig
+var _providers_loaded: bool = false
 
 
 func _ready() -> void:
@@ -53,6 +59,13 @@ func _ready() -> void:
 	_fade_rect.color = Color(0, 0, 0, 0)
 	_fade_rect.visible = false
 	_grimoire_panel.visible = false
+	_grimoire_body.visible = false
+
+	_sigil_config = SigilConfig.load_from_file()
+	_sigil_config_page = SigilConfigPage.new()
+	_sigil_config_page.closed.connect(_close_grimoire)
+	_grimoire_panel.get_node("Content").add_child(_sigil_config_page)
+	BridgeManager.providers_fetched.connect(_on_providers_fetched)
 
 	_set_focus(0)
 	_update_rune(BridgeManager.get_connection_state_name())
@@ -129,7 +142,16 @@ func _activate_depart() -> void:
 func _open_grimoire() -> void:
 	_grimoire_panel.visible = true
 	_menu_root.visible = false
+	if not _providers_loaded:
+		BridgeManager.fetch_providers()
+	else:
+		_sigil_config_page.open_page(_sigil_config_page.get_providers(), _sigil_config)
 	_grimoire_back_button.grab_focus()
+
+
+func _on_providers_fetched(providers: Array) -> void:
+	_providers_loaded = true
+	_sigil_config_page.open_page(providers, _sigil_config)
 
 
 func _close_grimoire() -> void:

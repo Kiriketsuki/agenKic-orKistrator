@@ -25,6 +25,10 @@ signal command_failed(path: String, code: int, reason: String)
 signal command_succeeded(path: String, code: int, response_body: String)
 signal floor_created(floor_data: BridgeData.FloorData)
 signal floor_removed(floor_name: String)
+## Emitted once per fetch_providers() call with the parsed roster (F3
+## Grimoire Summoning) as an Array[Dictionary] of {kind, display, accent}.
+## Empty on any transport or parse failure.
+signal providers_fetched(providers: Array)
 
 enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
@@ -56,6 +60,7 @@ var _output_history_agent_id: String = ""
 var _screen_request: HTTPRequest
 var _screen_agent_id: String = ""
 var _screen_inflight: bool = false
+var _providers_request: HTTPRequest
 
 var _agents_synced: bool = false
 var _floors_synced: bool = false
@@ -87,6 +92,11 @@ func _ready() -> void:
 	add_child(_screen_request)
 	_screen_request.timeout = 10
 	_screen_request.request_completed.connect(_on_screen_completed)
+
+	_providers_request = HTTPRequest.new()
+	add_child(_providers_request)
+	_providers_request.timeout = 10
+	_providers_request.request_completed.connect(_on_providers_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
 	_start_initial_sync()
@@ -389,14 +399,21 @@ func submit_task(description: String, priority: float, floor: String = "", proje
 
 
 ## Summons a new worker agent. `kind` is one of: "sim", "claude", "codex",
-## "opencode". Name/tier may be empty — the server picks defaults. Result
-## surfaces via command_succeeded/command_failed (path "/api/agents/spawn").
-func spawn_agent(kind: String, agent_name: String = "", tier: String = "") -> void:
-	_enqueue_command("POST", "/api/agents/spawn", {
+## "opencode", "pi". Name/tier may be empty — the server picks defaults.
+## `floor` is the target tower floor (Grimoire Summoning, F3): 0 means
+## "omit the field", keeping the server's auto-assignment behavior, per
+## handleSpawnAgent's contract (floor 0 is reserved and never sent
+## explicitly). Result surfaces via command_succeeded/command_failed (path
+## "/api/agents/spawn").
+func spawn_agent(kind: String, agent_name: String = "", tier: String = "", floor: int = 0) -> void:
+	var body: Dictionary = {
 		"kind": kind,
 		"name": agent_name,
 		"tier": tier,
-	})
+	}
+	if floor > 0:
+		body["floor"] = floor
+	_enqueue_command("POST", "/api/agents/spawn", body)
 
 
 func submit_dag(nodes: Array, edges: Array) -> void:
@@ -550,6 +567,26 @@ func _coerce_output_item(item: Variant, agent_id: String) -> BridgeData.AgentOut
 		chunk.payload = item as String
 		return chunk
 	return null
+
+
+## Fetches the spawn-kind provider roster (F3 Grimoire Summoning) from
+## GET /api/providers. Result is parsed and emitted via providers_fetched —
+## a new adapter the bridge lists appears with no GUI change, since the
+## Grimoire flyout builds its sigil grid from this list. Single-flight, same
+## pattern as fetch_agent_screen: a call in flight is left alone rather than
+## cancelled, since the roster rarely changes within a session.
+func fetch_providers() -> void:
+	var err: int = _providers_request.request(base_url + "/api/providers")
+	if err != OK:
+		providers_fetched.emit([])
+
+
+func _on_providers_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		providers_fetched.emit([])
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	providers_fetched.emit(ProviderRoster.parse_response(parsed))
 
 
 func get_agent(agent_id: String) -> BridgeData.AgentData:

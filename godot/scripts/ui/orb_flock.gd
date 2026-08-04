@@ -20,9 +20,9 @@ extends Control
 ##
 ## Flyout registration API (F3/F4/F5 plug in without touching this file):
 ##   register_flyout(orb_id: String, control: Control) -> void
-## The Grimoire flyout hosts the pre-F3 SummonBar as an interim panel; see
-## main.tscn, where the existing SummonBar node is reparented under this
-## node and registered in _ready().
+## The Grimoire flyout (grimoire_flyout.gd) is a child scene node under this
+## node; see main.tscn, where it is registered in _ready() the same way the
+## F2-era interim SummonBar panel used to be.
 
 class_name OrbFlock
 
@@ -99,11 +99,11 @@ func _ready() -> void:
 	_snap_dock_positions()
 	get_viewport().size_changed.connect(_on_viewport_resized)
 
-	# Interim Grimoire flyout: hosts the pre-F3 SummonBar as a child scene
-	# node (see main.tscn) until F3 lands the real Grimoire flyout content.
-	var summon_bar: Node = get_node_or_null("SummonBar")
-	if summon_bar is Control:
-		register_flyout("grimoire", summon_bar as Control)
+	# Grimoire Summoning (F3) — the sigil grid and placement-mode controller
+	# lives as a child scene node (see main.tscn).
+	var grimoire_flyout: Node = get_node_or_null("GrimoireFlyout")
+	if grimoire_flyout is Control:
+		register_flyout("grimoire", grimoire_flyout as Control)
 
 
 ## Registers `control` as the flyout panel for `orb_id`. The control is

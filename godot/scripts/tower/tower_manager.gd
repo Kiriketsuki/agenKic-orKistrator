@@ -93,6 +93,10 @@ var _shaft_fade_material: ShaderMaterial = null
 
 
 func _ready() -> void:
+	# Grimoire Summoning (F3) — the flyout looks this node up by group instead
+	# of a hardcoded scene path, so it works from any UI layer without a
+	# direct node reference.
+	add_to_group("tower_manager")
 	_config = TowerConfig.from_file(config_path)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	_apply_base_zoom()
@@ -568,6 +572,14 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 	if _agent_assignments.has(agent_data.id):
 		return
 	var floor_name: String = agent_data.floor_name
+	# Grimoire Summoning (F3) — agent_data.floor is the numeric tower-index
+	# the keeper dropped the sigil on. It names a slot in _floors by array
+	# index rather than by floor_name, and it may point above the top of the
+	# stack today (the "new floor" drop zone), so the stack grows to meet it.
+	if agent_data.floor > 0:
+		_ensure_floor_count(agent_data.floor + 1)
+		if agent_data.floor < _floors.size():
+			floor_name = _floors[agent_data.floor].get_meta("floor_name", "")
 	if floor_name.is_empty() or not _has_floor(floor_name):
 		floor_name = _floors[0].get_meta("floor_name", "main") if not _floors.is_empty() else "main"
 	var edge: int = _find_best_edge_for_agent(floor_name)
@@ -795,6 +807,64 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 			if char_node != null:
 				return char_node
 	return null
+
+
+## Grimoire Summoning (F3) — grows the floor stack with synthetic non-permanent
+## floors ("floor-N") until _floors.size() >= target_count, so a drop on the
+## "new floor" gap above the top always has a real floor node waiting for it.
+func _ensure_floor_count(target_count: int) -> void:
+	while _floors.size() < target_count:
+		var index: int = _floors.size()
+		var synthetic_name: String = "floor-%d" % index
+		var floor_node: Node2D = _create_floor(synthetic_name, "Floor %d" % index, false)
+		_floors.append(floor_node)
+	_layout_floors()
+	_apply_fisheye_layout()
+	_update_tower_frame()
+	_sync_tower_exterior()
+	floors_changed.emit()
+
+
+## Grimoire Summoning (F3) — converts a screen-space position (e.g. the
+## mouse) into Tower-local world space, through the same camera the tower
+## renders with, so placement-mode hit-testing never fights zoom or the
+## panel-docking offset (see set_master_region/_aim_camera_at_region).
+func world_position_from_screen(screen_pos: Vector2) -> Vector2:
+	return _camera.get_screen_transform().affine_inverse() * screen_pos
+
+
+## The inverse of world_position_from_screen — used to draw the placement-mode
+## highlight overlay at the right screen Y for a given world-space Y.
+func screen_position_from_world(world_pos: Vector2) -> Vector2:
+	return _camera.get_screen_transform() * world_pos
+
+
+## Floor geometry the flyout needs to draw its highlight overlay, without it
+## having to know about _floor_spacing/_floor_height directly.
+func get_floor_spacing() -> float:
+	return _floor_spacing
+
+
+func get_floor_height() -> float:
+	return _floor_height
+
+
+## Grimoire Summoning (F3) — classifies a world-space position against the
+## floor stack (see FloorHitTest.classify) and enriches a FLOOR result with
+## live desk-count/full-floor data so the flyout can show "floor N, x/4" and
+## the reject state under the cursor. Floor 0 always reports RESERVED, even
+## before any floor node occupies it.
+func hit_test_floor(world_pos: Vector2) -> Dictionary:
+	var result: Dictionary = FloorHitTest.classify(
+		world_pos.y, maxi(_floors.size(), 1), _floor_spacing, _floor_height
+	)
+	if result["type"] == FloorHitTest.ZoneType.FLOOR:
+		var index: int = result["index"]
+		var floor_node: Node2D = _floors[index]
+		result["agent_count"] = floor_node.get_agent_count() if floor_node.has_method("get_agent_count") else 0
+		result["capacity"] = floor_node.get_desk_capacity() if floor_node.has_method("get_desk_capacity") else 4
+		result["is_full"] = floor_node.is_floor_full() if floor_node.has_method("is_floor_full") else false
+	return result
 
 
 func _has_floor(floor_name: String) -> bool:

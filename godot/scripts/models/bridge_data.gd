@@ -16,6 +16,9 @@ class AgentData extends RefCounted:
 	var registered_at: int = 0
 	## Floor this agent belongs to. Empty means "assign to default floor".
 	var floor_name: String = ""
+	## Numeric tower floor index the agent spawned on, from the Grimoire
+	## Summoning floor field (F3). 0 means no floor was recorded.
+	var floor: int = 0
 	## One of: alchemist, scribe, archmage, wardkeeper, librarian, enchanter, apprentice.
 	var character_class: String = "apprentice"
 	## LLM provider: claude, gemini, openai, ollama, deepseek, or empty.
@@ -30,6 +33,7 @@ class AgentData extends RefCounted:
 		a.last_heartbeat = d.get("last_heartbeat", 0)
 		a.registered_at = d.get("registered_at", 0)
 		a.floor_name = d.get("floor_name", "")
+		a.floor = d.get("floor", 0)
 		a.character_class = d.get("character_class", "apprentice")
 		a.provider = d.get("provider", "")
 		return a
