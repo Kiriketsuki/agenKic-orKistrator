@@ -40,8 +40,23 @@ type DAGEdgeJSON struct {
 }
 
 // SendInputRequest is the JSON body for POST /api/agents/{id}/input.
+//
+// The body carries either text or one key press, never both. Keys and Input
+// name the same text field, so an older client that sends "keys" still works.
+// Key names a single tmux key such as Up or Enter, and the handler forwards it
+// through Substrate.SendKey so a curses prompt reads a real key press.
 type SendInputRequest struct {
-	Keys string `json:"keys"`
+	Keys  string `json:"keys,omitempty"`
+	Input string `json:"input,omitempty"`
+	Key   string `json:"key,omitempty"`
+}
+
+// Text returns the literal text the request carries, from either field name.
+func (r SendInputRequest) Text() string {
+	if r.Input != "" {
+		return r.Input
+	}
+	return r.Keys
 }
 
 // ReassignAgentRequest is the JSON body for POST /api/agents/{id}/reassign
@@ -65,8 +80,13 @@ type ReassignAgentRequest struct {
 // ── Response types ───────────────────────────────────────────────────────────
 
 // AgentJSON is the JSON representation of an agent.
+// Name is the fantasy display name chosen by POST /api/agents/spawn. It is
+// empty for an agent that registered straight through gRPC, and every UI
+// consumer falls back to ID in that case. See Bridge.setAgentName.
 type AgentJSON struct {
 	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
@@ -91,6 +111,8 @@ type ErrorResponse struct {
 // Carries the full agent state so Godot can construct AgentData directly.
 type SSEAgentRegistered struct {
 	ID            string `json:"id"`
+	Name          string `json:"name,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 	State         string `json:"state"`
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
@@ -101,6 +123,7 @@ type SSEAgentRegistered struct {
 // SSEAgentStateChanged is the payload for agent.state_changed events.
 type SSEAgentStateChanged struct {
 	AgentID   string `json:"agent_id"`
+	Name      string `json:"name,omitempty"`
 	State     string `json:"state"`
 	TaskID    string `json:"task_id,omitempty"`
 	Timestamp int64  `json:"timestamp"`
@@ -132,7 +155,7 @@ type SSEFloorRemoved struct {
 // are optional — the server picks a fantasy name and rotates tiers.
 type SpawnAgentRequest struct {
 	// Kind selects the worker implementation: "sim" (default), "claude",
-	// "codex", or "opencode".
+	// "codex", "opencode", or "pi".
 	Kind string `json:"kind,omitempty"`
 	Name string `json:"name,omitempty"`
 	Tier string `json:"tier,omitempty"`

@@ -41,6 +41,10 @@ func (s *stubSubstrate) SendCommand(_ context.Context, _, _ string) error {
 	return nil
 }
 
+func (s *stubSubstrate) SendKey(_ context.Context, _, _ string) error {
+	return nil
+}
+
 func (s *stubSubstrate) CaptureOutput(_ context.Context, _ string, _ int) (string, error) {
 	return "", nil
 }

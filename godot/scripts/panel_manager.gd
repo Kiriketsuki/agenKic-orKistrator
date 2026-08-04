@@ -24,6 +24,15 @@ const SCROLL_SLIDE_DURATION: float = 0.28
 ## agent_id) mounted via PanelContentRouter's "quest" mode.
 const QUEST_BOARD_PANEL_ID: String = "quest-board"
 
+## T18 (#129) — panel effect knobs live in the same tower.json the tower
+## layer reads. PanelManager loads its own TowerConfig instance rather than
+## reaching into ProviderPalette's static cache: that cache is a tower-layer
+## implementation detail keyed to palette/particle concerns, and the UI layer
+## having its own read keeps the dependency one-directional. The extra read
+## is one file parse at startup — see the "not done" notes for the deferred
+## unification.
+const TOWER_CONFIG_PATH: String = "res://config/tower.json"
+
 var master_ratio: float = MASTER_RATIO_DEFAULT
 var left_tree: DwindleTree = DwindleTree.new("left")
 var right_tree: DwindleTree = DwindleTree.new("right")
@@ -40,6 +49,7 @@ var _panels_hidden: bool = false
 var _restoring_layout: bool = false
 var _layout_persistence: LayoutPersistence = LayoutPersistence.new()
 var _agent_list: Dictionary = {}
+var _tower_config: TowerConfig = null
 
 @onready var _dimmer: ColorRect = $Dimmer
 @onready var _left_preview: ColorRect = $DockPreviews/LeftPreview
@@ -63,6 +73,7 @@ func _ready() -> void:
 	offset_right = 0.0
 	offset_bottom = 0.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tower_config = TowerConfig.from_file(TOWER_CONFIG_PATH)
 	get_viewport().size_changed.connect(_refresh_layout)
 	_bind_divider(_left_divider, "left")
 	_bind_divider(_right_divider, "right")
@@ -147,6 +158,19 @@ func show_dock_preview(side: String, visible_flag: bool) -> void:
 
 
 func _wire_panel(panel: PanelBase) -> void:
+	# T18 (#129) — thread the panel effect config ONCE, mirroring T17's
+	# TowerManager -> FloorScene.configure_particle_budget() thread-through.
+	# Must land BEFORE PanelContentRouter.mount() below, because
+	# SpellScrollView.setup() reads panel.get_effect_settings() to configure its
+	# parchment flutter uniforms in the same frame.
+	if _tower_config != null:
+		panel.configure_panel_effects(
+			_tower_config.panel_effects_enabled,
+			_tower_config.panel_bob_amplitude_px,
+			_tower_config.panel_bob_period_sec,
+			_tower_config.panel_flutter_amplitude_px,
+			_tower_config.max_drag_trail_particles
+		)
 	panel.focus_requested.connect(func(p: PanelBase) -> void:
 		focus_panel(p)
 	)
@@ -317,6 +341,11 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	# _input(), before GUI focus consumes the key in _gui_input). Ctrl-chord
 	# and non-character actions below are left ungated, matching prior
 	# behavior.
+	# While the pointer sits over a terminal or scroll body, every keystroke
+	# belongs to the agent's tmux session. Escape must forward, not close the
+	# panel, so every hotkey stands down until the pointer leaves the body.
+	if KeyPassthrough.hover_active:
+		return
 	var typing: bool = _focus_owner_accepts_text()
 	if event.is_action_pressed("panel_fullscreen") and not typing and _active_panel != null:
 		_active_panel.toggle_fullscreen()
@@ -586,8 +615,8 @@ func _toggle_quest_board() -> void:
 ## Only one scroll is ever open: clicking a different agent while a scroll is
 ## already open swaps its content in place instead of opening a second panel.
 func open_scroll_panel(agent_id: String) -> void:
-	var title: String = "%s — Spell Scroll" % agent_id
 	var agent_data: BridgeData.AgentData = _get_agent_data(agent_id)
+	var title: String = "%s — Spell Scroll" % _agent_title(agent_id, agent_data)
 	var preferred_mode: String = _validated_mode(mode_preferences.get(agent_id, "scroll"))
 	if panels_by_id.has(SCROLL_PANEL_ID):
 		var existing: PanelBase = panels_by_id[SCROLL_PANEL_ID]
@@ -667,6 +696,20 @@ func _place_scroll_panel(panel: PanelBase) -> void:
 	tween.finished.connect(_save_layout)
 
 
+## Builds the human title for an agent-scoped panel: fantasy name plus the
+## provider when the bridge knows them, otherwise a shortened id. The raw
+## UUID never reaches a title bar.
+func _agent_title(agent_id: String, agent_data: BridgeData.AgentData) -> String:
+	if agent_data == null:
+		return agent_id.left(8)
+	var shown: String = agent_data.display_name()
+	if shown == agent_id:
+		shown = agent_id.left(8)
+	if not agent_data.provider.is_empty():
+		shown += " · " + agent_data.provider
+	return shown
+
+
 func _get_agent_data(agent_id: String) -> BridgeData.AgentData:
 	if agent_id.is_empty():
 		return null
@@ -692,11 +735,14 @@ func _rebuild_panel_menu() -> void:
 		agent_ids.append(agent_id)
 	agent_ids.sort()
 	for agent_id: String in agent_ids:
-		_panel_menu_list.add_item(agent_id)
+		# The list shows the human title. The raw id rides along as item
+		# metadata so selection still targets the exact agent.
+		var item_index: int = _panel_menu_list.add_item(_agent_title(agent_id, _agent_list[agent_id]))
+		_panel_menu_list.set_item_metadata(item_index, agent_id)
 
 
 func _on_panel_menu_item_selected(index: int) -> void:
-	var agent_id: String = _panel_menu_list.get_item_text(index)
+	var agent_id: String = String(_panel_menu_list.get_item_metadata(index))
 	_panel_menu_popup.hide()
 	_open_agent_panel(agent_id)
 

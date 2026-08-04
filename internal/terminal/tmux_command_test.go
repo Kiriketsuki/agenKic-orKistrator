@@ -3,7 +3,9 @@ package terminal
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestSendCommand_ValidSession(t *testing.T) {
@@ -102,5 +104,40 @@ func TestSendCommand_CancelledContext(t *testing.T) {
 	err = sub.SendCommand(ctx, "any-session", "echo hi")
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("SendCommand with cancelled context: got %v, want context.Canceled", err)
+	}
+}
+
+// TestSendCommand_LiteralKeyNames verifies that a command text which matches a
+// tmux key name, or which starts with a hyphen, reaches the pane as literal
+// text instead of a key press or a flag.
+func TestSendCommand_LiteralKeyNames(t *testing.T) {
+	skipIfNoTmux(t)
+
+	sub, err := NewTmuxSubstrate()
+	if err != nil {
+		t.Fatalf("NewTmuxSubstrate: %v", err)
+	}
+
+	ctx := context.Background()
+	const sessionName = "test-sendcmd-literal"
+	if _, err := sub.SpawnSession(ctx, sessionName, "cat"); err != nil {
+		t.Fatalf("SpawnSession: %v", err)
+	}
+	t.Cleanup(func() { _ = sub.DestroySession(ctx, sessionName) })
+
+	for _, cmd := range []string{"Enter", "C-c", "-l flagged"} {
+		if err := sub.SendCommand(ctx, sessionName, cmd); err != nil {
+			t.Fatalf("SendCommand(%q): %v", cmd, err)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	out, err := sub.CaptureOutput(ctx, sessionName, 50)
+	if err != nil {
+		t.Fatalf("CaptureOutput: %v", err)
+	}
+	for _, want := range []string{"Enter", "C-c", "-l flagged"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pane output missing literal %q; got:\n%s", want, out)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,9 @@ func (s *stubSubstrate) DestroySession(_ context.Context, _ string) error { retu
 func (s *stubSubstrate) SendCommand(_ context.Context, _ string, _ string) error {
 	return nil
 }
+func (s *stubSubstrate) SendKey(_ context.Context, _ string, _ string) error {
+	return nil
+}
 func (s *stubSubstrate) CaptureOutput(_ context.Context, _ string, _ int) (string, error) {
 	return "", nil
 }
@@ -68,6 +72,13 @@ type recordingSubstrate struct {
 	stubSubstrate
 	sentSession string
 	sentCmd     string
+	sentKeys    []string
+}
+
+func (s *recordingSubstrate) SendKey(_ context.Context, session string, key string) error {
+	s.sentSession = session
+	s.sentKeys = append(s.sentKeys, key)
+	return nil
 }
 
 func (s *recordingSubstrate) SendCommand(_ context.Context, session string, cmd string) error {
@@ -746,5 +757,195 @@ func TestSendInput_EmptyKeys_WithSubstrate(t *testing.T) {
 	// This exercises the validation at handlers.go:200-206.
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 (empty keys), got %d", w.Code)
+	}
+}
+
+// TestSendInput_KeyWhitelist checks the key path of POST
+// /api/agents/{id}/input. An allowed key reaches Substrate.SendKey, and any
+// other name fails with 400 before the substrate sees it.
+func TestSendInput_KeyWhitelist(t *testing.T) {
+	accepted := []string{"Up", "Down", "Left", "Right", "Enter", "Escape",
+		"Tab", "BTab", "Space", "PPage", "NPage", "Home", "End", "1", "4", "y",
+		"BSpace", "DC", "F1", "F12", "C-c", "C-b", "M-x"}
+	for _, key := range accepted {
+		sub := &recordingSubstrate{}
+		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+		body, _ := json.Marshal(httpbridge.SendInputRequest{Key: key})
+		req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("key %q: expected 204, got %d", key, w.Code)
+			continue
+		}
+		if len(sub.sentKeys) != 1 || sub.sentKeys[0] != key {
+			t.Errorf("key %q: substrate saw %v", key, sub.sentKeys)
+		}
+		if sub.sentSession != "agent-agent-1" {
+			t.Errorf("key %q: session %q", key, sub.sentSession)
+		}
+		if sub.sentCmd != "" {
+			t.Errorf("key %q: SendCommand ran with %q", key, sub.sentCmd)
+		}
+	}
+
+	rejected := []string{"Up Enter", "Delete;q", "", "ab", "\n", "C-", "C-ab", "X-c", "F13"}
+	for _, key := range rejected {
+		sub := &recordingSubstrate{}
+		bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+		raw := `{"key":` + mustJSONString(key) + `}`
+		req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader([]byte(raw)))
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("key %q: expected 400, got %d", key, w.Code)
+		}
+		if len(sub.sentKeys) != 0 {
+			t.Errorf("key %q: substrate saw %v", key, sub.sentKeys)
+		}
+	}
+}
+
+func mustJSONString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// TestSendInput_KeyAndInputConflict rejects a body that carries both fields.
+func TestSendInput_KeyAndInputConflict(t *testing.T) {
+	sub := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Key: "Up", Input: "ls"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// TestSendInput_InputFieldTypesText checks that the newer "input" field
+// reaches SendCommand exactly like the older "keys" field.
+func TestSendInput_InputFieldTypesText(t *testing.T) {
+	sub := &recordingSubstrate{}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	body, _ := json.Marshal(httpbridge.SendInputRequest{Input: "hello world"})
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/input", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if sub.sentCmd != "hello world" {
+		t.Fatalf("SendCommand cmd = %q", sub.sentCmd)
+	}
+}
+
+// listingSubstrate returns a fixed session list from ListSessions so the
+// floor filter can be exercised without a real tmux server.
+type listingSubstrate struct {
+	stubSubstrate
+	sessions []terminal.Session
+}
+
+func (s *listingSubstrate) ListSessions(_ context.Context) ([]terminal.Session, error) {
+	return s.sessions, nil
+}
+
+// A per-agent tmux session is the agent's own PTY. The tower must not draw a
+// floor for it (Task D bug 1).
+func TestListFloors_ExcludesAgentSessions(t *testing.T) {
+	sub := &listingSubstrate{sessions: []terminal.Session{
+		{Name: "main", WindowCount: 2},
+		{Name: "agent-1f0c9b2a", WindowCount: 1},
+		{Name: "archive", WindowCount: 1},
+		{Name: "agent-x", WindowCount: 1},
+	}}
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil, httpbridge.WithSubstrate(sub))
+
+	req := httptest.NewRequest("GET", "/api/floors", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Floors []httpbridge.FloorJSON `json:"floors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Floors) != 2 {
+		t.Fatalf("expected 2 floors, got %d: %+v", len(resp.Floors), resp.Floors)
+	}
+	for _, f := range resp.Floors {
+		if strings.HasPrefix(f.Name, "agent-") {
+			t.Errorf("agent session %q leaked into the floor list", f.Name)
+		}
+	}
+}
+
+// The spawn endpoint picks a fantasy name. The name must survive into the
+// agent listing so the UI can show it instead of the UUID (Task D bug 2).
+func TestSpawnAgent_NamePersistsInAgentList(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			return "agent-42", nil
+		}))
+
+	body := []byte(`{"kind":"sim","name":"Emberwick"}`)
+	req := httptest.NewRequest("POST", "/api/agents/spawn", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("spawn: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The spawner is a stub, so register the agent in the store by hand.
+	if err := store.SetAgentFields(context.Background(), "agent-42", state.AgentFields{
+		State: state.AgentStateIdle,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAgentFields(context.Background(), "agent-unnamed", state.AgentFields{
+		State: state.AgentStateIdle,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	listReq := httptest.NewRequest("GET", "/api/agents", nil)
+	listW := httptest.NewRecorder()
+	bridge.ServeHTTP(listW, listReq)
+
+	var resp struct {
+		Agents []httpbridge.AgentJSON `json:"agents"`
+	}
+	if err := json.NewDecoder(listW.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]httpbridge.AgentJSON, len(resp.Agents))
+	for _, a := range resp.Agents {
+		byID[a.ID] = a
+	}
+	if got := byID["agent-42"].Name; got != "Emberwick" {
+		t.Errorf("agent-42 name = %q, want Emberwick", got)
+	}
+	// An agent the spawn endpoint never named carries no name, and the UI
+	// falls back to the ID.
+	if got := byID["agent-unnamed"].Name; got != "" {
+		t.Errorf("agent-unnamed name = %q, want empty", got)
 	}
 }

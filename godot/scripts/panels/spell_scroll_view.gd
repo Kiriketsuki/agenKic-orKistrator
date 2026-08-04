@@ -11,6 +11,10 @@ const QUILL_BOB_SPEED: float = 9.0
 const QUILL_BOB_AMPLITUDE: float = 0.22
 const HISTORY_BACKFILL_LINES: int = 200
 
+## Seconds between visible-pane snapshot polls while the scroll runs in
+## snapshot mode. Matches TerminalView.SCREEN_POLL_SECONDS.
+const SCREEN_POLL_SECONDS: float = 0.7
+
 ## LLM provider -> (glyph, ink color). Empty key is the fallback.
 const PROVIDER_GLYPHS: Dictionary = {
 	"claude": {"glyph": "✦", "color": Color(0.55, 0.32, 0.14, 1.0)},
@@ -30,6 +34,8 @@ const PROVIDER_GLYPHS: Dictionary = {
 @onready var _history: RichTextLabel = $History
 @onready var _quill: Label = $QuillGlyph
 @onready var _disenchant_button: Button = $Header/DisenchantButton
+@onready var _input_line: LineEdit = $Footer/Input
+@onready var _send_button: Button = $Footer/Send
 
 var _panel: PanelBase = null
 var _bridge: Node = null
@@ -44,12 +50,32 @@ var _bob_time: float = 0.0
 ## short-circuited by the backfill's instant-reveal.
 var _backfill_pending: bool = false
 var _pending_live_chunks: Array = []
+## Snapshot mode. An interactive CLI agent (Claude Code, Gemini CLI) writes to
+## its tmux pane and never produces line-oriented output chunks, so the
+## backfill comes back empty and the parchment stays blank. In that case the
+## scroll polls the same visible-pane snapshot the terminal chat body uses and
+## renders it through the sepia parser. The first real output chunk ends
+## snapshot mode, because line-oriented history is the better view.
+var _snapshot_mode: bool = false
+var _snapshot_timer: Timer = null
+## True while the pointer sits over the history body, which is the mouse-based
+## signal that every keystroke forwards to tmux. See _set_body_hover.
+var _body_hover: bool = false
 
 
 func _ready() -> void:
 	_configure_parchment_material()
 	_configure_font()
 	_quill.visible = false
+	_apply_flutter_uniforms()
+	if _parchment != null and not _parchment.resized.is_connected(_apply_flutter_uniforms):
+		_parchment.resized.connect(_apply_flutter_uniforms)
+
+
+func _exit_tree() -> void:
+	# A view freed mid-hover must not leave the global hotkey gate stuck.
+	if _body_hover:
+		KeyPassthrough.hover_active = false
 
 
 func _process(delta: float) -> void:
@@ -85,8 +111,78 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_connect_bridge_signals()
 	if _panel != null and not _panel.animation_hook_requested.is_connected(_on_panel_animation_hook):
 		_panel.animation_hook_requested.connect(_on_panel_animation_hook)
+	_apply_flutter_uniforms()
 	_play_unroll_flourish.call_deferred()
 	_request_backfill()
+	_wire_input_line()
+
+
+## The scroll carries the same input line as the chat view. Without one, a TUI
+## prompt inside the session is unreachable from scroll mode: arrows fall
+## through to the tower and move the floor focus instead.
+func _wire_input_line() -> void:
+	if _input_line == null:
+		return
+	if not _input_line.text_submitted.is_connected(_on_input_submitted):
+		_input_line.text_submitted.connect(_on_input_submitted)
+	if _history != null and not _history.mouse_entered.is_connected(_on_history_mouse_entered):
+		_history.mouse_entered.connect(_on_history_mouse_entered)
+		_history.mouse_exited.connect(_on_history_mouse_exited)
+	if _send_button != null and not _send_button.pressed.is_connected(_on_send_pressed):
+		_send_button.pressed.connect(_on_send_pressed)
+	_input_line.call_deferred("grab_focus")
+
+
+func _on_send_pressed() -> void:
+	if _input_line != null:
+		_on_input_submitted(_input_line.text)
+
+
+func _on_input_submitted(text: String) -> void:
+	if text.strip_edges().is_empty() or _bridge == null or _agent_id.is_empty():
+		return
+	if _bridge.has_method("send_input"):
+		# The orchestrator appends Enter, so the CLI receives a submitted line.
+		_bridge.call("send_input", _agent_id, text)
+	if _input_line != null:
+		_input_line.clear()
+
+
+## Mouse-based key passthrough, the same rule as TerminalView: while the
+## pointer sits over the parchment history, EVERY keystroke forwards to the
+## agent's tmux session through KeyPassthrough and the PanelBase border turns
+## amber. While the pointer sits over the input line, keys edit locally.
+func _set_body_hover(hovering: bool) -> void:
+	_body_hover = hovering
+	KeyPassthrough.hover_active = hovering
+	if _panel != null:
+		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
+	if _input_line == null:
+		return
+	if hovering:
+		# A focused LineEdit consumes keys before _unhandled_key_input runs.
+		_input_line.release_focus()
+	else:
+		_input_line.grab_focus()
+
+
+func _on_history_mouse_entered() -> void:
+	_set_body_hover(true)
+
+
+func _on_history_mouse_exited() -> void:
+	_set_body_hover(false)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not _body_hover or _bridge == null or _agent_id.is_empty():
+		return
+	var key_name: String = KeyPassthrough.key_name_for(event as InputEventKey)
+	if key_name.is_empty():
+		return
+	if _bridge.has_method("send_key"):
+		_bridge.call("send_key", _agent_id, key_name)
+	get_viewport().set_input_as_handled()
 
 
 ## Called by PanelManager when the singleton scroll panel is retargeted to a
@@ -107,18 +203,44 @@ func _configure_parchment_material() -> void:
 	var material: ShaderMaterial = _parchment.material as ShaderMaterial
 	if material == null:
 		return
-	if material.get_shader_parameter("fibre_noise") != null:
+	if material.get_shader_parameter("fibre_noise") == null:
+		var noise: FastNoiseLite = FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_PERLIN
+		noise.frequency = 0.045
+		noise.fractal_octaves = 3
+		var noise_texture: NoiseTexture2D = NoiseTexture2D.new()
+		noise_texture.width = 256
+		noise_texture.height = 256
+		noise_texture.seamless = true
+		noise_texture.noise = noise
+		material.set_shader_parameter("fibre_noise", noise_texture)
+
+
+## T18 (#129) — parchment edge flutter. Amplitude arrives in pixels from
+## tower.json (panel_flutter_amplitude_px) via PanelBase.get_effect_settings()
+## and is converted to the shader's UV units against the parchment's current
+## pixel height. Must be re-applied on resize, because the px->UV conversion
+## depends on that height. When the panel reports effects disabled (the config
+## knob is off, or the panel is in terminal mode) flutter_enabled is set false
+## and the shader renders exactly as it did before T18.
+func _apply_flutter_uniforms() -> void:
+	if _parchment == null:
 		return
-	var noise: FastNoiseLite = FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.frequency = 0.045
-	noise.fractal_octaves = 3
-	var noise_texture: NoiseTexture2D = NoiseTexture2D.new()
-	noise_texture.width = 256
-	noise_texture.height = 256
-	noise_texture.seamless = true
-	noise_texture.noise = noise
-	material.set_shader_parameter("fibre_noise", noise_texture)
+	var material: ShaderMaterial = _parchment.material as ShaderMaterial
+	if material == null:
+		return
+	var enabled: bool = false
+	var amplitude_px: float = PanelFloatMath.DEFAULT_FLUTTER_AMPLITUDE_PX
+	var period_sec: float = PanelFloatMath.DEFAULT_BOB_PERIOD_SEC
+	if _panel != null:
+		var settings: Dictionary = _panel.get_effect_settings()
+		enabled = bool(settings["enabled"])
+		amplitude_px = float(settings["flutter_amplitude_px"])
+		period_sec = float(settings["bob_period_sec"])
+	var uv_amplitude: float = PanelFloatMath.flutter_uv_amplitude(amplitude_px, _parchment.size.y)
+	material.set_shader_parameter("flutter_enabled", enabled and uv_amplitude > 0.0)
+	material.set_shader_parameter("flutter_amplitude", uv_amplitude)
+	material.set_shader_parameter("flutter_speed", PanelFloatMath.flutter_speed_rad(period_sec))
 
 
 func _configure_font() -> void:
@@ -187,7 +309,10 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 			_panel.set_panel_title("Spell Scroll")
 		return
 	_agent_id = agent_data.id
-	_name_label.text = agent_data.id
+	# Show the fantasy name the orchestrator assigned at spawn time.
+	# display_name falls back to the raw UUID when no name exists.
+	var shown_name: String = agent_data.display_name()
+	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
 	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
 		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
@@ -198,7 +323,7 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])
 	if _panel != null:
-		_panel.set_panel_title("%s — Spell Scroll" % agent_data.id)
+		_panel.set_panel_title("%s — Spell Scroll" % shown_name)
 
 
 func _connect_bridge_signals() -> void:
@@ -210,6 +335,8 @@ func _connect_bridge_signals() -> void:
 		_bridge.connect("agent_state_changed", _on_state_changed)
 	if _bridge.has_signal("agent_output_history"):
 		_bridge.connect("agent_output_history", _on_history_backfill)
+	if _bridge.has_signal("agent_screen"):
+		_bridge.connect("agent_screen", _on_screen_snapshot)
 	_signals_connected = true
 
 
@@ -231,6 +358,7 @@ func _clear_history() -> void:
 	_bob_time = 0.0
 	_backfill_pending = false
 	_pending_live_chunks.clear()
+	_disable_snapshot_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +374,13 @@ func _on_history_backfill(agent_id: String, chunks: Array) -> void:
 		# risk appending stale history after newer content.
 		return
 	_backfill_pending = false
+	var appended: int = 0
 	for item: Variant in chunks:
 		var chunk: BridgeData.AgentOutputChunk = item as BridgeData.AgentOutputChunk
 		if chunk == null:
 			continue
 		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
+		appended += 1
 	# Backfilled history appears instantly — only new live output is quill-written.
 	# Cap the instant reveal at the backfill's own end so it can never race
 	# ahead of and short-circuit a live chunk appended below it.
@@ -262,6 +392,8 @@ func _on_history_backfill(agent_id: String, chunks: Array) -> void:
 	_pending_live_chunks = []
 	for chunk: BridgeData.AgentOutputChunk in pending:
 		_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
+	if appended == 0 and pending.is_empty():
+		_enable_snapshot_mode()
 
 
 func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
@@ -273,8 +405,66 @@ func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
 		# short-circuited by the backfill's instant visible_characters set.
 		_pending_live_chunks.append(chunk)
 		return
+	if _snapshot_mode:
+		# Line-oriented output arrived after all, so leave the pane snapshot
+		# behind and start the real history from this chunk.
+		_disable_snapshot_mode()
+		_history.clear()
+		_history.visible_characters = 0
 	_history.append_text(AnsiSepiaParser.to_bbcode(chunk.payload) + "\n")
 	# visible_characters is left behind on purpose — _process() advances it.
+
+
+# ---------------------------------------------------------------------------
+# Snapshot mode (interactive CLI agents with no line-oriented history)
+# ---------------------------------------------------------------------------
+
+func _enable_snapshot_mode() -> void:
+	if _snapshot_mode or _bridge == null or _agent_id.is_empty():
+		return
+	if not _bridge.has_method("fetch_agent_screen"):
+		return
+	_snapshot_mode = true
+	if _snapshot_timer == null:
+		var timer: Timer = Timer.new()
+		timer.name = "ScreenPoll"
+		timer.wait_time = SCREEN_POLL_SECONDS
+		timer.timeout.connect(_on_snapshot_tick)
+		add_child(timer)
+		_snapshot_timer = timer
+	_snapshot_timer.start()
+	_on_snapshot_tick()
+
+
+func _disable_snapshot_mode() -> void:
+	_snapshot_mode = false
+	if _snapshot_timer != null and is_instance_valid(_snapshot_timer):
+		_snapshot_timer.stop()
+
+
+func _on_snapshot_tick() -> void:
+	if not _snapshot_mode or _bridge == null or _agent_id.is_empty():
+		return
+	_bridge.call("fetch_agent_screen", _agent_id)
+
+
+## Full-pane snapshot replace, the same contract TerminalView uses. An empty
+## payload means a transient failure, so the last good frame stays on screen.
+func _on_screen_snapshot(agent_id: String, text: String) -> void:
+	if not _snapshot_mode or agent_id != _agent_id or _history == null:
+		return
+	if text == "":
+		return
+	# The scroll is a reading surface: the CLI's input box and statusline at
+	# the pane bottom are chrome, so they go before the sepia render.
+	var trimmed: String = AnsiSgrScanner.trim_blank_lines(AnsiSgrScanner.strip_bottom_chrome(text))
+	if trimmed == "":
+		return
+	_history.clear()
+	_history.append_text(AnsiSepiaParser.to_bbcode(trimmed))
+	# A snapshot is a redraw of the whole pane, not new writing, so it appears
+	# at once and the quill stays down.
+	_history.visible_characters = _history.get_total_character_count()
 
 
 func _on_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:

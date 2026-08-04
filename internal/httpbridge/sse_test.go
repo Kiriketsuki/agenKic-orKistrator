@@ -440,3 +440,85 @@ func TestSSE_ReceivesStateChangedEvent(t *testing.T) {
 	}
 	t.Fatal("never received agent.state_changed event")
 }
+
+// A floor event for a per-agent tmux session must never reach the UI, which
+// would otherwise draw one tower floor per interactive CLI agent (Task D).
+func TestSSE_SkipsAgentSessionFloorEvents(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	ctx := context.Background()
+	_ = store.PublishEvent(ctx, state.Event{Type: "floor_created", Payload: "agent-abc", Timestamp: 1})
+	_ = store.PublishEvent(ctx, state.Event{Type: "floor_removed", Payload: "agent-abc", Timestamp: 2})
+	_ = store.PublishEvent(ctx, state.Event{Type: "floor_created", Payload: "archive", Timestamp: 3})
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(reqCtx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "agent-abc") {
+			t.Fatalf("agent session leaked into the SSE stream: %s", line)
+		}
+		if strings.Contains(line, "archive") {
+			return // the real floor still arrives
+		}
+	}
+	t.Fatal("never received the floor.created event for archive")
+}
+
+// The fantasy name recorded at spawn time rides along on agent SSE payloads
+// so the UI can label a worker without a REST refresh (Task D).
+func TestSSE_AgentEventsCarrySpawnName(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) { return "agent-77", nil }))
+
+	server := httptest.NewServer(bridge)
+	defer server.Close()
+
+	spawnResp, err := http.Post(server.URL+"/api/agents/spawn", "application/json",
+		strings.NewReader(`{"kind":"sim","name":"Thornquill"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spawnResp.Body.Close()
+
+	_ = store.PublishEvent(context.Background(), state.Event{
+		Type:      "agent_registered",
+		AgentID:   "agent-77",
+		Timestamp: 1,
+	})
+
+	reqCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(reqCtx, "GET", server.URL+"/events/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") || !strings.Contains(line, "agent-77") {
+			continue
+		}
+		if !strings.Contains(line, `"name":"Thornquill"`) {
+			t.Fatalf("agent payload missing the spawn name: %s", line)
+		}
+		return
+	}
+	t.Fatal("never received an agent payload for agent-77")
+}

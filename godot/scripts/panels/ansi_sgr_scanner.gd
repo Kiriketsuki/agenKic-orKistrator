@@ -10,6 +10,12 @@
 #   and bold (1); everything else collapses to a single reset (0).
 # - All other CSI sequences (cursor movement, erase, etc.) and stray `\r` are
 #   stripped silently — they have no rendering equivalent in a RichTextLabel.
+# - OSC sequences (ESC ] ... terminated by BEL or ESC backslash) are consumed
+#   whole. Claude Code emits OSC 8 hyperlinks and OSC 0/2 title updates, and a
+#   scanner that only knows CSI leaks their payload as literal text. The
+#   visible link text sits between the two OSC 8 sequences, so it survives.
+# - The other string escapes (DCS, SOS, PM, APC), the charset-designation
+#   escapes, and every remaining two-byte escape are consumed the same way.
 #
 # Pure static functions, no shared mutable state.
 
@@ -17,6 +23,18 @@ class_name AnsiSgrScanner
 
 ## Unicode codepoint for ESC (0x1B) — CSI sequences are ESC followed by `[`.
 const ESC_CODE: int = 0x1B
+
+## Unicode codepoint for BEL (0x07). BEL terminates an OSC sequence in the
+## xterm form that Claude Code and tmux both emit.
+const BEL_CODE: int = 0x07
+
+## Escape introducers that start a string sequence terminated by ST or BEL:
+## OSC (`]`), DCS (`P`), SOS (`X`), PM (`^`), APC (`_`).
+const STRING_INTRODUCERS: String = "]PX^_"
+
+## Escape introducers that take one more byte after the introducer, such as
+## the charset designation `ESC ( B`.
+const TWO_BYTE_INTRODUCERS: String = "()*+-./"
 
 ## Standard xterm 16-color palette for the standard SGR foreground codes
 ## (30-37 normal, 90-97 bright). Used by the T10 raw-terminal read-only
@@ -61,29 +79,38 @@ static func to_bbcode(raw: String, palette: Dictionary, default_color: String) -
 	var open_tags: bool = false
 	while i < length:
 		var ch: String = raw[i]
-		if ch.unicode_at(0) == ESC_CODE and i + 1 < length and raw[i + 1] == "[":
-			var end: int = i + 2
-			while end < length and not _is_final_byte(raw[end]):
-				end += 1
-			if end >= length:
-				# Unterminated sequence at the end of this chunk — drop the remainder.
+		if ch.unicode_at(0) == ESC_CODE:
+			if i + 1 < length and raw[i + 1] == "[":
+				var end: int = i + 2
+				while end < length and not _is_final_byte(raw[end]):
+					end += 1
+				if end >= length:
+					# Unterminated sequence at the end of this chunk — drop the remainder.
+					break
+				var final_byte: String = raw[end]
+				if final_byte == "m":
+					var params_str: String = raw.substr(i + 2, end - (i + 2))
+					var result: Dictionary = _apply_sgr(params_str, current_color, bold, palette, default_color)
+					var new_color: String = result["color"]
+					var new_bold: bool = result["bold"]
+					if new_color != current_color or new_bold != bold:
+						if open_tags:
+							out += _close_tags(bold)
+							open_tags = false
+						current_color = new_color
+						bold = new_bold
+				# Every other CSI sequence (cursor movement, erase-line, etc.) is stripped.
+				i = end + 1
+				continue
+			# Every non-CSI escape carries no color state, so the scanner only
+			# needs to know where it ends.
+			var next_index: int = _consume_non_csi_escape(raw, i)
+			if next_index < 0:
+				# Unterminated escape at the end of this chunk — drop the remainder.
 				break
-			var final_byte: String = raw[end]
-			if final_byte == "m":
-				var params_str: String = raw.substr(i + 2, end - (i + 2))
-				var result: Dictionary = _apply_sgr(params_str, current_color, bold, palette, default_color)
-				var new_color: String = result["color"]
-				var new_bold: bool = result["bold"]
-				if new_color != current_color or new_bold != bold:
-					if open_tags:
-						out += _close_tags(bold)
-						open_tags = false
-					current_color = new_color
-					bold = new_bold
-			# Every other CSI sequence (cursor movement, erase-line, etc.) is stripped.
-			i = end + 1
+			i = next_index
 			continue
-		if ch == "\r":
+		if ch == "\r" or ch.unicode_at(0) == BEL_CODE:
 			i += 1
 			continue
 		if not open_tags:
@@ -101,6 +128,136 @@ static func to_bbcode(raw: String, palette: Dictionary, default_color: String) -
 	if open_tags:
 		out += _close_tags(bold)
 	return out
+
+
+## Returns the index just past the escape sequence that starts at `start`
+## (where `raw[start]` is ESC and `raw[start + 1]` is not `[`), or -1 when the
+## sequence runs off the end of this chunk.
+static func _consume_non_csi_escape(raw: String, start: int) -> int:
+	var length: int = raw.length()
+	if start + 1 >= length:
+		return -1
+	var introducer: String = raw[start + 1]
+	if STRING_INTRODUCERS.find(introducer) != -1:
+		# OSC and friends run until BEL or ST (ESC backslash). OSC 8 puts the
+		# visible link text outside the sequence, so nothing visible is lost.
+		var scan: int = start + 2
+		while scan < length:
+			var code: int = raw[scan].unicode_at(0)
+			if code == BEL_CODE:
+				return scan + 1
+			if code == ESC_CODE:
+				if scan + 1 >= length:
+					return -1
+				if raw[scan + 1] == "\\":
+					return scan + 2
+				# A bare ESC inside the payload means the sequence was never
+				# terminated. Resume scanning at that ESC.
+				return scan
+			scan += 1
+		return -1
+	if TWO_BYTE_INTRODUCERS.find(introducer) != -1:
+		if start + 2 >= length:
+			return -1
+		return start + 3
+	return start + 2
+
+
+## Strips every escape sequence and returns the visible text. Callers use this
+## to decide whether a pane-snapshot line carries any content.
+static func visible_text(raw: String) -> String:
+	if raw.is_empty():
+		return ""
+	var out: String = ""
+	var length: int = raw.length()
+	var i: int = 0
+	while i < length:
+		var ch: String = raw[i]
+		if ch.unicode_at(0) == ESC_CODE:
+			if i + 1 < length and raw[i + 1] == "[":
+				var end: int = i + 2
+				while end < length and not _is_final_byte(raw[end]):
+					end += 1
+				if end >= length:
+					break
+				i = end + 1
+				continue
+			var next_index: int = _consume_non_csi_escape(raw, i)
+			if next_index < 0:
+				break
+			i = next_index
+			continue
+		if ch == "\r" or ch.unicode_at(0) == BEL_CODE:
+			i += 1
+			continue
+		out += ch
+		i += 1
+	return out
+
+
+## Drops the leading and trailing lines of a pane snapshot that carry no
+## visible glyphs. tmux capture-pane returns the whole pane rectangle, so a
+## short TUI frame arrives padded with empty rows. Those rows render as a large
+## blank region in the panel.
+static func trim_blank_lines(raw: String) -> String:
+	if raw.is_empty():
+		return ""
+	var lines: PackedStringArray = raw.split("\n")
+	var first: int = 0
+	var last: int = lines.size() - 1
+	while first <= last and visible_text(lines[first]).strip_edges() == "":
+		first += 1
+	while last >= first and visible_text(lines[last]).strip_edges() == "":
+		last -= 1
+	if first > last:
+		return ""
+	return "\n".join(lines.slice(first, last + 1))
+
+
+## Bottom-of-pane window, in rows, that strip_bottom_chrome inspects. A CLI's
+## input box plus statusline fits well inside this.
+const _CHROME_WINDOW: int = 12
+
+## Characters that make up a horizontal rule or box border in a TUI frame.
+const _RULE_CHARS: String = "─━═╌┄┈–—_╭╮╰╯┌┐└┘│┼┤├❯>"
+
+
+## Drops the input box and statusline a CLI such as Claude Code draws at the
+## bottom of its pane. The scroll view is a reading surface, so that chrome
+## is noise there. The heuristic: within the bottom _CHROME_WINDOW rows, the
+## topmost full-width rule line is the input box's top border. Everything
+## from that line down is chrome and goes. A frame with no such rule line
+## comes back unchanged.
+static func strip_bottom_chrome(raw: String) -> String:
+	if raw.is_empty():
+		return ""
+	var lines: PackedStringArray = raw.split("\n")
+	var last: int = lines.size() - 1
+	while last >= 0 and visible_text(lines[last]).strip_edges() == "":
+		last -= 1
+	if last < 0:
+		return ""
+	var cut: int = -1
+	var lowest: int = maxi(0, last - _CHROME_WINDOW + 1)
+	for i: int in range(last, lowest - 1, -1):
+		if _is_rule_line(lines[i]):
+			cut = i
+	if cut == -1:
+		return "\n".join(lines.slice(0, last + 1))
+	return "\n".join(lines.slice(0, cut))
+
+
+## A line whose visible text is long and consists almost entirely of rule and
+## box-border characters. That is a TUI border row, never prose.
+static func _is_rule_line(line: String) -> bool:
+	var vis: String = visible_text(line).strip_edges()
+	if vis.length() < 20:
+		return false
+	var rule_count: int = 0
+	for i: int in range(vis.length()):
+		if _RULE_CHARS.contains(vis[i]):
+			rule_count += 1
+	return float(rule_count) >= 0.9 * float(vis.length())
 
 
 static func _is_final_byte(ch: String) -> bool:

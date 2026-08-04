@@ -15,15 +15,30 @@ signal floors_changed()
 signal agent_activity_changed()
 
 const FLOOR_SCENE: PackedScene = preload("res://scenes/floor_scene.tscn")
+
+## Phase 4 per-floor dressing, keyed by floor name. The tile names the band B
+## texture, the wash names the multiply tint over bands A and B.
+const FLOOR_DRESSING: Dictionary = {
+	"main": {"tile": "stone_floor", "wall": "wall_moss", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+	"archive": {"tile": "stone_floor", "wall": "stone_wall", "wash": Color(0.180, 0.204, 0.282, 1.0)},
+	"orkistrator": {"tile": "wood_floor", "wall": "stone_wall", "wash": Color(0.290, 0.227, 0.180, 1.0)},
+	"_default": {"tile": "stone_floor", "wall": "stone_wall", "wash": Color(0.227, 0.290, 0.227, 1.0)},
+}
 const FOCUSED_SCALE: float = 1.0
 const ADJACENT_SCALE: float = 0.4
-const ZOOM_MIN: float = 0.5
-const ZOOM_MAX: float = 2.0
-const ZOOM_STEP: float = 0.1
+## PARITY (2026-08-04) — the tower world lives in 1x art pixels and the camera
+## is the only magnifier. Zoom is always an integer from this set, so the pixel
+## grid never shimmers. 6 is the 1080p base (1080 / 180 = 6).
+const ZOOM_LEVELS: Array[int] = [4, 5, 6, 8]
 const MAX_QUEUE_SIZE: int = 2
+## Art-px world truth. These are absolute, never derived from viewport size.
 const BASE_FLOOR_WIDTH: float = 280.0
 const BASE_FLOOR_HEIGHT: float = 40.0
 const BASE_TOWER_RADIUS: float = 40.0
+const FLOOR_SPACING: float = 56.0
+## Demo refocus timing. Position, scale and alpha all move together over this
+## duration with an expo ease out. No overshoot anywhere.
+const REFOCUS_DUR: float = 0.55
 
 @export var config_path: String = "res://config/tower.json"
 
@@ -31,31 +46,67 @@ var _config: TowerConfig
 var _floors: Array[Node2D] = []  # ordered bottom to top
 var _focused_index: int = 0
 var _agent_assignments: Dictionary = {}  # agent_id → {floor: String, edge: int}
+## T15 (#124) — per-floor ring of recent-completion unix timestamps, used for
+## the honest task_throughput_norm proxy. Keyed by floor_name. See
+## FloorMorph's doc-comment for the full honest-metric rationale: this is a
+## client-observed "completions per window" signal, not tokens/sec, because
+## no real cost data reaches the client (or the orchestrator's store) today.
+var _floor_completion_rings: Dictionary = {}
+## T15 (#124) council finding — periodic sweep so composite_load (and
+## therefore polygon side count) decays even when no new agent event fires.
+## Only floors with a non-empty completion ring are touched each tick.
+var _load_recompute_timer: Timer = null
 var _scroll_tween: Tween = null
 var _fisheye_tween: Tween = null
 var _overscroll_tween: Tween = null
 var _is_overscrolling: bool = false
 var _input_queue: Array[int] = []
-var _floor_spacing: float = 50.0
+var _floor_spacing: float = FLOOR_SPACING
 var _floor_width: float = BASE_FLOOR_WIDTH
 var _floor_height: float = BASE_FLOOR_HEIGHT
 var _tower_radius: float = BASE_TOWER_RADIUS
 var _master_region: Rect2 = Rect2()
+## True once the user ctrl-zooms away from the viewport-derived base level. A
+## resize then keeps their chosen zoom instead of snapping back.
+var _user_zoom_override: bool = false
+## Per-floor in-flight edge-rotate tween, killed on re-click to prevent drift.
+var _edge_tweens: Dictionary = {}
+## State of a multi-edge walk started by rotate_focused_to_edge.
+var _edge_walk_dir: int = 0
+var _edge_walk_steps: int = 0
+## The floor the walk belongs to. The walk finishes on the floor the user
+## clicked, so a focus change part way through never redirects the remaining
+## steps onto another floor.
+var _edge_walk_floor: Node2D = null
 
 @onready var _floors_container: Node2D = $FloorsContainer
 @onready var _camera: Camera2D = $Camera
+## Phase 6 section 4. Fades the bottom of the stair shaft into the treeline.
+const BASE_FADE_SHADER: Shader = preload("res://shaders/base_fade.gdshader")
+## How many pixels of the shaft bottom the fade covers.
+const SHAFT_FADE_PX: float = 32.0
+
+var _shaft_fade_material: ShaderMaterial = null
+
 @onready var _tower_exterior: Node2D = $TowerExterior
+@onready var _stair_shaft: Sprite2D = $StairShaft
 
 
 func _ready() -> void:
 	_config = TowerConfig.from_file(config_path)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	_apply_base_zoom()
 	_spawn_permanent_floors()
 	_recalculate_layout_metrics()
 	_layout_floors()
 	_update_tower_frame()
 	_apply_fisheye_layout()
 	_sync_tower_exterior()
+	_load_recompute_timer = Timer.new()
+	_load_recompute_timer.wait_time = maxf(_config.load_recompute_interval_sec, 0.1)
+	_load_recompute_timer.autostart = true
+	_load_recompute_timer.timeout.connect(_on_load_recompute_timer_timeout)
+	add_child(_load_recompute_timer)
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -85,13 +136,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.pressed:
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				if mb.ctrl_pressed:
-					_zoom(-ZOOM_STEP)
+					_zoom(-1)
 				else:
 					_scroll_focus(1)
 				get_viewport().set_input_as_handled()
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.ctrl_pressed:
-					_zoom(ZOOM_STEP)
+					_zoom(1)
 				else:
 					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()
@@ -121,7 +172,23 @@ func _create_floor(floor_name: String, label: String, permanent: bool) -> Node2D
 	instance.floor_label = label
 	instance.is_permanent = permanent
 	instance.polygon_sides = _config.polygon_sides
+	# Phase 4 — per-floor identity: floor tile and multiply wash tint.
+	var dressing: Dictionary = FLOOR_DRESSING.get(floor_name, FLOOR_DRESSING["_default"])
+	instance.floor_tile = dressing["tile"]
+	instance.wall_texture = dressing.get("wall", "stone_wall")
+	instance.wash_tint = dressing["wash"]
 	instance.set_meta("floor_name", floor_name)
+	if instance.has_method("configure_load_params"):
+		instance.configure_load_params(
+			_config.min_sides, _config.max_sides,
+			_config.breathe_min_scale, _config.breathe_max_scale,
+			_config.bucket_hysteresis
+		)
+	# T17 (#127) acceptance #5 — threads the global particle budget cap once
+	# per floor (not per agent — see FloorScene.configure_particle_budget()
+	# doc-comment).
+	if instance.has_method("configure_particle_budget"):
+		instance.configure_particle_budget(_config.max_particles_per_agent)
 	instance.agent_clicked.connect(func(agent_id: String) -> void:
 		agent_panel_requested.emit(agent_id)
 	)
@@ -144,6 +211,46 @@ func _layout_floors() -> void:
 		_floors[i].position = Vector2(0.0, i * -_floor_spacing)
 		if _floors[i].has_method("set_floor_dimensions"):
 			_floors[i].set_floor_dimensions(_floor_width, _floor_height)
+	_update_stair_shaft()
+
+
+## Tiles stair_shaft.png vertically on the tower axis so the floor stack reads
+## as one building instead of separate floating plates. The sprite spans the
+## bottom slab bottom to the top slab top, and sits behind FloorsContainer in
+## scene order.
+func _update_stair_shaft() -> void:
+	if _stair_shaft == null:
+		return
+	if _floors.is_empty():
+		_stair_shaft.visible = false
+		return
+	var tex: Texture2D = _stair_shaft.texture
+	if tex == null:
+		_stair_shaft.visible = false
+		return
+	var shaft_w: float = tex.get_width()
+	var span: float = (_floors.size() - 1) * _floor_spacing + _floor_height
+	_stair_shaft.visible = true
+	_stair_shaft.centered = false
+	_stair_shaft.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_stair_shaft.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_stair_shaft.region_enabled = true
+	_stair_shaft.region_rect = Rect2(0.0, 0.0, shaft_w, span)
+	# Top slab top edge, in Tower-local coords.
+	var top_y: float = -(_floors.size() - 1) * _floor_spacing - _floor_height / 2.0
+	_stair_shaft.position = Vector2(-shaft_w / 2.0, top_y)
+	# Phase 5 section 4 — the shaft sits behind the rooms, so it recedes
+	# instead of reading as a monolith in front of the sky.
+	_stair_shaft.modulate = Color(0.8, 0.8, 0.8, 1.0)
+	# Phase 6 section 4 — the last SHAFT_FADE_PX of the shaft fade to nothing, so
+	# the tower has no hard bottom edge under the treeline. Local Y on this
+	# sprite runs from 0 at the top to span at the bottom.
+	if _shaft_fade_material == null:
+		_shaft_fade_material = ShaderMaterial.new()
+		_shaft_fade_material.shader = BASE_FADE_SHADER
+		_stair_shaft.material = _shaft_fade_material
+	_shaft_fade_material.set_shader_parameter("fade_start_y", span - SHAFT_FADE_PX)
+	_shaft_fade_material.set_shader_parameter("fade_end_y", span)
 
 
 ## Tweens scale and opacity of all floors based on distance from _focused_index.
@@ -169,9 +276,13 @@ func _apply_fisheye_layout() -> void:
 			target_scale = Vector2(ADJACENT_SCALE * 0.6, ADJACENT_SCALE * 0.6)
 			target_alpha = 0.4
 			show_interior = false
-		_fisheye_tween.tween_property(floor_node, "scale", target_scale, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		_fisheye_tween.tween_property(floor_node, "modulate:a", target_alpha, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		_fisheye_tween.tween_property(floor_node, "scale", target_scale, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		_fisheye_tween.tween_property(floor_node, "modulate:a", target_alpha, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		floor_node.set_show_interior(show_interior)
+		# Dressing follows the same distance rule. At distance 2 or more the
+		# windows and torches drop below one screen pixel and read as noise.
+		if floor_node.has_method("set_show_dressing"):
+			floor_node.set_show_dressing(distance < 2)
 
 
 func _scroll_focus(direction: int) -> void:
@@ -199,7 +310,7 @@ func _do_scroll_tween() -> void:
 	_is_overscrolling = false
 	_scroll_tween = create_tween()
 	var target_y: float = _focused_index * -_floor_spacing
-	_scroll_tween.tween_property(_camera, "position:y", target_y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_scroll_tween.tween_property(_camera, "position:y", target_y, REFOCUS_DUR).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	_scroll_tween.tween_callback(_on_scroll_tween_finished)
 	_apply_fisheye_layout()
 	floor_focus_changed.emit(_focused_index)
@@ -221,7 +332,7 @@ func _elastic_overscroll(direction: int) -> void:
 		_overscroll_tween.kill()
 	_overscroll_tween = create_tween()
 	_overscroll_tween.tween_property(_camera, "position:y", overshoot_y, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_overscroll_tween.tween_property(_camera, "position:y", original_y, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_overscroll_tween.tween_callback(func() -> void: _is_overscrolling = false)
 
 
@@ -258,6 +369,10 @@ func get_floor_infos() -> Array[Dictionary]:
 		var label: String = floor_node.floor_label if floor_node.floor_label != "" else floor_node.floor_name
 		var agent_count: int = floor_node.get_agent_count() if floor_node.has_method("get_agent_count") else 0
 		var active_count: int = floor_node.get_active_count() if floor_node.has_method("get_active_count") else 0
+		# T15 (#124) — additive-only keys; existing consumers (minimap.gd,
+		# floor_tabs.gd, quest_board_view.gd) all read via Dictionary.get with
+		# defaults, so these are safe to add without touching those files.
+		var composite_load: float = floor_node.get_composite_load() if floor_node.has_method("get_composite_load") else 0.0
 		infos.append({
 			"index": i,
 			"name": floor_node.get_meta("floor_name", ""),
@@ -265,32 +380,136 @@ func get_floor_infos() -> Array[Dictionary]:
 			"agent_count": agent_count,
 			"active_count": active_count,
 			"is_permanent": floor_node.is_permanent,
+			"composite_load": composite_load,
+			"polygon_sides": floor_node.polygon_sides,
 		})
 	return infos
 
 
-func _zoom(amount: float) -> void:
-	var new_zoom: float = clampf(_camera.zoom.x + amount, ZOOM_MIN, ZOOM_MAX)
-	_camera.zoom = Vector2(new_zoom, new_zoom)
+## Snaps the camera to the base zoom for the current viewport height. The base
+## is floorf(viewport_h / 180) pulled down to the nearest ZOOM_LEVELS entry at
+## or below it, so 1080p lands on 6 and a small window still gets 4.
+func _apply_base_zoom() -> void:
+	if _user_zoom_override:
+		return
+	# Zoom derives from the DESIGN canvas (1080 -> 6), not the OS window: the
+	# canvas_items stretch already maps design px to window px, so using the
+	# window height here would double-scale (a 1066px tile picked 5, not 6).
+	var raw: float = floorf(get_tree().root.content_scale_size.y / 180.0)
+	if raw < 1.0:
+		raw = floorf(get_viewport_rect().size.y / 180.0)
+	var z: int = ZOOM_LEVELS[0]
+	for level: int in ZOOM_LEVELS:
+		if float(level) <= raw:
+			z = level
+	_camera.zoom = Vector2(z, z)
 
 
-func _rotate_focused_edge(direction: int) -> void:
+## Steps one entry through ZOOM_LEVELS. Zoom is never fractional.
+func _zoom(direction: int) -> void:
+	var current: int = _nearest_zoom_index()
+	var next: int = clampi(current + signi(direction), 0, ZOOM_LEVELS.size() - 1)
+	if next == current:
+		return
+	var z: int = ZOOM_LEVELS[next]
+	_camera.zoom = Vector2(z, z)
+	_user_zoom_override = true
+	# The offset formula divides by zoom.x, so a new zoom invalidates the old offset.
+	_aim_camera_at_region()
+
+
+func _nearest_zoom_index() -> int:
+	var best: int = 0
+	var best_delta: float = INF
+	for i: int in range(ZOOM_LEVELS.size()):
+		var delta: float = absf(float(ZOOM_LEVELS[i]) - _camera.zoom.x)
+		if delta < best_delta:
+			best_delta = delta
+			best = i
+	return best
+
+
+## Turns the focused floor to an absolute edge index, the short way round.
+## Phase 6 section 3 — the edge dots call this on a click. The turn walks one
+## edge per step, so it reuses the same rotate path the keyboard uses and the
+## prism sweeps continuously instead of jumping.
+func rotate_focused_to_edge(edge: int) -> void:
 	if _floors.is_empty() or _focused_index >= _floors.size():
 		return
 	var floor_node: Node2D = _floors[_focused_index]
+	var sides: int = maxi(int(floor_node.polygon_sides), 3)
+	var target: int = posmod(edge, sides)
+	var delta: int = target - int(floor_node.get_active_edge())
+	# Wrap the step into [-sides/2, sides/2], so a 5 to 0 move turns one step
+	# forward instead of five steps back.
+	var half: int = sides / 2
+	while delta > half:
+		delta -= sides
+	while delta < -half:
+		delta += sides
+	if delta == 0:
+		return
+	_edge_walk_dir = signi(delta)
+	_edge_walk_steps = absi(delta)
+	_edge_walk_floor = floor_node
+	_advance_edge_walk()
+
+
+## Runs one step of a multi-edge walk, then queues the next step when the turn
+## settles.
+func _advance_edge_walk() -> void:
+	if _edge_walk_steps <= 0:
+		return
+	if _edge_walk_floor == null or not is_instance_valid(_edge_walk_floor):
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+		return
+	_edge_walk_steps -= 1
+	var floor_node: Node2D = _edge_walk_floor
+	_rotate_floor_edge(floor_node, _edge_walk_dir)
+	var tween: Tween = _edge_tweens.get(floor_node)
+	if tween == null or not tween.is_valid():
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+		return
+	tween.finished.connect(_advance_edge_walk, CONNECT_ONE_SHOT)
+
+
+func _rotate_focused_edge(direction: int, from_walk: bool = false) -> void:
+	if not from_walk:
+		# A direct turn cancels any walk still in flight, so the two inputs
+		# never fight over the same floor.
+		_edge_walk_steps = 0
+		_edge_walk_floor = null
+	if _floors.is_empty() or _focused_index >= _floors.size():
+		return
+	_rotate_floor_edge(_floors[_focused_index], direction)
+
+
+## Turns one named floor by one edge. The walk and the keyboard both come here,
+## so the per-floor kill discipline stays in one place.
+func _rotate_floor_edge(floor_node: Node2D, direction: int) -> void:
+	if floor_node == null or not is_instance_valid(floor_node):
+		return
 	var current_edge: int = floor_node.get_active_edge()
-	var new_edge: int = (current_edge + direction) % _config.polygon_sides
+	# T15 (#124) council finding — floor_node.polygon_sides is now dynamic
+	# (6..12, driven by composite_load) rather than the static _config value,
+	# so rotation must wrap against the focused floor's own current side
+	# count. Wrapping against _config.polygon_sides (always 6) would make
+	# edges above index 5 unreachable once this floor has morphed larger.
+	var sides: int = floor_node.polygon_sides
+	var new_edge: int = (current_edge + direction) % sides
 	if new_edge < 0:
-		new_edge += _config.polygon_sides
-	var old_x: float = floor_node.position.x
-	var slide_offset: float = maxf(_master_region.size.x * 0.18, 320.0) * (-direction)
-	var tween: Tween = create_tween()
-	tween.tween_property(floor_node, "position:x", old_x + slide_offset, 0.15)
-	tween.tween_callback(func() -> void:
-		floor_node.set_active_edge(new_edge)
-		floor_node.position.x = old_x - slide_offset
-	)
-	tween.tween_property(floor_node, "position:x", old_x, 0.15)
+		new_edge += sides
+	# Phase 4: the floor node itself never moves. FloorScene.rotate_to_edge
+	# turns the interior carousel and scrolls the wall band. The manager keeps
+	# only the per-floor kill discipline, so spam clicks cannot stack tweens.
+	var prev: Tween = _edge_tweens.get(floor_node)
+	if prev != null and prev.is_valid():
+		prev.kill()
+	var tween: Tween = floor_node.rotate_to_edge(new_edge, direction)
+	_edge_tweens[floor_node] = tween
+	tween.finished.connect(func() -> void: _edge_tweens.erase(floor_node))
 
 
 # --- Signal Handlers ---
@@ -330,6 +549,7 @@ func _on_floor_removed(floor_name: String) -> void:
 				# below the focus is removed and the array shifts.
 				var focused_floor: Node2D = _floors[_focused_index] if _focused_index < _floors.size() else null
 				_floors.erase(floor_node)
+				_floor_completion_rings.erase(floor_name)
 				if focused_floor != null and focused_floor != floor_node:
 					var new_index: int = _floors.find(focused_floor)
 					_focused_index = new_index if new_index != -1 else clampi(_focused_index, 0, maxi(_floors.size() - 1, 0))
@@ -361,7 +581,13 @@ func _on_agent_registered(agent_data: BridgeData.AgentData) -> void:
 			"librarian", "enchanter", "apprentice",
 		]
 		char_class = classes[absi(agent_data.id.hash()) % classes.size()]
-	assign_agent_to_edge(agent_data.id, floor_name, edge, char_class, agent_data.provider)
+	# T16 (#125) HONEST-MINIMAL power level — see palette_math.gd doc-comment.
+	# No real per-agent tier signal reaches the client yet; class_power_levels
+	# is an optional config demo scaffold, falling back to default_power_level.
+	var power_level: float = _config.class_power_levels.get(
+		char_class, _config.default_power_level
+	)
+	assign_agent_to_edge(agent_data.id, floor_name, edge, char_class, agent_data.provider, power_level)
 
 
 func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:
@@ -372,6 +598,29 @@ func _on_agent_state_changed(agent_id: String, _old_state: String, new_state: St
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
 			floor_node.update_agent_state(agent_id, new_state)
+			# T15 (#124) honest throughput proxy — a transition into "idle" is
+			# treated as an observed completion. This is a client-observed
+			# state-machine signal, not a real cost/throughput metric; see
+			# FloorMorph's doc-comment for why token_cost_norm is dropped
+			# entirely rather than faked from this.
+			#
+			# KNOWN LIMITATION (council finding, #124) — a task_cancelled SSE
+			# event maps onto this exact same {state:"idle", no TaskID} shape
+			# (see internal/httpbridge/sse.go case "task_cancelled": it reuses
+			# SSEAgentStateChanged with State "idle" precisely so no new
+			# frontend handler is needed). The client has no signal that lets
+			# it tell a genuine completion apart from a cancellation here, so
+			# a cancelled task is counted as a completion and can inflate
+			# task_throughput_norm. Fixing this honestly would require the
+			# orchestrator to emit a distinct event type — out of scope for a
+			# client-only fix, and not worth inventing partial plumbing (e.g.
+			# subtracting only client-initiated /cancel calls via
+			# BridgeManager.command_succeeded would race the SSE event and
+			# only cover cancels issued from this client, not other clients
+			# or reassigns). Documented and accepted as-is.
+			if new_state == "idle":
+				_record_floor_completion(floor_name)
+			_recompute_floor_load(floor_name)
 			agent_activity_changed.emit()
 			return
 
@@ -392,6 +641,7 @@ func _on_agent_deregistered(agent_id: String) -> void:
 				timer.timeout.connect(func() -> void:
 					if is_instance_valid(floor_node):
 						floor_node.remove_agent_slot(agent_id)
+						_recompute_floor_load(floor_name)
 					_agent_assignments.erase(agent_id)
 					floors_changed.emit()
 				)
@@ -399,6 +649,7 @@ func _on_agent_deregistered(agent_id: String) -> void:
 				# Agent is on a non-active edge — remove immediately.
 				floor_node.remove_agent_slot(agent_id)
 				_agent_assignments.erase(agent_id)
+				_recompute_floor_load(floor_name)
 				floors_changed.emit()
 			return
 	_agent_assignments.erase(agent_id)
@@ -428,13 +679,14 @@ func _on_connection_status_changed(status: String) -> void:
 
 # --- Agent Assignment ---
 
-func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice", provider: String = "") -> void:
+func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int, character_class: String = "apprentice", provider: String = "", power_level: float = 0.0) -> void:
 	_agent_assignments[agent_id] = {"floor": floor_name, "edge": edge_index}
 	for floor_node: Node2D in _floors:
 		if floor_node.get_meta("floor_name", "") == floor_name:
-			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider)
+			floor_node.add_agent_slot(agent_id, edge_index, character_class, provider, power_level)
 			if floor_node.get_floor_state() == floor_node.FloorState.LINGERING:
 				floor_node.reactivate()
+			_recompute_floor_load(floor_name)
 			floors_changed.emit()
 			return
 
@@ -442,6 +694,70 @@ func assign_agent_to_edge(agent_id: String, floor_name: String, edge_index: int,
 ## Agents per edge before spilling onto the next edge. Keeps new spawns on
 ## the currently visible edge so they appear on screen immediately.
 const PREFERRED_EDGE_CAPACITY: int = 5
+
+
+# --- T15 (#124) — composite_load aggregation ---
+#
+# HONEST-MINIMAL, per the T14 precedent: composite_load = w_active *
+# active_agents_norm + w_thru * task_throughput_norm, with token_cost_norm
+# dropped (no data source anywhere in the orchestrator — see
+# FloorMorph's doc-comment) and the remaining weights renormalized from the
+# spec's 0.4/0.3/0.3 to 0.4/(0.4+0.3) and 0.3/(0.4+0.3).
+const _LOAD_WEIGHT_ACTIVE: float = 0.4 / 0.7
+const _LOAD_WEIGHT_THROUGHPUT: float = 0.3 / 0.7
+
+
+## Appends a completion timestamp to floor_name's rolling ring and prunes
+## anything older than the configured throughput window.
+func _record_floor_completion(floor_name: String) -> void:
+	var now: float = Time.get_unix_time_from_system()
+	var ring: Array = _floor_completion_rings.get(floor_name, [])
+	ring.append(now)
+	_floor_completion_rings[floor_name] = _prune_completion_ring(ring, now)
+
+
+func _prune_completion_ring(ring: Array, now: float) -> Array:
+	var window: float = _config.throughput_window_sec
+	return ring.filter(func(ts: float) -> bool: return now - ts <= window)
+
+
+## T15 (#124) council finding — composite_load is otherwise only recomputed
+## from _recompute_floor_load() calls triggered by agent register/state-change
+## /deregister events, so a floor's throughput_norm (and therefore its
+## polygon side count) never decays on its own once activity stops: the ring
+## just sits there, still non-empty, with nothing left to prune it. This
+## periodic sweep re-prunes and recomputes only floors with a non-empty ring
+## — idle floors that have already fully decayed (empty ring) are skipped so
+## this stays cheap even with many floors.
+func _on_load_recompute_timer_timeout() -> void:
+	for floor_name: String in _floor_completion_rings.keys():
+		var ring: Array = _floor_completion_rings.get(floor_name, [])
+		if not ring.is_empty():
+			_recompute_floor_load(floor_name)
+
+
+## Recomputes and pushes composite_load for a single floor from data that is
+## actually available client-side today (see the honest-minimal note above).
+## Only the named floor is touched — cheap enough to call on every agent
+## register/state-change/deregister/reassign without batching.
+func _recompute_floor_load(floor_name: String) -> void:
+	var floor_node: Node2D = null
+	for candidate: Node2D in _floors:
+		if candidate.get_meta("floor_name", "") == floor_name:
+			floor_node = candidate
+			break
+	if floor_node == null or not floor_node.has_method("set_composite_load"):
+		return
+	var now: float = Time.get_unix_time_from_system()
+	var ring: Array = _prune_completion_ring(_floor_completion_rings.get(floor_name, []), now)
+	_floor_completion_rings[floor_name] = ring
+
+	var active_count: int = floor_node.get_active_count() if floor_node.has_method("get_active_count") else 0
+	var active_norm: float = clampf(float(active_count) / maxf(float(_config.load_capacity), 1.0), 0.0, 1.0)
+	var throughput_norm: float = clampf(float(ring.size()) / maxf(float(_config.throughput_cap), 1.0), 0.0, 1.0)
+
+	var composite_load: float = _LOAD_WEIGHT_ACTIVE * active_norm + _LOAD_WEIGHT_THROUGHPUT * throughput_norm
+	floor_node.set_composite_load(composite_load)
 
 
 func _find_best_edge_for_agent(floor_name: String) -> int:
@@ -488,32 +804,44 @@ func _has_floor(floor_name: String) -> bool:
 	return false
 
 
+## Panel docking calls this (see panel_manager.gd) with the screen rectangle the
+## tower still owns. Floor geometry never changes — only the camera aims, so
+## world x=0 keeps centering inside that region.
 func set_master_region(region: Rect2) -> void:
 	_master_region = region
-	_recalculate_layout_metrics()
-	_layout_floors()
-	_update_tower_frame()
-	_sync_tower_exterior()
+	_aim_camera_at_region()
+
+
+func _aim_camera_at_region() -> void:
+	if _camera == null:
+		return
+	if _master_region.size == Vector2.ZERO:
+		_camera.offset = Vector2.ZERO
+		return
+	var viewport_center: Vector2 = get_viewport_rect().size * 0.5
+	var region_center: Vector2 = _master_region.position + (_master_region.size * 0.5)
+	var zoom_x: float = maxf(_camera.zoom.x, 0.001)
+	_camera.offset = Vector2((viewport_center.x - region_center.x) / zoom_x, 0.0)
 
 
 func _on_viewport_size_changed() -> void:
+	_apply_base_zoom()
 	set_master_region(Rect2(Vector2.ZERO, get_viewport_rect().size))
 
 
+## The world is measured in art pixels, so the metrics are constants. Kept as a
+## function because several call sites still run it after structural changes.
 func _recalculate_layout_metrics() -> void:
-	if _master_region.size == Vector2.ZERO:
-		_master_region = Rect2(Vector2.ZERO, get_viewport_rect().size)
-	var viewport_size: Vector2 = _master_region.size
-	_floor_width = clampf(viewport_size.x * 0.24, BASE_FLOOR_WIDTH, 520.0)
-	_floor_height = clampf(_floor_width * 0.16, BASE_FLOOR_HEIGHT, 88.0)
-	_floor_spacing = clampf(viewport_size.y * 0.1, 50.0, 128.0)
-	_tower_radius = clampf(_floor_width * 0.14, BASE_TOWER_RADIUS, 88.0)
+	_floor_width = BASE_FLOOR_WIDTH
+	_floor_height = BASE_FLOOR_HEIGHT
+	_floor_spacing = FLOOR_SPACING
+	_tower_radius = BASE_TOWER_RADIUS
 
 
 func _update_tower_frame() -> void:
-	var center: Vector2 = _master_region.position + (_master_region.size * 0.5)
-	position = center
+	# The Tower root stays at world origin. Only the camera moves.
 	_camera.position = Vector2(0.0, _focused_index * -_floor_spacing)
+	_aim_camera_at_region()
 
 
 func _sync_tower_exterior() -> void:

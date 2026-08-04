@@ -9,6 +9,10 @@ signal agent_output(chunk: BridgeData.AgentOutputChunk)
 ## Emitted once per fetch_agent_output_history() call, with the parsed backfill
 ## as an Array[BridgeData.AgentOutputChunk] (empty on any failure/parse miss).
 signal agent_output_history(agent_id: String, chunks: Array)
+## Emitted once per fetch_agent_screen() call with the raw visible tmux pane
+## text for that agent. The payload is "" on any transport or parse failure,
+## so a consumer can keep the last good frame instead of clearing the view.
+signal agent_screen(agent_id: String, text: String)
 signal connection_status_changed(status: String)
 ## Emitted when a queued write command (submit_task, submit_dag, ...) fails —
 ## either a transport failure or a non-2xx HTTP response. `reason` is the
@@ -29,6 +33,9 @@ enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 var _connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var _agent_states: Dictionary = {}
 var _agents: Dictionary = {}
+## agent_id -> display name reported by a spawn response, applied when the
+## agent.registered event lands. See set_agent_name.
+var _pending_names: Dictionary = {}
 var _floors: Array[BridgeData.FloorData] = []
 var _sse_client: HTTPClient
 var _sse_buffer: String = ""
@@ -46,6 +53,9 @@ var _sync_floors_request: HTTPRequest
 var _command_request: HTTPRequest
 var _output_history_request: HTTPRequest
 var _output_history_agent_id: String = ""
+var _screen_request: HTTPRequest
+var _screen_agent_id: String = ""
+var _screen_inflight: bool = false
 
 var _agents_synced: bool = false
 var _floors_synced: bool = false
@@ -72,6 +82,11 @@ func _ready() -> void:
 	add_child(_output_history_request)
 	_output_history_request.timeout = 10
 	_output_history_request.request_completed.connect(_on_output_history_completed)
+
+	_screen_request = HTTPRequest.new()
+	add_child(_screen_request)
+	_screen_request.timeout = 10
+	_screen_request.request_completed.connect(_on_screen_completed)
 
 	_set_connection_state(ConnectionState.CONNECTING)
 	_start_initial_sync()
@@ -273,6 +288,8 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 	match event_type:
 		"agent.registered":
 			var agent: BridgeData.AgentData = BridgeData.AgentData.from_dict(data)
+			if agent.name.is_empty() and _pending_names.has(agent.id):
+				agent.name = _pending_names[agent.id]
 			_agent_states[agent.id] = agent.state
 			_agents[agent.id] = agent
 			agent_registered.emit(agent)
@@ -281,8 +298,15 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			var new_state: String = data.get("state", "")
 			var task_id: String = data.get("task_id", "")
 			var old_state: String = _agent_states.get(agent_id, "")
+			var sse_name: String = data.get("name", "")
 			if _agents.has(agent_id):
 				_agents[agent_id].state = new_state
+				# The bridge learns an agent name only at spawn time, so an
+				# early registered event can arrive without one. Later
+				# payloads carry it, and an empty value never clears a name
+				# the UI already shows.
+				if not sse_name.is_empty():
+					_agents[agent_id].name = sse_name
 				# Keep the cached AgentData.current_task_id in sync so
 				# consumers reading it directly (e.g. agent_context_menu's
 				# Reassign/Cancel enable/disable gate) don't see a stale
@@ -302,6 +326,7 @@ func _dispatch_sse_event(event_type: String, data: Dictionary) -> void:
 			if agent_id != "":
 				_agent_states.erase(agent_id)
 				_agents.erase(agent_id)
+				_pending_names.erase(agent_id)
 				agent_deregistered.emit(agent_id)
 		"agent.output":
 			var chunk: BridgeData.AgentOutputChunk = BridgeData.AgentOutputChunk.from_dict(data)
@@ -382,6 +407,15 @@ func send_input(agent_id: String, keys: String) -> void:
 	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"keys": keys})
 
 
+## Sends one key press to the agent's tmux session. `key_name` must be a tmux
+## key name the orchestrator whitelists, such as Up, Enter or Escape, or a
+## single printable character. The orchestrator runs send-keys without the
+## literal flag, so a curses prompt reads a real key press. Text goes through
+## send_input instead.
+func send_key(agent_id: String, key_name: String) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/input", {"key": key_name})
+
+
 ## Requeues agent_id's current task with a tier/provider hint (T14 / #119
 ## "Reassign task"). `target` is passed straight through as the JSON body —
 ## callers set whichever of {"tier": ..., "provider": ...} applies. See
@@ -435,6 +469,49 @@ func _on_output_history_completed(result: int, code: int, _headers: PackedString
 	agent_output_history.emit(agent_id, _parse_output_history(parsed, agent_id))
 
 
+## Dedicated GET for the terminal chat panel. Asks the orchestrator for a
+## visible-pane snapshot (screen=1) of the agent tmux session and emits
+## agent_screen with the raw text. The single-flight and cancel pattern
+## matches fetch_agent_output_history: cancel_request() never fires
+## request_completed in Godot 4, so a stale response cannot land under a new
+## agent id. _screen_agent_id is set only after the request really starts.
+## A poll tick that lands while a request for the same agent is still in
+## flight returns at once. cancel_request() fires no request_completed, so a
+## cancel on every tick could starve the panel of every snapshot and of every
+## failure signal. A request for a different agent still cancels, because that
+## response is no longer wanted, and the HTTPRequest timeout clears the flag.
+func fetch_agent_screen(agent_id: String) -> void:
+	if _screen_inflight:
+		if _screen_agent_id == agent_id:
+			return
+		_screen_request.cancel_request()
+		_screen_inflight = false
+	var url: String = base_url + "/api/agents/" + agent_id + "/output?screen=1&lines=50"
+	var err: int = _screen_request.request(url)
+	if err != OK:
+		agent_screen.emit(agent_id, "")
+		return
+	_screen_agent_id = agent_id
+	_screen_inflight = true
+
+
+func _on_screen_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var agent_id: String = _screen_agent_id
+	_screen_inflight = false
+	if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+		agent_screen.emit(agent_id, "")
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if not (parsed is Dictionary):
+		agent_screen.emit(agent_id, "")
+		return
+	var payload: Variant = (parsed as Dictionary).get("output", "")
+	if typeof(payload) != TYPE_STRING:
+		agent_screen.emit(agent_id, "")
+		return
+	agent_screen.emit(agent_id, payload as String)
+
+
 ## Defensive parse: the /output response shape is undocumented, so this
 ## tolerates {output:[...]}, {lines:[...]}, {chunks:[...]}, or a bare top-level
 ## array — and each item may be either a chunk dict or a plain output string.
@@ -477,6 +554,20 @@ func _coerce_output_item(item: Variant, agent_id: String) -> BridgeData.AgentOut
 
 func get_agent(agent_id: String) -> BridgeData.AgentData:
 	return _agents.get(agent_id, null)
+
+
+## Records the display name the spawn response reported for agent_id. The
+## agent registers itself while the spawn request is still in flight, so the
+## agent.registered event can arrive before or after this call. Storing the
+## name in _pending_names covers the "before" order, and writing it straight
+## onto the cached agent covers the "after" order.
+func set_agent_name(agent_id: String, agent_name: String) -> void:
+	if agent_id.is_empty() or agent_name.is_empty():
+		return
+	_pending_names[agent_id] = agent_name
+	var agent: BridgeData.AgentData = _agents.get(agent_id, null)
+	if agent != null:
+		agent.name = agent_name
 
 
 func _enqueue_command(method: String, path: String, body: Dictionary) -> void:

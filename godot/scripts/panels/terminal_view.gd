@@ -8,9 +8,12 @@ extends Control
 ##    present, and the bridge is talking to a loopback orchestrator. Attaches
 ##    directly to the agent's local tmux session (`tmux attach -t agent-<id>`)
 ##    for live bidirectional input/output.
-## 2. READ-ONLY FALLBACK — Windows, extension absent, or non-loopback bridge.
-##    A RichTextLabel fed from BridgeManager's live/backfill signals, same
-##    ANSI-driven rendering pattern as SpellScrollView, through the standard
+## 2. CHAT BODY — Windows, extension absent, or non-loopback bridge. A
+##    RichTextLabel that polls the orchestrator for a visible-pane snapshot of
+##    the agent tmux session and replaces its content on every frame, plus a
+##    LineEdit that posts typed text to the agent input endpoint. The user
+##    holds a conversation with the interactive CLI this way. Rendering uses
+##    the same ANSI-driven pattern as SpellScrollView, through the standard
 ##    (non-sepia) palette.
 ##
 ## godot-xterm classes are referenced only via ClassDB.instantiate(&"...")
@@ -20,7 +23,8 @@ extends Control
 
 class_name TerminalView
 
-const HISTORY_BACKFILL_LINES: int = 200
+## Seconds between visible-pane snapshot polls while the chat body is mounted.
+const SCREEN_POLL_SECONDS: float = 0.7
 
 ## Mirrors SpellScrollView.PROVIDER_GLYPHS — kept as a separate copy (not a
 ## shared const) because the two views are visually independent and each
@@ -58,10 +62,13 @@ var _live_mode: bool = false
 ## `is_connected`/`disconnect` need the matching instance, not a fresh bind).
 var _pty_exited_callable: Callable = Callable()
 
-## Read-only fallback state.
+## Chat body state.
 var _output_label: RichTextLabel = null
-var _backfill_pending: bool = false
-var _pending_live_chunks: Array = []
+var _input_line: LineEdit = null
+var _poll_timer: Timer = null
+## True while the pointer sits over the output body, which is the mouse-based
+## signal that every keystroke forwards to tmux. See _set_body_hover.
+var _body_hover: bool = false
 
 
 func _ready() -> void:
@@ -70,6 +77,9 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_kill_pty()
+	# A view freed mid-hover must not leave the global hotkey gate stuck.
+	if _body_hover:
+		KeyPassthrough.hover_active = false
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +118,10 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 			_panel.set_panel_title("Raw Terminal")
 		return
 	_agent_id = agent_data.id
-	_name_label.text = agent_data.id
+	# Show the fantasy name the orchestrator assigned at spawn time.
+	# display_name falls back to the raw UUID when no name exists.
+	var shown_name: String = agent_data.display_name()
+	_name_label.text = shown_name
 	_state_label.text = agent_data.state.capitalize()
 	var class_enum: int = AgentCharacter.CLASS_BY_NAME.get(
 		agent_data.character_class, AgentCharacter.CharacterClass.APPRENTICE
@@ -119,7 +132,7 @@ func _apply_agent(agent_data: BridgeData.AgentData) -> void:
 	_provider_badge.text = provider_info["glyph"]
 	_provider_badge.add_theme_color_override("font_color", provider_info["color"])
 	if _panel != null:
-		_panel.set_panel_title("%s — Raw Terminal" % agent_data.id)
+		_panel.set_panel_title("%s — Raw Terminal" % shown_name)
 
 
 func _on_enchant_pressed() -> void:
@@ -134,12 +147,12 @@ func _on_enchant_pressed() -> void:
 func _mount_body() -> void:
 	_clear_body()
 	if _agent_id.is_empty():
-		_mount_read_only_body()
+		_mount_chat_body()
 		return
 	if _live_pty_available():
 		_mount_live_body()
 	else:
-		_mount_read_only_body()
+		_mount_chat_body()
 
 
 func _clear_body() -> void:
@@ -147,6 +160,13 @@ func _clear_body() -> void:
 	for child: Node in _body_root.get_children():
 		child.queue_free()
 	_output_label = null
+	_input_line = null
+	_poll_timer = null
+	# The hovered body is gone, so the passthrough signal must not linger.
+	_body_hover = false
+	KeyPassthrough.hover_active = false
+	if _panel != null:
+		_panel.set_passthrough_active(false)
 
 
 func _live_pty_available() -> bool:
@@ -183,7 +203,7 @@ func _bridge_base_url_is_loopback() -> bool:
 func _mount_live_body() -> void:
 	var terminal: Control = ClassDB.instantiate(&"Terminal") as Control
 	if terminal == null:
-		_mount_read_only_body()
+		_mount_chat_body()
 		return
 	terminal.name = "Terminal"
 	terminal.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -192,7 +212,7 @@ func _mount_live_body() -> void:
 	var pty: Node = ClassDB.instantiate(&"PTY")
 	if pty == null:
 		terminal.queue_free()
-		_mount_read_only_body()
+		_mount_chat_body()
 		return
 	pty.name = "PTY"
 	_body_root.add_child(pty)
@@ -243,7 +263,7 @@ func _on_pty_exited(_exit_code: int, _signal_code: int, exiting_pty: Node) -> vo
 	_pty = null
 	_pty_exited_callable = Callable()
 	_pty_terminal = null
-	_mount_read_only_body("No live tmux session for this agent — showing read-only output.")
+	_mount_chat_body("No live tmux session for this agent. Showing the polled terminal.")
 
 
 func _kill_pty() -> void:
@@ -271,14 +291,14 @@ func _kill_pty() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Read-only fallback body (Windows, extension absent, or non-loopback bridge)
+# Chat body (Windows, extension absent, or non-loopback bridge)
 # ---------------------------------------------------------------------------
 
-func _mount_read_only_body(banner: String = "") -> void:
+func _mount_chat_body(banner: String = "") -> void:
 	for child: Node in _body_root.get_children():
 		child.queue_free()
 	var container: VBoxContainer = VBoxContainer.new()
-	container.name = "ReadOnlyBody"
+	container.name = "ChatBody"
 	container.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_body_root.add_child(container)
 	if not banner.is_empty():
@@ -295,73 +315,128 @@ func _mount_read_only_body(banner: String = "") -> void:
 	output.scroll_active = true
 	output.focus_mode = Control.FOCUS_NONE
 	output.add_theme_color_override("default_color", Color(AnsiSgrScanner.DEFAULT_STANDARD_FG))
+	output.mouse_entered.connect(_set_body_hover.bind(true))
+	output.mouse_exited.connect(_set_body_hover.bind(false))
 	container.add_child(output)
 	_output_label = output
-	_clear_read_only_state()
+
+	var footer: HBoxContainer = HBoxContainer.new()
+	footer.name = "InputRow"
+	container.add_child(footer)
+	var input_line: LineEdit = LineEdit.new()
+	input_line.name = "Input"
+	input_line.placeholder_text = "type to the agent..."
+	input_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input_line.text_submitted.connect(_on_input_submitted)
+	footer.add_child(input_line)
+	_input_line = input_line
+	input_line.call_deferred("grab_focus")
+	var send_button: Button = Button.new()
+	send_button.name = "Send"
+	send_button.text = "Send"
+	send_button.pressed.connect(_on_send_pressed)
+	footer.add_child(send_button)
+
+	# The timer is a child of the body, so _clear_body() frees it. The poll
+	# stops when the panel closes or swaps to the live PTY body.
+	var timer: Timer = Timer.new()
+	timer.name = "ScreenPoll"
+	timer.wait_time = SCREEN_POLL_SECONDS
+	timer.autostart = true
+	timer.timeout.connect(_on_poll_tick)
+	container.add_child(timer)
+	_poll_timer = timer
+
 	_connect_bridge_signals()
-	_request_backfill()
-
-
-func _clear_read_only_state() -> void:
-	if _output_label != null:
-		_output_label.clear()
-	_backfill_pending = false
-	_pending_live_chunks.clear()
+	_on_poll_tick()
 
 
 func _connect_bridge_signals() -> void:
 	if _signals_connected or _bridge == null:
 		return
-	if _bridge.has_signal("agent_output"):
-		_bridge.connect("agent_output", _on_live_output)
 	if _bridge.has_signal("agent_state_changed"):
 		_bridge.connect("agent_state_changed", _on_state_changed)
-	if _bridge.has_signal("agent_output_history"):
-		_bridge.connect("agent_output_history", _on_history_backfill)
+	if _bridge.has_signal("agent_screen"):
+		_bridge.connect("agent_screen", _on_screen_snapshot)
 	_signals_connected = true
 
 
-func _request_backfill() -> void:
+func _on_poll_tick() -> void:
 	if _bridge == null or _agent_id.is_empty():
 		return
-	if _bridge.has_method("fetch_agent_output_history"):
-		_backfill_pending = true
-		_bridge.call("fetch_agent_output_history", _agent_id, HISTORY_BACKFILL_LINES)
+	if _bridge.has_method("fetch_agent_screen"):
+		_bridge.call("fetch_agent_screen", _agent_id)
 
 
-func _on_history_backfill(agent_id: String, chunks: Array) -> void:
+## Full-pane snapshot replace. An interactive TUI redraws its whole screen, so
+## the panel never diffs and never appends. An empty payload means a transient
+## failure, so the last good frame stays on screen.
+func _on_screen_snapshot(agent_id: String, text: String) -> void:
 	if agent_id != _agent_id or _output_label == null:
 		return
-	if not _backfill_pending:
-		# Already superseded by a later swap_agent()/_request_backfill() call
-		# for this same agent id — drop it, same in-flight guard as
-		# SpellScrollView._on_history_backfill.
+	if text == "":
 		return
-	_backfill_pending = false
-	for item: Variant in chunks:
-		var chunk: BridgeData.AgentOutputChunk = item as BridgeData.AgentOutputChunk
-		if chunk == null:
-			continue
-		_output_label.append_text(
-			AnsiSgrScanner.to_bbcode(chunk.payload, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG) + "\n"
-		)
-	var pending: Array = _pending_live_chunks
-	_pending_live_chunks = []
-	for chunk: BridgeData.AgentOutputChunk in pending:
-		_output_label.append_text(
-			AnsiSgrScanner.to_bbcode(chunk.payload, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG) + "\n"
-		)
-
-
-func _on_live_output(chunk: BridgeData.AgentOutputChunk) -> void:
-	if chunk == null or chunk.agent_id != _agent_id or _output_label == null:
+	# tmux returns the whole pane rectangle, so a short TUI frame arrives padded
+	# with empty rows above and below the content. Drop them, otherwise the body
+	# shows a large blank region.
+	var trimmed: String = AnsiSgrScanner.trim_blank_lines(text)
+	if trimmed == "":
 		return
-	if _backfill_pending:
-		_pending_live_chunks.append(chunk)
-		return
+	_output_label.clear()
 	_output_label.append_text(
-		AnsiSgrScanner.to_bbcode(chunk.payload, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG) + "\n"
+		AnsiSgrScanner.to_bbcode(trimmed, AnsiSgrScanner.STANDARD_PALETTE, AnsiSgrScanner.DEFAULT_STANDARD_FG)
 	)
+	# A full replace resets the scroll position, so scroll_following alone can
+	# miss the tail. Jump to the last line explicitly.
+	_output_label.scroll_to_line(maxi(_output_label.get_line_count() - 1, 0))
+
+
+func _on_send_pressed() -> void:
+	if _input_line != null:
+		_on_input_submitted(_input_line.text)
+
+
+func _on_input_submitted(text: String) -> void:
+	if text.strip_edges().is_empty() or _bridge == null or _agent_id.is_empty():
+		return
+	if _bridge.has_method("send_input"):
+		# The orchestrator appends Enter, so the CLI receives a submitted line.
+		_bridge.call("send_input", _agent_id, text)
+	if _input_line != null:
+		_input_line.clear()
+
+
+## Mouse-based key passthrough for the chat body.
+##
+## An interactive CLI such as Claude Code draws a trust prompt that only a
+## real key press answers. The old rule keyed off an empty input line and
+## missed Space, Escape and chords. The current rule keys off the mouse:
+## while the pointer sits over the output body, EVERY keystroke forwards to
+## tmux through KeyPassthrough, and the PanelBase border turns amber as the
+## signal. While the pointer sits over the input line, keys edit locally.
+func _set_body_hover(hovering: bool) -> void:
+	_body_hover = hovering
+	KeyPassthrough.hover_active = hovering
+	if _panel != null:
+		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
+	if _input_line == null:
+		return
+	if hovering:
+		# A focused LineEdit consumes keys before _unhandled_key_input runs.
+		_input_line.release_focus()
+	else:
+		_input_line.grab_focus()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not _body_hover or _bridge == null or _agent_id.is_empty():
+		return
+	var key_name: String = KeyPassthrough.key_name_for(event as InputEventKey)
+	if key_name.is_empty():
+		return
+	if _bridge.has_method("send_key"):
+		_bridge.call("send_key", _agent_id, key_name)
+	get_viewport().set_input_as_handled()
 
 
 func _on_state_changed(agent_id: String, _old_state: String, new_state: String, _task_id: String) -> void:

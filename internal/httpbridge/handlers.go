@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
+	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 	"github.com/google/uuid"
 )
 
@@ -36,6 +37,8 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		}
 		agents = append(agents, AgentJSON{
 			ID:            id,
+			Name:          b.agentName(id),
+			Provider:      b.agentProvider(id),
 			State:         fields.State,
 			CurrentTaskID: fields.CurrentTaskID,
 			LastHeartbeat: fields.LastHeartbeat,
@@ -73,7 +76,21 @@ func (b *Bridge) handleAgentOutput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	output, err := b.substrate.CaptureOutput(r.Context(), "agent-"+agentID, lines)
+	// screen=1 asks for the visible pane instead of scrollback history. A
+	// redrawing TUI overwrites one screen, so history capture repeats frames.
+	// A substrate without the capability falls back to history capture.
+	session := "agent-" + agentID
+	var output string
+	var err error
+	if screenParam := r.URL.Query().Get("screen"); screenParam == "1" || screenParam == "true" {
+		if sc, ok := b.substrate.(terminal.ScreenCapturer); ok {
+			output, err = sc.CaptureScreen(r.Context(), session)
+		} else {
+			output, err = b.substrate.CaptureOutput(r.Context(), session, lines)
+		}
+	} else {
+		output, err = b.substrate.CaptureOutput(r.Context(), session, lines)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -97,6 +114,13 @@ func (b *Bridge) handleListFloors(w http.ResponseWriter, r *http.Request) {
 
 	floors := make([]FloorJSON, 0, len(sessions))
 	for _, s := range sessions {
+		// Per-agent tmux sessions are the agent's own PTY, not a tower
+		// floor. The supervisor names them "agent-<uuid>" in RegisterAgent,
+		// and the UI renders every floor as a room in the tower, so listing
+		// them here turns each interactive CLI agent into a spurious floor.
+		if isAgentSession(s.Name) {
+			continue
+		}
 		floors = append(floors, FloorJSON{
 			Name:       s.Name,
 			AgentCount: s.WindowCount,
@@ -223,15 +247,42 @@ func (b *Bridge) handleSendInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Keys == "" {
+	text := req.Text()
+	if req.Key != "" && text != "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "keys is required",
+			Error: "key and input are mutually exclusive",
 			Code:  "invalid_argument",
 		})
 		return
 	}
 
-	if err := b.substrate.SendCommand(r.Context(), "agent-"+agentID, req.Keys); err != nil {
+	// A key request forwards one key press. A text request types a line and
+	// then presses Enter. The two paths never mix in one call.
+	if req.Key != "" {
+		if err := terminal.ValidateKeyName(req.Key); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: err.Error(),
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		if err := b.substrate.SendKey(r.Context(), "agent-"+agentID, req.Key); err != nil {
+			writeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if text == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: "input or key is required",
+			Code:  "invalid_argument",
+		})
+		return
+	}
+
+	if err := b.substrate.SendCommand(r.Context(), "agent-"+agentID, text); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -541,10 +592,10 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	switch req.Kind {
 	case "":
 		req.Kind = "sim"
-	case "sim", "claude", "codex", "opencode":
+	case "sim", "claude", "codex", "opencode", "pi":
 	default:
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error: "kind must be one of: sim, claude, codex, opencode",
+			Error: "kind must be one of: sim, claude, codex, opencode, pi",
 			Code:  "invalid_argument",
 		})
 		return
@@ -566,6 +617,13 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Record the fantasy name so every later agent projection (REST list and
+	// SSE payloads) can show it instead of the raw UUID. See
+	// Bridge.setAgentName for the honest limitation of this registry.
+	b.setAgentName(agentID, req.Name)
+	// The provider shown in the UI is the spawn kind. Same registry
+	// lifetime and gaps as the name.
+	b.setAgentProvider(agentID, req.Kind)
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
 		Kind:    req.Kind,

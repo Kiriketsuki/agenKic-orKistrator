@@ -1,3 +1,23 @@
+## 2026-08-04 Handoff (visual parity + terminal chat)
+
+### Decisions
+- PARITY.md camera-zoom regime is the visual law. Integer zoom from design canvas, not window px
+- Parallax2D banned: children never render here. Manual Node2D layers instead
+- Floors are chamfered rects. T15 API kept, lens silhouette killed
+- tmux send-keys needs -l plus separate Enter
+- User does all summoning/chatting in the GUI. No curl against the bridge
+
+### Failed Approaches
+- stretch scale_mode=integer on 1080p viewport: crops in tiled windows
+- Edge-rotate tween capturing position.x as home: spam-click drift
+- Hand-transcribing base64 PNGs: corrupts. Extract from transcript jsonl
+
+### Handoff Target
+- Plan file: .claude/handoffs/2026-08-04-10h30-visual-parity-terminal-chat.md
+- Branch: feature/163-feature-phase-3-magic-polish-t15-t22 (pushed a00663f)
+
+---
+
 ## 2026-04-01 Handoff (PR #105 T5 council fix loop)
 
 ### Decisions
@@ -170,5 +190,80 @@
 ### Handoff Target
 - Plan file: 2026-07-17-08h42-epic4-phase2-merged-t12-next.md
 - Branch: main @ daa9e8b (T1-T11 + #82/#83/#150 merged, suite green)
+
+---
+## 2026-07-17 Handoff (Phase 2 complete)
+
+### Decisions
+- T12-T14 via new feature issue #161 (feature/88 + epic #4 closed); merged to main 3f33d48, PRs #120/#121/#123/#162 MERGED
+- Backdate windows: T12 Jul17-18, T13 Jul18-19, T14 Jul24-25, feature merge Jul 26; next window after Jul 26
+- lint-precommit hook (global ~/.claude/hooks/) now runs make generate before go vet
+- VERSION 26.3.0.0 (manual exact bump; automation mis-bumped patch first)
+- T14 cancel/reassign = honest minimal semantics (detach+CAS+PTY interrupt; requeue with ignored hint, documented)
+
+### Failed Approaches
+- cherry-pick ignores GIT_AUTHOR_DATE — must amend with --date after each pick
+- stale .claude/worktrees pin branches — worktree remove --force + prune before branch -f
+- gh account flips to Jovian-Aurrigo mid-session — switch to Kiriketsuki in same Bash call
+
+### Handoff Target
+- Plan file: 2026-07-17-09h55-phase2-complete-phase3-next.md
+- Branch: main @ 3f115b3
+
+---
+## 2026-07-21 Handoff
+
+### Decisions
+- Redate/backdate scheme ENDED permanently (user) — real timestamps from T16 onward
+- Future-dated history normalized via filter-branch (T14→Jul 17, T15→Jul 17/20); 5 refs force-pushed; T12/T13 past fakes left alone
+- Phase 3 routes through fresh feature #163; stale #90/#91 closed superseded
+- T21/T22 may commit small assets under godot/assets/
+- Landing = local no-ff merge task→feature, push (PR auto-marks MERGED)
+
+### Failed Approaches
+- Workflow fix-stage 529 + resume replays cached failure — recover with standalone worktree Agent instead
+- reset --hard on local main would nuke uncommitted AGENTS/CLAUDE edits — used reset --soft
+- git branch -f main in fresh clone fails (checked-out); sleep-prefixed polling blocked (use run_in_background until-loop)
+
+### Handoff Target
+- Plan file: 2026-07-21-16h43-t16-done-dates-normalized-t17-next.md
+- Branch: main @ f8895e0 (rewritten); feature/163 @ 6e4a824 (T15+T16 in)
+
+---
+## 2026-07-25 Handoff
+
+### Decisions
+- T17 uses CPUParticles2D not GPUParticles2D — gl_compatibility renderer doesn't process GPU particles in Godot 4.2 (4.3 only); applies to all future particle work
+- Two per-agent emitters (EffectParticles tier visual + AmbientParticles Legendary shimmer); tiers key off PaletteMath.BANDS, no second band table
+- Procedural particle textures (dot/spark/shard/ring) over PNGs; true glyph/leaf art deferred to T22
+- Legendary "ambient distortion" = additive shimmer layer, not screen-space warp (renderer limit) — documented honest-minimal
+- Budget cap max_particles_per_agent threaded once-per-floor, not per-agent slot
+
+### Failed Approaches
+- `cd scratchpad && git worktree add ./t17-merge` then `git -C ./t17-merge` — worktree lands relative to repo root, not cwd; use absolute paths from `git worktree list`
+
+### Handoff Target
+- Plan file: 2026-07-25-12h04-t17-merged-t18-next.md
+- Branch: main @ f8895e0; feature/163 @ be25071 (T15+T16+T17 in); next T18 (#129, PR #132)
+
+---
+## 2026-08-04 Handoff (phases 4-6 prism parity)
+
+### Decisions
+- All dressing draws per prism face inside FloorPrism. Static overlays read as floating plates
+- Diagnosis by visual bisect with PNG captures, not geometry guessing
+- Passthrough rule: empty input = navigation forward, text = editing
+- Pagination dots replaced the compass per the user's Phase 6 spec
+- Fantasy names live in a bridge registry, reset on restart
+
+### Failed Approaches
+- Static front dressing with rotation fade: rejected, moved into faces
+- Chamfer theory for the floating octagon: the cornice pair was the cause
+- Passthrough via chat LineEdit only: scroll mode had no field
+
+### Handoff Target
+- Plan file: 2026-08-04-12h10-phase456-prism-parity.md
+- Branch: feature/163-feature-phase-3-magic-polish-t15-t22 (pushed 9ad122f)
+- Next: widen key passthrough (Space, all digits, Backspace) plus a visible passthrough border
 
 ---

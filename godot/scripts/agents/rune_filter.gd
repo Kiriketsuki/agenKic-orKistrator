@@ -73,8 +73,11 @@ static func reset_rate_limits() -> void:
 static func _strip_ansi(text: String) -> String:
 	if _ansi_re == null:
 		_ansi_re = RegEx.new()
-		# Matches ESC [ … letter (CSI sequences) and bare ESC + single char
-		_ansi_re.compile("\\u001b(?:\\[[0-9;]*[A-Za-z]|[^\\[\\u001b])")
+		# Godot RegEx runs on PCRE2, which rejects `` and fails the whole
+		# compile. PCRE2 spells the escape byte `\x1b`.
+		# Alternatives, in order: CSI sequences, OSC and other string escapes
+		# terminated by BEL or ST, then any remaining two-byte escape.
+		_ansi_re.compile("\\x1b(?:\\[[0-9;?]*[A-Za-z]|[\\]PX^_][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?|[^\\[\\x1b])")
 	var result: String = _ansi_re.sub(text, "", true)
 	return result
 

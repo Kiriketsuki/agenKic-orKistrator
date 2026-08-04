@@ -19,8 +19,8 @@ const (
 
 // writeSSEEvent renders one StreamEvent onto the wire using the shared
 // mapStoreEvent + SSE wire format, flushing after every write.
-func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, se state.StreamEvent) {
-	sseType, data := mapStoreEvent(se.Event, se.ID)
+func (b *Bridge) writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, se state.StreamEvent) {
+	sseType, data := mapStoreEvent(se.Event, se.ID, b.agentName, b.agentProvider)
 	if sseType == "" {
 		return
 	}
@@ -104,7 +104,7 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			for _, se := range events {
-				writeSSEEvent(w, flusher, se)
+				b.writeSSEEvent(w, flusher, se)
 				cursor = se.ID
 				lastBackfilled = se.ID
 				if se.ID == cut {
@@ -158,7 +158,7 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-			writeSSEEvent(w, flusher, se)
+			b.writeSSEEvent(w, flusher, se)
 			lastKeepalive = time.Now()
 
 		case <-keepaliveTicker.C:
@@ -173,8 +173,19 @@ func (b *Bridge) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 // mapStoreEvent converts a store event to an SSE event type and payload.
 // cursor is the Redis stream entry ID, embedded so clients can resume via ?since=.
-// Returns empty string if the event should be skipped.
-func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
+// nameFn resolves an agent ID to its display name and returns an empty string
+// when the Bridge knows no name, in which case the client falls back to the
+// agent ID. providerFn resolves the spawn kind the same way. Returns an empty
+// event type if the event should be skipped.
+func mapStoreEvent(e state.Event, cursor string, nameFn func(string) string, providerFn func(string) string) (string, interface{}) {
+	name := ""
+	if nameFn != nil {
+		name = nameFn(e.AgentID)
+	}
+	provider := ""
+	if providerFn != nil {
+		provider = providerFn(e.AgentID)
+	}
 	switch e.Type {
 	case "agent_registered":
 		// Agents always register in idle state. Subsequent state transitions
@@ -182,6 +193,8 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 		// SSE replay naturally converges to the current state.
 		return "agent.registered", SSEAgentRegistered{
 			ID:            e.AgentID,
+			Name:          name,
+			Provider:      provider,
 			State:         "idle",
 			LastHeartbeat: e.Timestamp,
 			RegisteredAt:  e.Timestamp,
@@ -191,6 +204,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	case string(agent.EventTaskAssigned):
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "assigned",
 			TaskID:    e.TaskID,
 			Timestamp: e.Timestamp,
@@ -200,6 +214,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	case string(agent.EventWorkStarted):
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "working",
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
@@ -208,6 +223,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	case string(agent.EventOutputReady):
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "reporting",
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
@@ -216,6 +232,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	case string(agent.EventOutputDelivered):
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "idle",
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
@@ -224,6 +241,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 	case string(agent.EventAgentFailed):
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "crashed",
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
@@ -246,6 +264,7 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 		// that was just detached (T14 council finding #5).
 		return "agent.state_changed", SSEAgentStateChanged{
 			AgentID:   e.AgentID,
+			Name:      name,
 			State:     "idle",
 			Timestamp: e.Timestamp,
 			Cursor:    cursor,
@@ -260,6 +279,13 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 		}
 
 	case "floor_created":
+		// The supervisor spawns one tmux session per agent and publishes
+		// this event for it. That session is the agent PTY, not a tower
+		// floor, so the UI must not draw a floor for it. This mirrors the
+		// same filter in handleListFloors.
+		if isAgentSession(e.Payload) {
+			return "", nil
+		}
 		return "floor.created", SSEFloorCreated{
 			Name:       e.Payload,
 			AgentCount: 0,
@@ -267,6 +293,9 @@ func mapStoreEvent(e state.Event, cursor string) (string, interface{}) {
 		}
 
 	case "floor_removed":
+		if isAgentSession(e.Payload) {
+			return "", nil
+		}
 		return "floor.removed", SSEFloorRemoved{
 			Name:   e.Payload,
 			Cursor: cursor,
