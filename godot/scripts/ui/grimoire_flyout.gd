@@ -51,7 +51,7 @@ func _ready() -> void:
 
 	_config_button = Button.new()
 	_config_button.text = "sigil config..."
-	_config_button.pressed.connect(_open_config_page)
+	_config_button.pressed.connect(open_config_page)
 	box.add_child(_config_button)
 
 	_config_page = SigilConfigPage.new()
@@ -87,7 +87,9 @@ func _build_sigil_button(provider: Dictionary) -> Button:
 	return button
 
 
-func _open_config_page() -> void:
+## Opens the sigil config page (F3). Public so the Power flyout's SETTINGS
+## action (F4) can reach it after switching the flock to the Grimoire orb.
+func open_config_page() -> void:
 	_config_page.open_page(_providers, _config)
 	_config_page.visible = true
 

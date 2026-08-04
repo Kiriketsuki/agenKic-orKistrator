@@ -451,6 +451,26 @@ func cancel_agent_task(agent_id: String) -> void:
 	_enqueue_command("POST", "/api/agents/" + agent_id + "/cancel", {})
 
 
+## Despawns agent_id (F4 "Banish"). The server sends Ctrl-C to the pane,
+## drops the current task, destroys the tmux session, and removes the agent
+## from every registry. Result surfaces via command_succeeded/command_failed
+## (path "/api/agents/{id}/despawn"); the actual removal from BridgeManager's
+## own caches happens on the agent.deregistered SSE event, not here, so a
+## despawn that never reaches the server leaves the agent visible instead of
+## disappearing on an unconfirmed guess.
+func despawn_agent(agent_id: String) -> void:
+	_enqueue_command("POST", "/api/agents/" + agent_id + "/despawn", {})
+
+
+## Restarts the orchestrator process (F4 "RESTART ORCHESTRATOR"). The server
+## responds 202, then shuts down gracefully and re-execs itself. The SSE
+## client reconnects on its own through the existing backoff/reconnect state
+## machine — no explicit reconnect call is needed here. Result surfaces via
+## command_succeeded/command_failed (path "/api/admin/restart").
+func restart_orchestrator() -> void:
+	_enqueue_command("POST", "/api/admin/restart", {})
+
+
 func get_agent_output(agent_id: String, lines: int = 50) -> void:
 	_enqueue_command("GET", "/api/agents/" + agent_id + "/output?lines=" + str(lines), {})
 

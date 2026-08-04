@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://main"]
+[gd_scene load_steps=17 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://scripts/ui/floor_banner.gd" id="13"]
 [ext_resource type="Script" path="res://scripts/ui/hex_compass.gd" id="14"]
 [ext_resource type="Script" path="res://scripts/ui/orb_flock.gd" id="15"]
+[ext_resource type="Script" path="res://scripts/ui/power_flyout.gd" id="16"]
 
 [node name="Main" type="Node2D"]
 
@@ -58,6 +59,14 @@ offset_top = 16.0
 offset_right = 436.0
 offset_bottom = 176.0
 script = ExtResource("8")
+
+[node name="PowerFlyout" type="Control" parent="UILayer/OrbFlock"]
+visible = false
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 276.0
+offset_bottom = 216.0
+script = ExtResource("16")
 
 [node name="Minimap" type="Control" parent="UILayer"]
 visible = false

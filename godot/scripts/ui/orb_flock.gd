@@ -105,6 +105,11 @@ func _ready() -> void:
 	if grimoire_flyout is Control:
 		register_flyout("grimoire", grimoire_flyout as Control)
 
+	# Power Controls (F4) — Banish All, Restart, Settings, Quit to title.
+	var power_flyout: Node = get_node_or_null("PowerFlyout")
+	if power_flyout is Control:
+		register_flyout("power", power_flyout as Control)
+
 
 ## Registers `control` as the flyout panel for `orb_id`. The control is
 ## reparented under this flock's flyout host and hidden until that orb's
@@ -243,6 +248,17 @@ func _expand() -> void:
 	_set_state(State.OPEN)
 	_layout_row()
 	_show_flyout(_orbs[0].orb_id if _orbs.size() > 0 else "")
+
+
+## Opens the flock (if not already OPEN) and shows orb_id's flyout. Lets a
+## flyout hand off to a sibling flyout — the Power flyout's SETTINGS action
+## (F4) uses this to switch to the Grimoire orb's sigil config page (F3)
+## instead of duplicating that page.
+func switch_to(orb_id: String) -> void:
+	if _state != State.OPEN:
+		_set_state(State.OPEN)
+		_layout_row()
+	_show_flyout(orb_id)
 
 
 func collapse() -> void:

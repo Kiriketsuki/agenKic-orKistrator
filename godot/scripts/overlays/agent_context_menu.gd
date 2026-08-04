@@ -19,6 +19,7 @@ const ITEM_OPEN_SCROLL: int = 2
 const ITEM_REASSIGN: int = 3
 const ITEM_CANCEL: int = 4
 const ITEM_COPY_OUTPUT: int = 5
+const ITEM_BANISH: int = 6
 
 ## Reassign submenu item ids are offset so they never collide with the
 ## top-level menu's ids (0-5 above).
@@ -48,6 +49,12 @@ var _copy_agent_id: String = ""
 var _toast: Label = null
 var _toast_tween: Tween = null
 
+## Confirm dialog for Banish on a WORKING agent (despawn drops the current
+## task, so a working agent gets a confirm step; an idle agent banishes at
+## once). Built lazily in _ready and reused across every Banish press.
+var _banish_confirm: ConfirmationDialog = null
+var _banish_confirm_id: String = ""
+
 
 func _ready() -> void:
 	_bridge = get_node_or_null("/root/BridgeManager")
@@ -57,6 +64,7 @@ func _ready() -> void:
 
 	_apply_theme()
 	_build_items()
+	_build_banish_confirm()
 
 	if _tower != null and _tower.has_signal("agent_context_menu_requested"):
 		_tower.connect("agent_context_menu_requested", _on_context_menu_requested)
@@ -106,6 +114,8 @@ func _build_items() -> void:
 	add_item("Cancel task", ITEM_CANCEL)
 	add_separator()
 	add_item("Copy output", ITEM_COPY_OUTPUT)
+	add_separator()
+	add_item("Banish", ITEM_BANISH)
 
 
 func _apply_theme() -> void:
@@ -182,6 +192,8 @@ func _on_id_pressed(id: int) -> void:
 				_bridge.cancel_agent_task(_target_id)
 		ITEM_COPY_OUTPUT:
 			_start_copy_output(_target_id)
+		ITEM_BANISH:
+			_start_banish(_target_id)
 		# ITEM_REASSIGN has no direct action — it only opens the submenu.
 
 
@@ -195,6 +207,40 @@ func _on_reassign_id_pressed(id: int) -> void:
 		return
 	if _bridge.has_method("reassign_agent"):
 		_bridge.reassign_agent(_target_id, {"provider": REASSIGN_PROVIDERS[idx]})
+
+
+# ---------------------------------------------------------------------------
+# Banish (F4 despawn)
+# ---------------------------------------------------------------------------
+
+func _build_banish_confirm() -> void:
+	_banish_confirm = ConfirmationDialog.new()
+	_banish_confirm.name = "BanishConfirm"
+	_banish_confirm.title = "Banish agent"
+	_banish_confirm.dialog_text = "This agent is WORKING. Banishing drops its task. Continue?"
+	_banish_confirm.confirmed.connect(_on_banish_confirmed)
+	add_child(_banish_confirm)
+
+
+## Banish drops the current task rather than requeuing it (spec decision,
+## see power-controls-spec.md Open Questions #1), so a WORKING agent gets a
+## confirm step. An idle agent has no task to lose, and banishes at once.
+func _start_banish(agent_id: String) -> void:
+	if _bridge == null:
+		return
+	var agent_data: BridgeData.AgentData = _bridge.get_agent(agent_id) if _bridge.has_method("get_agent") else null
+	if agent_data != null and agent_data.state == "working":
+		_banish_confirm_id = agent_id
+		_banish_confirm.popup_centered()
+		return
+	_bridge.despawn_agent(agent_id)
+
+
+func _on_banish_confirmed() -> void:
+	if _banish_confirm_id.is_empty() or _bridge == null:
+		return
+	_bridge.despawn_agent(_banish_confirm_id)
+	_banish_confirm_id = ""
 
 
 # ---------------------------------------------------------------------------
@@ -270,10 +316,12 @@ func _on_command_succeeded(path: String, _code: int, _body: String) -> void:
 		_toast_message("Task cancelled", SUCCESS_COLOR)
 	elif path.ends_with("/reassign"):
 		_toast_message("Task reassigned", SUCCESS_COLOR)
+	elif path.ends_with("/despawn"):
+		_toast_message("Agent banished", SUCCESS_COLOR)
 
 
 func _on_command_failed(path: String, _code: int, reason: String) -> void:
-	if path.ends_with("/cancel") or path.ends_with("/reassign"):
+	if path.ends_with("/cancel") or path.ends_with("/reassign") or path.ends_with("/despawn"):
 		_toast_message(reason, ERROR_COLOR)
 
 
