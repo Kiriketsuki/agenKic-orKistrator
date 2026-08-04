@@ -170,6 +170,43 @@ static func momentum_settled(velocity: Vector2) -> bool:
 	return velocity.length() <= 0.0
 
 
+## Continuous glide: stiffness and damping for the always-on edge pull that
+## replaced the two-phase momentum-then-spring flight (keeper feedback,
+## round 6). The ratio is underdamped (7 / (2 * sqrt(90)) ~= 0.37) so a
+## flick keeps visible momentum and lands with a small physical bounce
+## instead of stopping dead mid-air before the pull starts.
+const GLIDE_STIFFNESS: float = 90.0
+const GLIDE_DAMPING: float = 7.0
+const GLIDE_SETTLE_DISTANCE: float = 1.0
+const GLIDE_SETTLE_SPEED: float = 8.0
+
+
+## One always-on gravity step. Re-picks the dock edge from the current
+## position, pulls toward that edge's anchor while the carried velocity
+## keeps moving the flock along it, ricochets off the top bound, and clamps
+## the rest. The along-edge anchor coordinate tracks the flock, so the pull
+## acts mostly perpendicular to the edge and momentum along the edge glides
+## until the damping bleeds it off. Runs from the instant of release: there
+## is no separate momentum phase and no wait before gravity engages.
+## Returns {"position", "velocity", "edge", "settled"}.
+static func glide_step(position: Vector2, velocity: Vector2, delta: float, viewport_size: Vector2, radius: float, ricochet_fraction: float) -> Dictionary:
+	var edge: Edge = choose_dock_edge(position, viewport_size)
+	var along: float = dock_release_coordinate(edge, position)
+	var anchor: Vector2 = edge_dock_anchor(edge, viewport_size, radius, along)
+	var displacement: Vector2 = anchor - position
+	var accel: Vector2 = (displacement * GLIDE_STIFFNESS) - (velocity * GLIDE_DAMPING)
+	var next_velocity: Vector2 = velocity + accel * delta
+	var next_position: Vector2 = position + next_velocity * delta
+	if next_position.y < radius:
+		next_position.y = radius
+		next_velocity.y = absf(next_velocity.y) * ricochet_fraction
+	next_position.x = clampf(next_position.x, radius, viewport_size.x - radius)
+	next_position.y = minf(next_position.y, viewport_size.y - radius)
+	if displacement.length() <= GLIDE_SETTLE_DISTANCE and next_velocity.length() <= GLIDE_SETTLE_SPEED:
+		return {"position": anchor, "velocity": Vector2.ZERO, "edge": edge, "settled": true}
+	return {"position": next_position, "velocity": next_velocity, "edge": edge, "settled": false}
+
+
 ## Offset of the orb at `index` (0 = lead orb, drawn on top) within a
 ## docked stack, relative to the lead orb's anchor position. Trailing orbs
 ## step inward (away from the edge) and down, so the stack reads as a

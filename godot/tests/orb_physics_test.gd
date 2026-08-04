@@ -22,6 +22,9 @@ func _init() -> void:
 	_run_momentum_bounce_case(failures)
 	_run_momentum_ricochet_fraction_case(failures)
 	_run_momentum_drag_settles_case(failures)
+	_run_glide_step_settles_case(failures)
+	_run_glide_step_top_ricochet_case(failures)
+	_run_glide_step_momentum_carries_case(failures)
 	_run_stack_offset_cases(failures)
 	_run_bottom_center_anchor_cases(failures)
 	if failures.is_empty():
@@ -231,6 +234,62 @@ func _run_momentum_drag_settles_case(failures: Array[String]) -> void:
 		steps += 1
 	if velocity != Vector2.ZERO:
 		failures.append("momentum_step drag never settled to Vector2.ZERO within 600 steps")
+
+
+## glide_step() must pull a released flock to a dock and report settled
+## within a bounded number of frames, with gravity active from step one.
+func _run_glide_step_settles_case(failures: Array[String]) -> void:
+	var viewport: Vector2 = Vector2(1000.0, 800.0)
+	var radius: float = 26.0
+	var position: Vector2 = Vector2(500.0, 300.0)
+	var velocity: Vector2 = Vector2(300.0, -150.0)
+	var delta: float = 1.0 / 60.0
+	var first: Dictionary = OrbPhysics.glide_step(position, velocity, delta, viewport, radius, 0.62)
+	var first_velocity: Vector2 = first["velocity"]
+	if is_equal_approx(first_velocity.y, velocity.y):
+		failures.append("glide_step expected the edge pull to change velocity on the FIRST step")
+	var settled: bool = false
+	for i: int in range(900):
+		var result: Dictionary = OrbPhysics.glide_step(position, velocity, delta, viewport, radius, 0.62)
+		position = result["position"]
+		velocity = result["velocity"]
+		if result["settled"]:
+			settled = true
+			break
+	if not settled:
+		failures.append("glide_step never settled within 900 steps (15s)")
+	elif absf(position.y - (viewport.y - radius - OrbPhysics.DOCK_MARGIN_PX)) > 1.0:
+		failures.append("glide_step settled off the bottom dock line, y=%f" % position.y)
+
+
+## glide_step() must still ricochet an upward flick off the top bound.
+func _run_glide_step_top_ricochet_case(failures: Array[String]) -> void:
+	var viewport: Vector2 = Vector2(1000.0, 800.0)
+	var radius: float = 26.0
+	var result: Dictionary = OrbPhysics.glide_step(Vector2(500.0, radius + 1.0), Vector2(0.0, -900.0), 1.0 / 60.0, viewport, radius, 0.62)
+	var next_position: Vector2 = result["position"]
+	var next_velocity: Vector2 = result["velocity"]
+	if next_position.y < radius:
+		failures.append("glide_step top ricochet expected y >= radius, got %f" % next_position.y)
+	if next_velocity.y <= 0.0:
+		failures.append("glide_step top ricochet expected reflected (positive) velocity.y, got %f" % next_velocity.y)
+
+
+## A horizontal flick above the bottom edge must keep moving sideways for a
+## while (momentum carries along the edge) instead of stopping dead.
+func _run_glide_step_momentum_carries_case(failures: Array[String]) -> void:
+	var viewport: Vector2 = Vector2(1000.0, 800.0)
+	var radius: float = 26.0
+	var position: Vector2 = Vector2(300.0, 600.0)
+	var velocity: Vector2 = Vector2(800.0, 0.0)
+	var delta: float = 1.0 / 60.0
+	var start_x: float = position.x
+	for i: int in range(12):
+		var result: Dictionary = OrbPhysics.glide_step(position, velocity, delta, viewport, radius, 0.62)
+		position = result["position"]
+		velocity = result["velocity"]
+	if position.x - start_x < 60.0:
+		failures.append("glide_step expected >= 60px of sideways carry over 12 frames, got %f" % (position.x - start_x))
 
 
 ## stack_offset() must return ZERO for the lead orb and a monotonically

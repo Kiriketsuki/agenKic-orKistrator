@@ -208,23 +208,19 @@ func _update_chain(delta: float) -> void:
 		_trail_positions[i] = _trail_positions[i].lerp(_trail_positions[i + 1], rate)
 
 
+## Round 6 keeper feedback — gravity runs continuously from the instant of
+## release instead of a momentum phase followed by a spring. Every frame
+## re-picks the edge (LEFT/RIGHT/BOTTOM, never TOP, per item 4a) and pulls
+## toward it while the flick's momentum still carries the flock, so the
+## motion reads as one smooth arc with no mid-air pause.
 func _update_flying(delta: float) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	if not OrbPhysics.momentum_settled(_velocity):
-		var result: Dictionary = OrbPhysics.momentum_step(_lead_position, _velocity, delta, viewport_size, ORB_RADIUS, OrbPhysics.DEFAULT_RICOCHET_FRACTION)
-		_lead_position = result["position"]
-		_velocity = result["velocity"]
-		return
-	# Item 4a — the flock docks to the nearest of LEFT/RIGHT/BOTTOM (never
-	# TOP), biased toward BOTTOM, chosen once here when momentum first
-	# settles so the spring has a stable target for the whole approach.
-	_edge = OrbPhysics.choose_dock_edge(_lead_position, viewport_size)
-	_dock_release_along_edge = OrbPhysics.dock_release_coordinate(_edge, _lead_position)
-	var target: Vector2 = OrbPhysics.edge_dock_anchor(_edge, viewport_size, ORB_RADIUS, _dock_release_along_edge)
-	var spring: Dictionary = OrbPhysics.spring_step(_lead_position, target, _velocity, delta)
-	_lead_position = spring["position"]
-	_velocity = spring["velocity"]
-	if spring["settled"]:
+	var result: Dictionary = OrbPhysics.glide_step(_lead_position, _velocity, delta, viewport_size, ORB_RADIUS, OrbPhysics.DEFAULT_RICOCHET_FRACTION)
+	_lead_position = result["position"]
+	_velocity = result["velocity"]
+	_edge = result["edge"]
+	if result["settled"]:
+		_dock_release_along_edge = OrbPhysics.dock_release_coordinate(_edge, _lead_position)
 		_dock_height = _lead_position.y
 		_set_state(State.DOCKED)
 
@@ -446,6 +442,12 @@ func _set_state(new_state: State) -> void:
 
 func _input(event: InputEvent) -> void:
 	if _state != State.OPEN:
+		return
+	# The sigil config modal lives on the OverlayLayer, outside _row_rect and
+	# _flyout_rect, so without this gate any click on it (including BACK)
+	# collapsed the flock and hid the grimoire flyout underneath (round 6
+	# keeper feedback). While the modal is open, it owns all input.
+	if SigilConfigPage.is_open:
 		return
 	if event.is_action_pressed("ui_cancel"):
 		# GrimoireFlyout's own _unhandled_input cancels an in-flight sigil
