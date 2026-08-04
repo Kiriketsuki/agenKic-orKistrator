@@ -26,6 +26,8 @@ func _init() -> void:
 	_run_nearest_valid_side_count_cases(failures)
 	_run_prism_face_cases(failures)
 	_run_prism_apothem_case(failures)
+	_run_prism_face_projection_cases(failures)
+	_run_prism_face_dressing_cases(failures)
 	_run_breathe_cases(failures)
 	_run_edge_width_monotonic_case(failures)
 	if failures.is_empty():
@@ -155,6 +157,68 @@ func _run_prism_apothem_case(failures: Array[String]) -> void:
 	var apothem: float = FloorPrism.apothem_for(6, 140.0)
 	if absf(apothem - 121.0) > 1.0:
 		failures.append("apothem_for(6, 140): expected about 121 got %f" % apothem)
+
+
+## Phase 6 section 2 — every face draws its own dressing, so the face-local
+## projection must be exact. A face pointed at the camera projects to the plain
+## face rect, and the chord lerp must stay monotonic across the face.
+func _run_prism_face_projection_cases(failures: Array[String]) -> void:
+	var sides: int = 6
+	var face_w: float = 140.0
+	var half_h: float = 20.0
+	# The aligned face maps u=0 and u=1 onto the two front corners at scale 1.
+	var left: Vector2 = FloorPrism.face_screen_point(sides, face_w, 0.0, 0, 0.0, -half_h)
+	var right: Vector2 = FloorPrism.face_screen_point(sides, face_w, 0.0, 0, 1.0, half_h)
+	if not is_equal_approx(left.x, -face_w / 2.0) or not is_equal_approx(left.y, -half_h):
+		failures.append("face_screen_point(u=0) on the aligned face: expected (-70, -20) got %s" % left)
+	if not is_equal_approx(right.x, face_w / 2.0) or not is_equal_approx(right.y, half_h):
+		failures.append("face_screen_point(u=1) on the aligned face: expected (70, 20) got %s" % right)
+	# The middle of the aligned face sits on the axis at full scale.
+	var mid: Vector2 = FloorPrism.face_screen_point(sides, face_w, 0.0, 0, 0.5, half_h)
+	if absf(mid.x) > 0.001 or not is_equal_approx(mid.y, half_h):
+		failures.append("face_screen_point(u=0.5) on the aligned face: expected (0, 20) got %s" % mid)
+	# A neighbour face recedes, so its far corner projects at a smaller scale.
+	var near: Vector2 = FloorPrism.face_point_3d(sides, face_w, 0.0, 1, 0.0)
+	var far: Vector2 = FloorPrism.face_point_3d(sides, face_w, 0.0, 1, 1.0)
+	if far.y <= near.y:
+		failures.append("face_point_3d on face 1: far corner must be deeper, got %f then %f" % [near.y, far.y])
+	if FloorPrism.scale_for_depth(far.y) >= FloorPrism.scale_for_depth(near.y):
+		failures.append("scale_for_depth must shrink with depth on face 1")
+	# Screen x must run monotonically from u=0 to u=1 on any front face.
+	var prev: float = -INF
+	for i: int in range(11):
+		var x: float = FloorPrism.face_screen_point(sides, face_w, 0.0, 1, float(i) / 10.0, 0.0).x
+		if x <= prev:
+			failures.append("face_screen_point x must increase across face 1, broke at u=%f" % (float(i) / 10.0))
+			break
+		prev = x
+
+
+## The per-face dressing must be deterministic and must stay inside the face.
+func _run_prism_face_dressing_cases(failures: Array[String]) -> void:
+	var face_w: float = 140.0
+	var half_w: float = face_w / 2.0
+	for k: int in range(6):
+		var count: int = FloorPrism.window_count("atrium", k)
+		if count < FloorPrism.EDGE_WINDOW_MIN or count > FloorPrism.EDGE_WINDOW_MAX:
+			failures.append("window_count(atrium, %d): out of bounds, got %d" % [k, count])
+		var xs: Array[float] = FloorPrism.window_positions("atrium", k, face_w)
+		if xs.size() != count:
+			failures.append("window_positions(atrium, %d): expected %d got %d" % [k, count, xs.size()])
+		for x: float in xs:
+			if absf(x) > half_w - FloorPrism.WINDOW_START:
+				failures.append("window_positions(atrium, %d): %f escapes the face span" % [k, x])
+		var idx: int = FloorPrism.prop_index("atrium", k)
+		if idx < 0 or idx >= FloorPrism.PROP_COUNT:
+			failures.append("prop_index(atrium, %d): out of range, got %d" % [k, idx])
+		if absf(FloorPrism.prop_x("atrium", k, face_w)) > half_w * 0.8 + 0.001:
+			failures.append("prop_x(atrium, %d): escapes the face" % k)
+	# The same seed and face must return the same dressing on every call.
+	if FloorPrism.window_positions("atrium", 2, face_w) != FloorPrism.window_positions("atrium", 2, face_w):
+		failures.append("window_positions must be deterministic")
+	# Two different floors must not share one face's dressing by accident.
+	if FloorPrism.edge_hash("atrium", 1, "count") == FloorPrism.edge_hash("vault", 1, "count"):
+		failures.append("edge_hash must separate two floor names")
 
 
 func _run_breathe_cases(failures: Array[String]) -> void:

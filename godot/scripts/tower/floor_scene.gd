@@ -32,8 +32,10 @@ const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.pn
 ## Band A is the back wall, band B the walkable floor plane, band C the front
 ## lip. The plane flares toward the viewer, so its back edge sits inset by
 ## PLANE_FLARE and its front edge reaches the slab width.
-const WALL_BAND_HEIGHT: float = 16.0
-const PLANE_DEPTH: float = 20.0
+## FloorPrism owns these now, because it draws the bands. FloorScene still needs
+## them to stand an agent on the plane, so it reads them back from one source.
+const WALL_BAND_HEIGHT: float = FloorPrism.WALL_BAND_HEIGHT
+const PLANE_DEPTH: float = FloorPrism.PLANE_DEPTH
 ## Phase 5 section 2 — the plane stays inside the slab silhouette. A flare
 ## broke the outline and made the plane read as a carrier deck.
 const PLANE_FLARE: float = 0.0
@@ -108,24 +110,12 @@ var _dressing: Node2D = null
 ## Phase 4 — the fisheye layout hides the dressing on distant floors, where the
 ## windows and torches shrink to sub-pixel noise. A rebuild re-applies this.
 var _show_dressing: bool = true
-## Band polygons, kept as fields so a morph frame can restretch them without
-## rebuilding the whole dressing layer. _wall_band also carries the texture
-## offset that Phase 4 rotation scrolls.
-var _wall_band: Polygon2D = null
-var _floor_plane: Polygon2D = null
-var _front_lip: Polygon2D = null
-var _seam: Polygon2D = null
-var _plane_falloff: Polygon2D = null
-## Phase 6 drops the cornice. The prism draws the top edge of the room, so a
-## light trim line across the front face read as a rail floating in front of the
-## wall. The fields stay null so nothing that still reads them breaks.
-var _cornice: Polygon2D = null
-var _cornice_shadow: Polygon2D = null
+## Phase 6 section 2 — the bands, the seam, the lip, the windows and the ambient
+## prop all moved into FloorPrism, which paints them on every face. A static copy
+## on the front face read as a plate parked in front of the room, and it did not
+## turn with the wall. The dressing layer keeps only the two torches, which frame
+## the door instead of the room and so must not rotate.
 var _torches: Array[Sprite2D] = []
-## Phase 5 section 3 — windows and the ambient prop live under _agent_slots_node,
-## so the carousel carries them through a turn. Torches stay in the fixed
-## dressing layer, because they frame the door instead of the room.
-var _edge_dressing: Node2D = null
 var _flicker_time: float = 0.0
 ## Phase 6 section 1 — the prism node draws every wall face. It sits between
 ## the slab silhouette and the dressing, so the front face's bands paint on top
@@ -135,8 +125,6 @@ var _prism: FloorPrism = null
 ## the prism redraws every frame it moves.
 var _prism_rot: float = 0.0
 var _prism_tween: Tween = null
-## Fades the fixed dressing layer across a turn, on the same 0.55 s clock.
-var _dressing_tween: Tween = null
 ## Static dimmed agents on the two neighbour faces. Each entry is
 ## {sprite: Sprite2D, face: int}. The layer lives outside _agent_slots_node so
 ## the carousel never drags a ghost across the front face.
@@ -226,9 +214,6 @@ func _notification(what: int) -> void:
 		if _prism_tween != null and _prism_tween.is_valid():
 			_prism_tween.kill()
 		_prism_tween = null
-		if _dressing_tween != null and _dressing_tween.is_valid():
-			_dressing_tween.kill()
-		_dressing_tween = null
 
 
 func _kill_morph_tween() -> void:
@@ -317,10 +302,8 @@ func rotate_to_edge(new_edge: int, direction: int) -> Tween:
 		# the behaviour every caller expects from a rotate input.
 		steps = 1
 	_start_prism_turn(float(_aligned_prism_index() + direction * steps) * _prism_step())
-	# The dressing paints the face that is turning away, so it must leave with
-	# that face. Without this fade it holds still while the prism rotates under
-	# it, which reads as a static plate parked in front of the room.
-	_start_dressing_fade()
+	# The prism carries every face's dressing, so a turn sweeps dressed walls
+	# past on its own. Nothing here has to fade.
 	tw.chain().tween_callback(func() -> void:
 		set_active_edge(new_edge)
 		_agent_slots_node.position.x = direction * edge_w
@@ -339,23 +322,6 @@ func _start_prism_turn(target_rot: float) -> void:
 	_prism_tween = create_tween() \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	_prism_tween.tween_method(_apply_prism_rot, _prism_rot, target_rot, PRISM_TURN_SEC)
-
-
-## Fades the fixed dressing layer out and back across the prism turn. It runs on
-## its own tween and writes through a method, so a rebuild that frees the layer
-## mid-turn never aborts the fade or strands the dressing hidden.
-func _start_dressing_fade() -> void:
-	if _dressing_tween != null and _dressing_tween.is_valid():
-		_dressing_tween.kill()
-	_apply_dressing_alpha(1.0)
-	_dressing_tween = create_tween().set_trans(Tween.TRANS_SINE)
-	_dressing_tween.tween_method(_apply_dressing_alpha, 1.0, 0.0, PRISM_TURN_SEC / 2.0)
-	_dressing_tween.tween_method(_apply_dressing_alpha, 0.0, 1.0, PRISM_TURN_SEC / 2.0)
-
-
-func _apply_dressing_alpha(value: float) -> void:
-	if _dressing != null and is_instance_valid(_dressing):
-		_dressing.modulate.a = value
 
 
 func _apply_prism_rot(value: float) -> void:
@@ -522,9 +488,8 @@ func _apply_morph_t(t: float) -> void:
 	var face_w: float = _face_width()
 	var scaled: PackedVector2Array = _slab_polygon(face_w)
 	_background.polygon = scaled
-	# Phase 4 — the slab is a silhouette only. Re-apply the three-band split at
-	# the new width so a morph frame never shows the old full-slab wall.
-	_apply_band_geometry(face_w)
+	# The prism redraws every band at the new face width, so nothing else here
+	# needs a restretch.
 	_update_prism()
 	if _edge_glow:
 		_edge_glow.points = scaled
@@ -639,14 +604,12 @@ func get_agent_character(agent_id: String) -> AgentCharacter:
 	return null
 
 
-## Hides the three bands, the trim, and the windows and torches. TowerManager
-## calls this for any floor at fisheye distance 2 or more.
+## Hides the torches and the ghost agents. TowerManager calls this for any floor
+## at fisheye distance 2 or more, where they shrink to sub-pixel noise.
 func set_show_dressing(visible_flag: bool) -> void:
 	_show_dressing = visible_flag
 	if _dressing != null and is_instance_valid(_dressing):
 		_dressing.visible = visible_flag
-	if _edge_dressing != null and is_instance_valid(_edge_dressing):
-		_edge_dressing.visible = visible_flag
 	if _ghost_layer != null and is_instance_valid(_ghost_layer):
 		_ghost_layer.visible = visible_flag
 
@@ -693,6 +656,14 @@ func _update_prism() -> void:
 		polygon_sides, _face_width(), _floor_height,
 		WALL_TILES.get(wall_texture, WALL_TILES["stone_wall"]), _identity_tint()
 	)
+	# Every face carries its own windows and prop, keyed off the floor name, so
+	# the face that turns into front position shows the dressing the pagination
+	# dots already promised for that edge.
+	_prism.configure_dressing(
+		floor_name,
+		FLOOR_TILES.get(floor_tile, FLOOR_TILES["stone_floor"]),
+		WINDOW_TEXTURE, PROPS_TEXTURE
+	)
 	_prism.set_rotation_value(_prism_rot)
 	_update_ghost_transforms()
 
@@ -735,59 +706,6 @@ func _rebuild_dressing() -> void:
 	var half_w: float = _face_width() / 2.0
 	var half_h: float = _floor_height / 2.0
 
-	var tint: Color = _identity_tint()
-
-	# Band A. Back wall, the top 16 px of the slab.
-	_wall_band = Polygon2D.new()
-	_wall_band.texture = WALL_TILES.get(wall_texture, WALL_TILES["stone_wall"])
-	_wall_band.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	_wall_band.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	# The wall is the lit surface, so it carries the higher value.
-	_wall_band.color = Color(tint.r * WALL_VALUE, tint.g * WALL_VALUE, tint.b * WALL_VALUE, 1.0)
-	# Phase 6 drops the wall UV scroll. The prism rotation carries the turn now.
-	_dressing.add_child(_wall_band)
-
-	# Band B. The 3/4-view walkable plane, inside the slab, below the wall line.
-	_floor_plane = Polygon2D.new()
-	_floor_plane.texture = FLOOR_TILES.get(floor_tile, FLOOR_TILES["stone_floor"])
-	_floor_plane.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	_floor_plane.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	# The ground recedes, so the plane sits below the wall in value.
-	_floor_plane.color = Color(tint.r * PLANE_VALUE, tint.g * PLANE_VALUE, tint.b * PLANE_VALUE, 1.0)
-	_dressing.add_child(_floor_plane)
-
-	# Vertical brightness falloff over the plane. It foreshortens by value
-	# instead of by shape, so the plane silhouette stays a clean rect.
-	_plane_falloff = Polygon2D.new()
-	_plane_falloff.texture = _make_falloff_texture()
-	_plane_falloff.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var falloff_mat := CanvasItemMaterial.new()
-	falloff_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
-	_plane_falloff.material = falloff_mat
-	_dressing.add_child(_plane_falloff)
-
-	# 1 px step shadow where the wall meets the plane.
-	_seam = Polygon2D.new()
-	_seam.color = SEAM_COLOR
-	_dressing.add_child(_seam)
-
-	# Band C. Front lip, a 3 px plinth shadow at the slab bottom.
-	_front_lip = Polygon2D.new()
-	_front_lip.color = FRONT_LIP_COLOR
-	_dressing.add_child(_front_lip)
-
-	# Phase 6 builds no cornice. A light trim line across the top of the front
-	# face read as a bright rail floating in front of the prism, and it was the
-	# single thing that made the dressed face look like a separate structure.
-	# The prism draws the top edge of the room already.
-	_cornice = null
-	_cornice_shadow = null
-
-	_apply_band_geometry(_face_width())
-
-	# Windows no longer live here. Phase 5 section 3 moves them into the contents
-	# layer, so a turn carries them across with the agents.
-
 	# Torches flanking the wall band near each end. Phase 6 pins them to the
 	# brick: the bracket sits TORCH_TOP_MARGIN below the front face's top edge
 	# and the whole sprite stays inside the wall band, so no torch hovers over
@@ -814,81 +732,6 @@ func _identity_tint() -> Color:
 	return Color(t.r / mean, t.g / mean, t.b / mean, 1.0)
 
 
-## A 4 px vertical ramp from white down to PLANE_FALLOFF_BOTTOM. A multiply
-## blend over the plane turns it into a top-to-bottom brightness falloff.
-func _make_falloff_texture() -> GradientTexture2D:
-	var gradient := Gradient.new()
-	gradient.set_color(0, Color.WHITE)
-	gradient.set_color(1, Color(
-		PLANE_FALLOFF_BOTTOM, PLANE_FALLOFF_BOTTOM, PLANE_FALLOFF_BOTTOM, 1.0
-	))
-	var tex := GradientTexture2D.new()
-	tex.gradient = gradient
-	tex.width = int(PLANE_FALLOFF_PX)
-	tex.height = int(PLANE_FALLOFF_PX)
-	tex.fill_from = Vector2(0.0, 0.0)
-	tex.fill_to = Vector2(0.0, 1.0)
-	return tex
-
-
-## Restretches the three bands, the seam, and the cornice to a breathed width.
-## A morph frame calls this every tick, so it allocates no nodes.
-func _apply_band_geometry(width: float) -> void:
-	if _wall_band == null or not is_instance_valid(_wall_band):
-		return
-	var hw: float = width / 2.0
-	var hh: float = _floor_height / 2.0
-	var wall_line: float = -hh + WALL_BAND_HEIGHT
-	var plane_bottom: float = wall_line + PLANE_DEPTH
-
-	# Band A covers the top of the prism front face, corner to corner. The face
-	# is a plain rect, so a chamfer here would expose the prism behind it.
-	var wall_pts := PackedVector2Array([
-		Vector2(-hw, -hh), Vector2(hw, -hh),
-		Vector2(hw, wall_line), Vector2(-hw, wall_line),
-	])
-	_wall_band.polygon = wall_pts
-	# UVs in texture pixels so the 16 px tile repeats across the wall.
-	_wall_band.uv = wall_pts
-
-	# Band B stays inside the slab silhouette. PLANE_FLARE is 0, so this is a
-	# straight rect. The expression keeps the flare tunable.
-	var plane_pts := PackedVector2Array([
-		Vector2(-hw + PLANE_FLARE, wall_line), Vector2(hw - PLANE_FLARE, wall_line),
-		Vector2(hw, plane_bottom), Vector2(-hw, plane_bottom),
-	])
-	_floor_plane.polygon = plane_pts
-	_floor_plane.uv = plane_pts
-
-	if _plane_falloff != null and is_instance_valid(_plane_falloff):
-		_plane_falloff.polygon = plane_pts
-		# The gradient is PLANE_FALLOFF_PX tall, so map the plane depth onto
-		# that range and stretch the single texel column across the width.
-		var depth: float = maxf(1.0, plane_bottom - wall_line)
-		var uv_pts := PackedVector2Array()
-		for p: Vector2 in plane_pts:
-			uv_pts.append(Vector2(
-				0.5,
-				(p.y - wall_line) / depth * PLANE_FALLOFF_PX
-			))
-		_plane_falloff.uv = uv_pts
-
-	if _seam != null and is_instance_valid(_seam):
-		_seam.polygon = PackedVector2Array([
-			Vector2(-hw, wall_line), Vector2(hw, wall_line),
-			Vector2(hw, wall_line + SEAM_HEIGHT), Vector2(-hw, wall_line + SEAM_HEIGHT),
-		])
-
-	# Band C runs the full face width, flush with the bottom edge.
-	var lip_top: float = hh - FRONT_LIP_HEIGHT
-	_front_lip.polygon = PackedVector2Array([
-		Vector2(-hw, lip_top), Vector2(hw, lip_top),
-		Vector2(hw, hh), Vector2(-hw, hh),
-	])
-
-	# Phase 6 draws no cornice, so nothing restretches here.
-
-
 ## Y of an AgentCharacter's origin. Feet land at band B mid-depth, so the head
 ## overlaps the wall line and clears the cornice.
 func _character_y() -> float:
@@ -900,67 +743,6 @@ func _character_y() -> float:
 ## wall line.
 func _prop_y() -> float:
 	return -_floor_height / 2.0 + WALL_BAND_HEIGHT + 2.0
-
-
-## Deterministic per-edge hash. The same floor name, edge index and salt always
-## return the same value, so an edge keeps its dressing across rebuilds.
-func _edge_hash(edge: int, salt: String) -> int:
-	var key: String = "%s|%d|%s" % [floor_name, edge, salt]
-	return absi(key.hash())
-
-
-## Deterministic float in [0, 1) for one edge and one salt.
-func _edge_unit(edge: int, salt: String) -> float:
-	return float(_edge_hash(edge, salt) % 10007) / 10007.0
-
-
-## Phase 5 section 3 — builds the dressing that belongs to the active edge:
-## 1 to 3 windows on the wall band, and one ambient prop on the plane. The whole
-## group hangs under _agent_slots_node, so the carousel moves it during a turn
-## and the frame after the turn differs from the frame before it. An edge with
-## no agents still looks inhabited.
-func _rebuild_edge_dressing() -> void:
-	_edge_dressing = Node2D.new()
-	_agent_slots_node.add_child(_edge_dressing)
-	# Always build the children, even when the floor hides its dressing. A floor
-	# that rebuilds at fisheye distance and then refocuses gets only a visibility
-	# flip from set_show_dressing, so an empty node would stay empty until the
-	# next structural rebuild.
-	_edge_dressing.visible = _show_dressing
-	var half_w: float = _face_width() / 2.0
-	var half_h: float = _floor_height / 2.0
-	var window_y: float = -half_h + WALL_BAND_HEIGHT / 2.0
-	var span_left: float = -half_w + WINDOW_START
-	var span_right: float = half_w - WINDOW_START
-	var span: float = maxf(1.0, span_right - span_left)
-	var count: int = EDGE_WINDOW_MIN + _edge_hash(_active_edge, "count") \
-		% (EDGE_WINDOW_MAX - EDGE_WINDOW_MIN + 1)
-	var cell: float = span / float(count)
-	for i: int in range(count):
-		var jitter: float = (_edge_unit(_active_edge, "jitter%d" % i) - 0.5) \
-			* 2.0 * EDGE_WINDOW_JITTER
-		var x: float = span_left + cell * (float(i) + 0.5) + jitter
-		# Push the window clear of the central door area.
-		if absf(x) < EDGE_WINDOW_CENTER_GAP:
-			x = EDGE_WINDOW_CENTER_GAP * signf(x if x != 0.0 else 1.0)
-		x = clampf(x, span_left, span_right)
-		var win := Sprite2D.new()
-		win.texture = WINDOW_TEXTURE
-		win.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		win.position = Vector2(x, window_y)
-		_edge_dressing.add_child(win)
-
-	# One ambient prop from the workstations atlas, on the back of the plane.
-	var ambient := Sprite2D.new()
-	var atlas := AtlasTexture.new()
-	atlas.atlas = PROPS_TEXTURE
-	atlas.region = Rect2(float(_edge_hash(_active_edge, "prop") % PROP_COUNT) * 16.0, 0.0, 16.0, 16.0)
-	ambient.texture = atlas
-	ambient.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var side: float = -1.0 if _edge_hash(_active_edge, "side") % 2 == 0 else 1.0
-	var ambient_x: float = side * lerpf(half_w * 0.45, half_w * 0.8, _edge_unit(_active_edge, "propx"))
-	ambient.position = Vector2(ambient_x, _prop_y())
-	_edge_dressing.add_child(ambient)
 
 
 ## Phase 6 section 1 — dressing for the two neighbour faces. Every agent on
@@ -1050,7 +832,6 @@ func _update_ghost_transforms() -> void:
 func _rebuild_interior() -> void:
 	for child: Node in _agent_slots_node.get_children():
 		child.queue_free()
-	_rebuild_edge_dressing()
 	_rebuild_ghosts()
 	var edge_agents: Array[Dictionary] = []
 	for slot: Dictionary in _agent_slots:
@@ -1128,10 +909,6 @@ func _reposition_interior(effective_width: float) -> void:
 	var prop_y: float = _prop_y()
 	var slot: int = 0
 	for child: Node in children:
-		if child == _edge_dressing:
-			# The per-edge dressing keeps its own layout. Skip it, or the prop
-			# branch below would drag the windows onto a desk position.
-			continue
 		if slot >= positions.size():
 			break
 		var base_x: float = positions[slot].x + EdgeLayout.DESK_WIDTH / 2.0
