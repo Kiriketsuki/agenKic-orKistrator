@@ -629,19 +629,19 @@ func set_show_interior(visible_flag: bool) -> void:
 	# mirrors this same distance rule.
 
 
-## Demo-parity front-face outline: a rectangle with chamfered short ends (the
-## HTML demo's clip-path). Callers pass the prism face width, so T15 load
-## reaches it two ways. Breathe scales the whole footprint, and the side-count
-## bucket divides that footprint into more and narrower faces.
+## Outline of the prism's front face. FloorPrism draws that face as a plain
+## rect of width x _floor_height centred on the origin, so this returns the same
+## rect. A chamfer here used to cut the corners off the dressing and let the
+## prism show through, which read as a second octagon floating in front of the
+## wall. Callers pass the prism face width, so T15 load reaches it two ways.
+## Breathe scales the whole footprint, and the side-count bucket divides that
+## footprint into more and narrower faces.
 func _slab_polygon(width: float) -> PackedVector2Array:
 	var hw: float = width / 2.0
 	var hh: float = _floor_height / 2.0
-	var ch: float = minf(8.0, hh)
 	return PackedVector2Array([
-		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
-		Vector2(hw, -hh + ch), Vector2(hw, hh - ch),
-		Vector2(hw - ch, hh), Vector2(-hw + ch, hh),
-		Vector2(-hw, hh - ch), Vector2(-hw, -hh + ch),
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, hh), Vector2(-hw, hh),
 	])
 
 
@@ -670,12 +670,15 @@ func _update_prism() -> void:
 
 func _rebuild_background() -> void:
 	var scaled: PackedVector2Array = _slab_polygon(_face_width())
-	# Phase 4 — the slab carries no wall texture any more. It is the silhouette
-	# behind the three bands, so it only fills the gaps the bands leave.
+	# Phase 6 — the prism draws every wall face, so the slab has nothing left to
+	# fill. It stayed visible behind the bands and painted a second silhouette on
+	# top of the prism. The node keeps its polygon for the public API and for
+	# EdgeGlow, and it no longer renders.
 	_background.polygon = scaled
 	_background.texture = null
 	_background.uv = PackedVector2Array()
 	_background.color = Color(0.129, 0.145, 0.184, 1.0)
+	_background.visible = false
 	if _edge_glow:
 		_edge_glow.points = scaled
 		var mat: ShaderMaterial = _edge_glow.material as ShaderMaterial
@@ -808,15 +811,14 @@ func _apply_band_geometry(width: float) -> void:
 		return
 	var hw: float = width / 2.0
 	var hh: float = _floor_height / 2.0
-	var ch: float = minf(8.0, hh)
 	var wall_line: float = -hh + WALL_BAND_HEIGHT
 	var plane_bottom: float = wall_line + PLANE_DEPTH
 
-	# Band A follows the slab's top chamfer so it never spills past the edge.
+	# Band A covers the top of the prism front face, corner to corner. The face
+	# is a plain rect, so a chamfer here would expose the prism behind it.
 	var wall_pts := PackedVector2Array([
-		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
-		Vector2(hw, -hh + ch), Vector2(hw, wall_line),
-		Vector2(-hw, wall_line), Vector2(-hw, -hh + ch),
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, wall_line), Vector2(-hw, wall_line),
 	])
 	_wall_band.polygon = wall_pts
 	# UVs in texture pixels so the 16 px tile repeats across the wall.
@@ -850,23 +852,22 @@ func _apply_band_geometry(width: float) -> void:
 			Vector2(hw, wall_line + SEAM_HEIGHT), Vector2(-hw, wall_line + SEAM_HEIGHT),
 		])
 
-	# Band C tucks inside the bottom chamfer.
+	# Band C runs the full face width, flush with the bottom edge.
 	var lip_top: float = hh - FRONT_LIP_HEIGHT
-	var lip_inset: float = maxf(0.0, ch - FRONT_LIP_HEIGHT)
 	_front_lip.polygon = PackedVector2Array([
-		Vector2(-hw + lip_inset, lip_top), Vector2(hw - lip_inset, lip_top),
-		Vector2(hw - ch, hh), Vector2(-hw + ch, hh),
+		Vector2(-hw, lip_top), Vector2(hw, lip_top),
+		Vector2(hw, hh), Vector2(-hw, hh),
 	])
 
-	# Flush trim. It sits inside the top chamfer and overhangs nothing.
+	# Flush trim. It runs the full face width and overhangs nothing.
 	_cornice.polygon = PackedVector2Array([
-		Vector2(-hw + ch, -hh), Vector2(hw - ch, -hh),
-		Vector2(hw - ch, -hh + 2.0), Vector2(-hw + ch, -hh + 2.0),
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, -hh + 2.0), Vector2(-hw, -hh + 2.0),
 	])
 	if _cornice_shadow != null and is_instance_valid(_cornice_shadow):
 		_cornice_shadow.polygon = PackedVector2Array([
-			Vector2(-hw + ch, -hh + 2.0), Vector2(hw - ch, -hh + 2.0),
-			Vector2(hw - ch, -hh + 3.0), Vector2(-hw + ch, -hh + 3.0),
+			Vector2(-hw, -hh + 2.0), Vector2(hw, -hh + 2.0),
+			Vector2(hw, -hh + 3.0), Vector2(-hw, -hh + 3.0),
 		])
 
 
