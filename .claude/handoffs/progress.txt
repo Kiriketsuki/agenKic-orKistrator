@@ -288,3 +288,25 @@
 - Branch: main at 8322290 (PR #164 merged as e361829, v26.3.1.0)
 
 ---
+
+## 2026-08-04 Handoff
+
+### Decisions
+- Shader pulses pinned to 0.6 (the MEAN of the old sin pulse), not 1.0 — pinning to peak left everything 67% brighter.
+- Panel size stored as viewport fractions, not pixels, so it survives resolution/monitor changes.
+- max_scroll_panels == 1 keeps the bare shared panel id, so the original singleton path runs unchanged.
+- Reaper conservative both ways: failed ListSessions aborts the sweep; agents younger than one interval are skipped.
+- Folder picker uses the in-engine FileDialog — a native portal dialog cannot be themed.
+
+### Failed Approaches
+- Blamed shaders for "random dark/light"; real cause was Hyprland decoration:dim_inactive. Fixed with a no_dim windowrule.
+- Assumed the workdir feature broke; bin/orchestrator was stale because run.sh only rebuilt when the binary was missing.
+- Nearly "fixed" a phantom infinite recursion — a sed range-print stitched two functions together. Read the real file.
+- My own smoke test clobbered the user's real settings; SigilConfig now remembers config_path and open_page uses set_value_no_signal.
+
+### Handoff Target
+- Plan file: 2026-08-04-20h35-epic-169-merged-polish-next.md (Current State + Next Steps refreshed 20h44)
+- Branch: main @ ac46ff6 — epic merged as 5211248, CI bumped 26.3.1.1 -> 26.4.0.0; app stopped, agent sessions cleaned
+- Note: progress.txt is TRACKED while .claude/ is gitignored, so edits here block branch switches (stash across checkout)
+
+---
