@@ -14,9 +14,12 @@ extends Control
 const FOCUS_COLOR: Color = Color("#c8a84e")
 const DIM_COLOR: Color = Color("#8a9a7a")
 const NAMEPLATE_TEXT_SIZE: int = 11
-## Screen-space offset, in window pixels.
-const NAMEPLATE_OFFSET: Vector2 = Vector2(0.0, -26.0)
 const NAMEPLATE_SIZE: Vector2 = Vector2(96.0, 20.0)
+## Half-height of a character sprite, in art px. The plate hangs above the
+## head, so its offset scales with the camera zoom instead of a fixed pixel
+## count that lands on the face at high zoom.
+const CHARACTER_HALF_HEIGHT: float = 12.0
+const NAMEPLATE_HEAD_GAP: float = 4.0
 
 const NAMEPLATE_TEXTURE: Texture2D = preload("res://assets/ui/nameplate_frame.png")
 
@@ -85,8 +88,9 @@ func _place_nameplate(char_node: AgentCharacter) -> void:
 	var class_id: int = char_node.get("_character_class")
 	label.text = String(AgentCharacter.CLASS_LABELS.get(class_id, "APP"))
 	label.add_theme_color_override("font_color", _accent_for(class_id))
-	var origin: Vector2 = char_node.get_global_transform_with_canvas().origin
-	plate.position = origin + NAMEPLATE_OFFSET - Vector2(NAMEPLATE_SIZE.x / 2.0, 0.0)
+	var xf: Transform2D = char_node.get_global_transform_with_canvas()
+	var head_clear: float = CHARACTER_HALF_HEIGHT * xf.get_scale().y + NAMEPLATE_HEAD_GAP
+	plate.position = xf.origin - Vector2(NAMEPLATE_SIZE.x / 2.0, head_clear + NAMEPLATE_SIZE.y)
 
 
 ## Class accent, taken from the character's own palette table (PORTING.md).

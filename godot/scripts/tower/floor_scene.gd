@@ -117,7 +117,7 @@ var _prism: FloorPrism = null
 var _prism_rot: float = 0.0
 var _prism_tween: Tween = null
 ## Static dimmed agents on the two neighbour faces. Each entry is
-## {sprite: Sprite2D, face: int}. The layer lives outside _agent_slots_node so
+## {sprite: AnimatedSprite2D, face: int}. The layer lives outside _agent_slots_node so
 ## the carousel never drags a ghost across the front face.
 var _ghost_layer: Node2D = null
 var _ghosts: Array[Dictionary] = []
@@ -725,11 +725,16 @@ func _rebuild_ghosts() -> void:
 			continue
 		var positions: Array[Vector2] = EdgeLayout.calculate_positions(edge_agents.size(), face_w)
 		for i: int in range(edge_agents.size()):
-			var tex: Texture2D = _idle_frame_for_class(edge_agents[i].get("character_class", "apprentice"))
-			if tex == null:
+			var frames: SpriteFrames = _frames_for_class(edge_agents[i].get("character_class", "apprentice"))
+			if frames == null:
 				continue
-			var ghost := Sprite2D.new()
-			ghost.texture = tex
+			# A live AnimatedSprite2D, so the neighbour keeps breathing on the
+			# side wall and the turn hands over without a pop.
+			var ghost := AnimatedSprite2D.new()
+			ghost.sprite_frames = frames
+			ghost.animation = &"idle"
+			ghost.frame = i % maxi(frames.get_frame_count("idle"), 1)
+			ghost.play(&"idle")
 			ghost.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			ghost.position = Vector2(0.0, char_y)
 			_ghost_layer.add_child(ghost)
@@ -741,15 +746,15 @@ func _rebuild_ghosts() -> void:
 	_update_ghost_transforms()
 
 
-## First idle frame of a character class, or null when the class has no frames.
-func _idle_frame_for_class(class_name_str: String) -> Texture2D:
+## Idle SpriteFrames of a character class, or null when the class has none.
+func _frames_for_class(class_name_str: String) -> SpriteFrames:
 	var class_id: int = AgentCharacter.CLASS_BY_NAME.get(
 		class_name_str, AgentCharacter.CharacterClass.APPRENTICE
 	)
 	var frames: SpriteFrames = AgentCharacter.CLASS_FRAMES.get(class_id, null)
 	if frames == null or not frames.has_animation("idle") or frames.get_frame_count("idle") == 0:
 		return null
-	return frames.get_frame_texture("idle", 0)
+	return frames
 
 
 ## Places every ghost on its projected face. A ghost on a back-facing face
@@ -759,7 +764,7 @@ func _update_ghost_transforms() -> void:
 		return
 	var face_w: float = _face_width()
 	for entry: Dictionary in _ghosts:
-		var ghost: Sprite2D = entry["sprite"]
+		var ghost: AnimatedSprite2D = entry["sprite"]
 		if not is_instance_valid(ghost):
 			continue
 		var face: int = entry["face"]

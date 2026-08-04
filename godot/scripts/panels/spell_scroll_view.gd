@@ -34,6 +34,8 @@ const PROVIDER_GLYPHS: Dictionary = {
 @onready var _history: RichTextLabel = $History
 @onready var _quill: Label = $QuillGlyph
 @onready var _disenchant_button: Button = $Header/DisenchantButton
+@onready var _input_line: LineEdit = $Footer/Input
+@onready var _send_button: Button = $Footer/Send
 
 var _panel: PanelBase = null
 var _bridge: Node = null
@@ -103,6 +105,63 @@ func setup(panel: PanelBase, agent_data: BridgeData.AgentData, bridge: Node) -> 
 	_apply_flutter_uniforms()
 	_play_unroll_flourish.call_deferred()
 	_request_backfill()
+	_wire_input_line()
+
+
+## The scroll carries the same input line as the chat view. Without one, a TUI
+## prompt inside the session is unreachable from scroll mode: arrows fall
+## through to the tower and move the floor focus instead.
+func _wire_input_line() -> void:
+	if _input_line == null:
+		return
+	if not _input_line.text_submitted.is_connected(_on_input_submitted):
+		_input_line.text_submitted.connect(_on_input_submitted)
+		_input_line.gui_input.connect(_on_input_gui_input)
+	if _send_button != null and not _send_button.pressed.is_connected(_on_send_pressed):
+		_send_button.pressed.connect(_on_send_pressed)
+	_input_line.call_deferred("grab_focus")
+
+
+func _on_send_pressed() -> void:
+	if _input_line != null:
+		_on_input_submitted(_input_line.text)
+
+
+func _on_input_submitted(text: String) -> void:
+	if text.strip_edges().is_empty() or _bridge == null or _agent_id.is_empty():
+		return
+	if _bridge.has_method("send_input"):
+		# The orchestrator appends Enter, so the CLI receives a submitted line.
+		_bridge.call("send_input", _agent_id, text)
+	if _input_line != null:
+		_input_line.clear()
+
+
+## Key passthrough, the same rule as TerminalView (Task D): with an EMPTY input
+## line, navigation keys and bare digits go straight to the tmux session, so a
+## TUI prompt is answerable. With text present, keys keep normal editing.
+func _on_input_gui_input(event: InputEvent) -> void:
+	if _input_line == null or _bridge == null or _agent_id.is_empty():
+		return
+	var key_event := event as InputEventKey
+	if key_event == null or not key_event.pressed or key_event.echo:
+		return
+	if key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
+		return
+	if not _input_line.text.is_empty():
+		return
+	var key_name: String = ""
+	if TerminalView._PASSTHROUGH_KEYS.has(key_event.keycode):
+		key_name = TerminalView._PASSTHROUGH_KEYS[key_event.keycode]
+	elif key_event.keycode >= KEY_1 and key_event.keycode <= KEY_4:
+		key_name = String.chr(key_event.keycode)
+	elif key_event.keycode >= KEY_KP_1 and key_event.keycode <= KEY_KP_4:
+		key_name = str(key_event.keycode - KEY_KP_0)
+	if key_name.is_empty():
+		return
+	if _bridge.has_method("send_key"):
+		_bridge.call("send_key", _agent_id, key_name)
+	_input_line.accept_event()
 
 
 ## Called by PanelManager when the singleton scroll panel is retargeted to a
