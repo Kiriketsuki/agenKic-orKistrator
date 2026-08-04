@@ -625,6 +625,23 @@ func _extract_error_reason(body_str: String, result: int, code: int) -> String:
 	return "request failed (code=%d)" % code
 
 
+## Returns the current connection state as the same lowercase string
+## connection_status_changed emits ("disconnected", "connecting",
+## "connected", "reconnecting"). Read-only accessor for a consumer that
+## polls state instead of listening to the signal, such as the title
+## screen's bridge status rune (F1).
+func get_connection_state_name() -> String:
+	match _connection_state:
+		ConnectionState.CONNECTED:
+			return "connected"
+		ConnectionState.CONNECTING:
+			return "connecting"
+		ConnectionState.RECONNECTING:
+			return "reconnecting"
+		_:
+			return "disconnected"
+
+
 func get_registered_agents() -> Array[BridgeData.AgentData]:
 	var agents: Array[BridgeData.AgentData] = []
 	for agent_id: String in _agents:
