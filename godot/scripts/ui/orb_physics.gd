@@ -1,0 +1,156 @@
+class_name OrbPhysics
+## F2 (#175) — Pure, node-free math for the orb flock HUD: spring-to-edge
+## docking, momentum with edge ricochet, nearest-edge selection, and dock
+## stack offsets. Mirrors the T15-T18 idiom (FloorMorph, PaletteMath,
+## ParticleMath, PanelFloatMath): every function here is static and takes
+## only plain values, so tests/orb_physics_test.gd exercises it headlessly
+## without a running engine. No Node, Control, Tween, or Viewport reference
+## anywhere in this file. OrbFlock owns the per-frame call sites and the
+## Vector2 state these functions read and return.
+
+## Screen edges the flock can dock against. TOP and BOTTOM only matter for
+## momentum ricochet (acceptance: "a top-edge bounce"); the dock itself
+## always resolves to LEFT or RIGHT, matching the mockup's side-rail dock.
+enum Edge { LEFT, RIGHT, TOP, BOTTOM }
+
+## Spring stiffness/damping for the release-to-edge snap. Critically damped
+## (damping^2 ~= 4*stiffness) so the flock settles without overshoot.
+const SPRING_STIFFNESS: float = 220.0
+const SPRING_DAMPING: float = 28.0
+const SPRING_SETTLE_DISTANCE: float = 0.5
+const SPRING_SETTLE_SPEED: float = 4.0
+
+## Fraction of speed kept after a top/bottom bounce during a flick. 1.0
+## keeps all speed (perfectly elastic), 0.0 stops the flock dead at the
+## edge.
+const DEFAULT_RICOCHET_FRACTION: float = 0.62
+
+## Momentum decays over time so a flick eventually settles instead of
+## bouncing forever. Expressed as speed lost per second, multiplicative.
+const MOMENTUM_DRAG_PER_SEC: float = 0.35
+const MOMENTUM_STOP_SPEED: float = 6.0
+
+## Dock stack: each trailing orb sits this many pixels behind the lead orb,
+## both toward screen center and slightly down, so the lead orb reads on
+## top of the stack.
+const STACK_STEP_INWARD_PX: float = 10.0
+const STACK_STEP_DOWN_PX: float = 14.0
+
+## Margin between an orb's edge and the viewport edge while docked.
+const DOCK_MARGIN_PX: float = 18.0
+
+
+## Picks the closest screen edge to `position` (an orb center) given the
+## viewport size. Ties resolve toward LEFT/RIGHT over TOP/BOTTOM, matching
+## the dock's side-rail behavior: a flock released near a corner docks to
+## the side, not the top or bottom.
+static func nearest_edge(position: Vector2, viewport_size: Vector2) -> Edge:
+	var dist_left: float = position.x
+	var dist_right: float = viewport_size.x - position.x
+	var dist_top: float = position.y
+	var dist_bottom: float = viewport_size.y - position.y
+	var side_min: float = minf(dist_left, dist_right)
+	var vertical_min: float = minf(dist_top, dist_bottom)
+	if side_min <= vertical_min:
+		return Edge.LEFT if dist_left <= dist_right else Edge.RIGHT
+	return Edge.TOP if dist_top <= dist_bottom else Edge.BOTTOM
+
+
+## The dock anchor point on `edge` for an orb of `radius`, at the given
+## `height` along the edge (the release height, per the acceptance
+## scenario "the orbs stack at the release height"). Clamps the height so
+## the whole stack stays on-screen.
+static func edge_dock_anchor(edge: Edge, viewport_size: Vector2, radius: float, height: float) -> Vector2:
+	var clamped_height: float = clampf(height, radius + DOCK_MARGIN_PX, viewport_size.y - radius - DOCK_MARGIN_PX)
+	match edge:
+		Edge.RIGHT:
+			return Vector2(viewport_size.x - radius - DOCK_MARGIN_PX, clamped_height)
+		Edge.TOP:
+			return Vector2(clampf(height, radius + DOCK_MARGIN_PX, viewport_size.x - radius - DOCK_MARGIN_PX), radius + DOCK_MARGIN_PX)
+		Edge.BOTTOM:
+			return Vector2(clampf(height, radius + DOCK_MARGIN_PX, viewport_size.x - radius - DOCK_MARGIN_PX), viewport_size.y - radius - DOCK_MARGIN_PX)
+		_:
+			return Vector2(radius + DOCK_MARGIN_PX, clamped_height)
+
+
+## One spring-damper integration step moving `current` toward `target`.
+## Returns {"position": Vector2, "velocity": Vector2, "settled": bool}.
+## `settled` is true once the orb is within SPRING_SETTLE_DISTANCE of the
+## target and moving slower than SPRING_SETTLE_SPEED, so the caller can
+## snap exactly onto the dock and stop ticking the spring.
+static func spring_step(current: Vector2, target: Vector2, velocity: Vector2, delta: float) -> Dictionary:
+	var displacement: Vector2 = target - current
+	var accel: Vector2 = (displacement * SPRING_STIFFNESS) - (velocity * SPRING_DAMPING)
+	var next_velocity: Vector2 = velocity + accel * delta
+	var next_position: Vector2 = current + next_velocity * delta
+	var settled: bool = displacement.length() <= SPRING_SETTLE_DISTANCE and next_velocity.length() <= SPRING_SETTLE_SPEED
+	if settled:
+		return {"position": target, "velocity": Vector2.ZERO, "settled": true}
+	return {"position": next_position, "velocity": next_velocity, "settled": false}
+
+
+## Flick velocity from a short window of recent drag positions. Callers
+## sample the pointer every frame during a drag and feed the last couple of
+## samples in on release; this stays a pure function of two positions and a
+## time delta so it needs no history buffer of its own. `max_speed` caps
+## the result so a stray zero-delta sample cannot produce an infinite
+## velocity.
+static func flick_velocity(previous_position: Vector2, released_position: Vector2, delta: float, max_speed: float) -> Vector2:
+	if delta <= 0.0:
+		return Vector2.ZERO
+	var raw: Vector2 = (released_position - previous_position) / delta
+	if raw.length() > max_speed:
+		raw = raw.normalized() * max_speed
+	return raw
+
+
+## One momentum integration step: moves `position` by `velocity * delta`,
+## bounces off the top and bottom viewport edges by reflecting the vertical
+## velocity component and keeping `ricochet_fraction` of its speed, then
+## applies exponential drag. Left/right edges are not bounced here — the
+## flock docks sideways instead of ricocheting off the side rails, per the
+## acceptance scenario's "top-edge bounce".
+## Returns {"position": Vector2, "velocity": Vector2}.
+static func momentum_step(position: Vector2, velocity: Vector2, delta: float, viewport_size: Vector2, radius: float, ricochet_fraction: float) -> Dictionary:
+	var next_position: Vector2 = position + velocity * delta
+	var next_velocity: Vector2 = velocity
+	var top_bound: float = radius
+	var bottom_bound: float = viewport_size.y - radius
+	if next_position.y < top_bound:
+		next_position.y = top_bound
+		next_velocity.y = absf(next_velocity.y) * ricochet_fraction
+	elif next_position.y > bottom_bound:
+		next_position.y = bottom_bound
+		next_velocity.y = -absf(next_velocity.y) * ricochet_fraction
+	next_position.x = clampf(next_position.x, radius, viewport_size.x - radius)
+	var drag: float = clampf(1.0 - MOMENTUM_DRAG_PER_SEC * delta, 0.0, 1.0)
+	next_velocity *= drag
+	if next_velocity.length() < MOMENTUM_STOP_SPEED:
+		next_velocity = Vector2.ZERO
+	return {"position": next_position, "velocity": next_velocity}
+
+
+## True once a flying flock has bled off enough speed to hand control back
+## to the spring-to-edge phase.
+static func momentum_settled(velocity: Vector2) -> bool:
+	return velocity.length() <= 0.0
+
+
+## Offset of the orb at `index` (0 = lead orb, drawn on top) within a
+## docked stack, relative to the lead orb's anchor position. Trailing orbs
+## step inward (away from the edge) and down, so the stack reads as a
+## fanned deck with the lead orb fully visible on top.
+static func stack_offset(index: int, edge: Edge) -> Vector2:
+	if index <= 0:
+		return Vector2.ZERO
+	var inward: float = STACK_STEP_INWARD_PX * float(index)
+	var down: float = STACK_STEP_DOWN_PX * float(index)
+	match edge:
+		Edge.RIGHT:
+			return Vector2(-inward, down)
+		Edge.TOP:
+			return Vector2(down, inward)
+		Edge.BOTTOM:
+			return Vector2(down, -inward)
+		_:
+			return Vector2(inward, down)

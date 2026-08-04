@@ -344,7 +344,10 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	# While the pointer sits over a terminal or scroll body, every keystroke
 	# belongs to the agent's tmux session. Escape must forward, not close the
 	# panel, so every hotkey stands down until the pointer leaves the body.
-	if KeyPassthrough.hover_active:
+	# F2 (#175): the orb flock gates hotkeys the same way KeyPassthrough
+	# does, for the same reason — while a flyout is open or a drag is live,
+	# a panel hotkey must not fire underneath it.
+	if KeyPassthrough.hover_active or OrbFlock.suspend_hotkeys:
 		return
 	var typing: bool = _focus_owner_accepts_text()
 	if event.is_action_pressed("panel_fullscreen") and not typing and _active_panel != null:

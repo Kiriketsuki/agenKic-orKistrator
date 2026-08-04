@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://main"]
+[gd_scene load_steps=16 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/tower/tower_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/tower/tower_exterior.gd" id="2"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/ui/edge_compass.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/ui/floor_banner.gd" id="13"]
 [ext_resource type="Script" path="res://scripts/ui/hex_compass.gd" id="14"]
+[ext_resource type="Script" path="res://scripts/ui/orb_flock.gd" id="15"]
 
 [node name="Main" type="Node2D"]
 
@@ -41,10 +42,20 @@ zoom = Vector2(1, 1)
 [node name="UILayer" type="CanvasLayer" parent="."]
 layer = 10
 
-[node name="SummonBar" type="HBoxContainer" parent="UILayer"]
+[node name="OrbFlock" type="Control" parent="UILayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("15")
+
+[node name="SummonBar" type="HBoxContainer" parent="UILayer/OrbFlock"]
+visible = false
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 700.0
+offset_right = 420.0
 offset_bottom = 48.0
 theme_override_constants/separation = 8
 script = ExtResource("8")
