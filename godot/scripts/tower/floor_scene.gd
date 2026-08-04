@@ -116,6 +116,9 @@ var _floor_plane: Polygon2D = null
 var _front_lip: Polygon2D = null
 var _seam: Polygon2D = null
 var _plane_falloff: Polygon2D = null
+## Phase 6 drops the cornice. The prism draws the top edge of the room, so a
+## light trim line across the front face read as a rail floating in front of the
+## wall. The fields stay null so nothing that still reads them breaks.
 var _cornice: Polygon2D = null
 var _cornice_shadow: Polygon2D = null
 var _torches: Array[Sprite2D] = []
@@ -132,6 +135,8 @@ var _prism: FloorPrism = null
 ## the prism redraws every frame it moves.
 var _prism_rot: float = 0.0
 var _prism_tween: Tween = null
+## Fades the fixed dressing layer across a turn, on the same 0.55 s clock.
+var _dressing_tween: Tween = null
 ## Static dimmed agents on the two neighbour faces. Each entry is
 ## {sprite: Sprite2D, face: int}. The layer lives outside _agent_slots_node so
 ## the carousel never drags a ghost across the front face.
@@ -221,6 +226,9 @@ func _notification(what: int) -> void:
 		if _prism_tween != null and _prism_tween.is_valid():
 			_prism_tween.kill()
 		_prism_tween = null
+		if _dressing_tween != null and _dressing_tween.is_valid():
+			_dressing_tween.kill()
+		_dressing_tween = null
 
 
 func _kill_morph_tween() -> void:
@@ -309,6 +317,10 @@ func rotate_to_edge(new_edge: int, direction: int) -> Tween:
 		# the behaviour every caller expects from a rotate input.
 		steps = 1
 	_start_prism_turn(float(_aligned_prism_index() + direction * steps) * _prism_step())
+	# The dressing paints the face that is turning away, so it must leave with
+	# that face. Without this fade it holds still while the prism rotates under
+	# it, which reads as a static plate parked in front of the room.
+	_start_dressing_fade()
 	tw.chain().tween_callback(func() -> void:
 		set_active_edge(new_edge)
 		_agent_slots_node.position.x = direction * edge_w
@@ -327,6 +339,23 @@ func _start_prism_turn(target_rot: float) -> void:
 	_prism_tween = create_tween() \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	_prism_tween.tween_method(_apply_prism_rot, _prism_rot, target_rot, PRISM_TURN_SEC)
+
+
+## Fades the fixed dressing layer out and back across the prism turn. It runs on
+## its own tween and writes through a method, so a rebuild that frees the layer
+## mid-turn never aborts the fade or strands the dressing hidden.
+func _start_dressing_fade() -> void:
+	if _dressing_tween != null and _dressing_tween.is_valid():
+		_dressing_tween.kill()
+	_apply_dressing_alpha(1.0)
+	_dressing_tween = create_tween().set_trans(Tween.TRANS_SINE)
+	_dressing_tween.tween_method(_apply_dressing_alpha, 1.0, 0.0, PRISM_TURN_SEC / 2.0)
+	_dressing_tween.tween_method(_apply_dressing_alpha, 0.0, 1.0, PRISM_TURN_SEC / 2.0)
+
+
+func _apply_dressing_alpha(value: float) -> void:
+	if _dressing != null and is_instance_valid(_dressing):
+		_dressing.modulate.a = value
 
 
 func _apply_prism_rot(value: float) -> void:
@@ -747,14 +776,12 @@ func _rebuild_dressing() -> void:
 	_front_lip.color = FRONT_LIP_COLOR
 	_dressing.add_child(_front_lip)
 
-	# Cornice. Phase 5 section 4 makes it flush trim with zero overhang: a 2 px
-	# light line at the slab top edge over a 1 px dark line.
-	_cornice = Polygon2D.new()
-	_cornice.color = Color(0.42, 0.44, 0.52, 1.0)
-	_dressing.add_child(_cornice)
-	_cornice_shadow = Polygon2D.new()
-	_cornice_shadow.color = Color(0.086, 0.098, 0.129, 1.0)
-	_dressing.add_child(_cornice_shadow)
+	# Phase 6 builds no cornice. A light trim line across the top of the front
+	# face read as a bright rail floating in front of the prism, and it was the
+	# single thing that made the dressed face look like a separate structure.
+	# The prism draws the top edge of the room already.
+	_cornice = null
+	_cornice_shadow = null
 
 	_apply_band_geometry(_face_width())
 
@@ -859,16 +886,7 @@ func _apply_band_geometry(width: float) -> void:
 		Vector2(hw, hh), Vector2(-hw, hh),
 	])
 
-	# Flush trim. It runs the full face width and overhangs nothing.
-	_cornice.polygon = PackedVector2Array([
-		Vector2(-hw, -hh), Vector2(hw, -hh),
-		Vector2(hw, -hh + 2.0), Vector2(-hw, -hh + 2.0),
-	])
-	if _cornice_shadow != null and is_instance_valid(_cornice_shadow):
-		_cornice_shadow.polygon = PackedVector2Array([
-			Vector2(-hw, -hh + 2.0), Vector2(hw, -hh + 2.0),
-			Vector2(hw, -hh + 3.0), Vector2(-hw, -hh + 3.0),
-		])
+	# Phase 6 draws no cornice, so nothing restretches here.
 
 
 ## Y of an AgentCharacter's origin. Feet land at band B mid-depth, so the head
