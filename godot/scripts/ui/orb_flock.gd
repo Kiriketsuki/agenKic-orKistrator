@@ -57,7 +57,7 @@ var _row_rect: Rect2 = Rect2()
 var _flyout_rect: Rect2 = Rect2()
 
 var _state: State = State.DOCKED
-var _edge: OrbPhysics.Edge = OrbPhysics.Edge.RIGHT
+var _edge: OrbPhysics.Edge = OrbPhysics.Edge.BOTTOM
 var _dock_height: float = 0.0
 var _lead_position: Vector2 = Vector2.ZERO
 var _velocity: Vector2 = Vector2.ZERO
@@ -168,8 +168,8 @@ func _update_flying(delta: float) -> void:
 		_lead_position = result["position"]
 		_velocity = result["velocity"]
 		return
-	_edge = OrbPhysics.nearest_edge(_lead_position, viewport_size)
-	var target: Vector2 = OrbPhysics.edge_dock_anchor(_edge, viewport_size, ORB_RADIUS, _lead_position.y)
+	_edge = OrbPhysics.Edge.BOTTOM
+	var target: Vector2 = OrbPhysics.bottom_center_anchor(viewport_size, ORB_RADIUS)
 	var spring: Dictionary = OrbPhysics.spring_step(_lead_position, target, _velocity, delta)
 	_lead_position = spring["position"]
 	_velocity = spring["velocity"]
@@ -185,7 +185,7 @@ func _apply_positions() -> void:
 
 func _snap_dock_positions() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var anchor: Vector2 = OrbPhysics.edge_dock_anchor(_edge, viewport_size, ORB_RADIUS, _dock_height)
+	var anchor: Vector2 = OrbPhysics.bottom_center_anchor(viewport_size, ORB_RADIUS)
 	for i in _orbs.size():
 		var pos: Vector2 = anchor + OrbPhysics.stack_offset(i, _edge)
 		_trail_positions[i] = pos

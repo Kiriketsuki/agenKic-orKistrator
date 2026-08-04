@@ -73,6 +73,13 @@ static func edge_dock_anchor(edge: Edge, viewport_size: Vector2, radius: float, 
 			return Vector2(radius + DOCK_MARGIN_PX, clamped_height)
 
 
+## The flock's resting dock: centered horizontally, resting on the bottom
+## edge with the standard margin. The keeper's rule: released orbs
+## gravitate to the middle bottom of the screen.
+static func bottom_center_anchor(viewport_size: Vector2, radius: float) -> Vector2:
+	return Vector2(viewport_size.x * 0.5, viewport_size.y - radius - DOCK_MARGIN_PX)
+
+
 ## One spring-damper integration step moving `current` toward `target`.
 ## Returns {"position": Vector2, "velocity": Vector2, "settled": bool}.
 ## `settled` is true once the orb is within SPRING_SETTLE_DISTANCE of the

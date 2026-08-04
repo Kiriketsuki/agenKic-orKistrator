@@ -21,6 +21,7 @@ func _init() -> void:
 	_run_momentum_ricochet_fraction_case(failures)
 	_run_momentum_drag_settles_case(failures)
 	_run_stack_offset_cases(failures)
+	_run_bottom_center_anchor_cases(failures)
 	if failures.is_empty():
 		print("orb_physics_test: all cases passed")
 		quit(0)
@@ -45,6 +46,19 @@ func _run_nearest_edge_cases(failures: Array[String]) -> void:
 		var got: OrbPhysics.Edge = OrbPhysics.nearest_edge(c["pos"], viewport)
 		if got != c["expect"]:
 			failures.append("nearest_edge(%s) expected %d, got %d" % [c["pos"], c["expect"], got])
+
+
+## bottom_center_anchor() must sit centered on x and `radius + margin` off
+## the bottom edge, for any viewport size.
+func _run_bottom_center_anchor_cases(failures: Array[String]) -> void:
+	var radius: float = 24.0
+	for viewport: Vector2 in [Vector2(1000.0, 800.0), Vector2(1920.0, 1080.0)]:
+		var anchor: Vector2 = OrbPhysics.bottom_center_anchor(viewport, radius)
+		if not is_equal_approx(anchor.x, viewport.x * 0.5):
+			failures.append("bottom_center_anchor x expected %f, got %f" % [viewport.x * 0.5, anchor.x])
+		var expected_y: float = viewport.y - radius - OrbPhysics.DOCK_MARGIN_PX
+		if not is_equal_approx(anchor.y, expected_y):
+			failures.append("bottom_center_anchor y expected %f, got %f" % [expected_y, anchor.y])
 
 
 ## edge_dock_anchor() must sit `radius + margin` off the chosen edge and
