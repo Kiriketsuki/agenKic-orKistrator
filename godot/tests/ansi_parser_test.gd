@@ -20,6 +20,7 @@ func _init() -> void:
 	_run_standard_palette_cases(failures)
 	_run_osc_cases(failures)
 	_run_trim_cases(failures)
+	_run_chrome_strip_cases(failures)
 	_run_rune_filter_cases(failures)
 	if failures.is_empty():
 		print("ansi_parser_test: all cases passed")
@@ -128,6 +129,39 @@ func _run_trim_cases(failures: Array[String]) -> void:
 		if actual != expected:
 			failures.append(
 				"trim case %s: expected %s got %s" % [raw.c_escape(), expected.c_escape(), actual.c_escape()]
+			)
+
+
+## strip_bottom_chrome() drops the CLI input box and statusline at the pane
+## bottom before the scroll's sepia render.
+func _run_chrome_strip_cases(failures: Array[String]) -> void:
+	var rule: String = "─".repeat(40)
+	var chrome: String = "\n".join([
+		rule,
+		"❯ ",
+		rule,
+		"  ── ◆ Claude Fable 5 ── v2.1.221",
+		"  usage bars and account line",
+	])
+	var cases: Array = [
+		["", ""],
+		# Plain prose stays whole.
+		["a\nb\nc", "a\nb\nc"],
+		# The chrome block goes, the prose above stays.
+		["prose one\nprose two\n" + chrome, "prose one\nprose two"],
+		# Trailing blank rows after the chrome do not hide it.
+		["prose\n" + chrome + "\n\n\n", "prose"],
+		# A rule line far above the bottom window stays, only the bottom
+		# block goes.
+		[rule + "\n" + "x\n".repeat(14) + chrome, rule + "\n" + "x\n".repeat(14).trim_suffix("\n")],
+	]
+	for case: Array in cases:
+		var raw: String = case[0]
+		var expected: String = case[1]
+		var actual: String = AnsiSgrScanner.strip_bottom_chrome(raw)
+		if actual != expected:
+			failures.append(
+				"chrome case %s: expected %s got %s" % [raw.c_escape(), expected.c_escape(), actual.c_escape()]
 			)
 
 

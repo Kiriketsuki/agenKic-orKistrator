@@ -77,6 +77,9 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_kill_pty()
+	# A view freed mid-hover must not leave the global hotkey gate stuck.
+	if _body_hover:
+		KeyPassthrough.hover_active = false
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +164,7 @@ func _clear_body() -> void:
 	_poll_timer = null
 	# The hovered body is gone, so the passthrough signal must not linger.
 	_body_hover = false
+	KeyPassthrough.hover_active = false
 	if _panel != null:
 		_panel.set_passthrough_active(false)
 
@@ -412,6 +416,7 @@ func _on_input_submitted(text: String) -> void:
 ## signal. While the pointer sits over the input line, keys edit locally.
 func _set_body_hover(hovering: bool) -> void:
 	_body_hover = hovering
+	KeyPassthrough.hover_active = hovering
 	if _panel != null:
 		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
 	if _input_line == null:

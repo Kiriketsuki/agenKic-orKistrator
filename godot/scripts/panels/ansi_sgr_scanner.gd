@@ -214,6 +214,52 @@ static func trim_blank_lines(raw: String) -> String:
 	return "\n".join(lines.slice(first, last + 1))
 
 
+## Bottom-of-pane window, in rows, that strip_bottom_chrome inspects. A CLI's
+## input box plus statusline fits well inside this.
+const _CHROME_WINDOW: int = 12
+
+## Characters that make up a horizontal rule or box border in a TUI frame.
+const _RULE_CHARS: String = "─━═╌┄┈–—_╭╮╰╯┌┐└┘│┼┤├❯>"
+
+
+## Drops the input box and statusline a CLI such as Claude Code draws at the
+## bottom of its pane. The scroll view is a reading surface, so that chrome
+## is noise there. The heuristic: within the bottom _CHROME_WINDOW rows, the
+## topmost full-width rule line is the input box's top border. Everything
+## from that line down is chrome and goes. A frame with no such rule line
+## comes back unchanged.
+static func strip_bottom_chrome(raw: String) -> String:
+	if raw.is_empty():
+		return ""
+	var lines: PackedStringArray = raw.split("\n")
+	var last: int = lines.size() - 1
+	while last >= 0 and visible_text(lines[last]).strip_edges() == "":
+		last -= 1
+	if last < 0:
+		return ""
+	var cut: int = -1
+	var lowest: int = maxi(0, last - _CHROME_WINDOW + 1)
+	for i: int in range(last, lowest - 1, -1):
+		if _is_rule_line(lines[i]):
+			cut = i
+	if cut == -1:
+		return "\n".join(lines.slice(0, last + 1))
+	return "\n".join(lines.slice(0, cut))
+
+
+## A line whose visible text is long and consists almost entirely of rule and
+## box-border characters. That is a TUI border row, never prose.
+static func _is_rule_line(line: String) -> bool:
+	var vis: String = visible_text(line).strip_edges()
+	if vis.length() < 20:
+		return false
+	var rule_count: int = 0
+	for i: int in range(vis.length()):
+		if _RULE_CHARS.contains(vis[i]):
+			rule_count += 1
+	return float(rule_count) >= 0.9 * float(vis.length())
+
+
 static func _is_final_byte(ch: String) -> bool:
 	# CSI sequences terminate on a byte in the range 0x40-0x7E (@ through ~).
 	var code: int = ch.unicode_at(0)

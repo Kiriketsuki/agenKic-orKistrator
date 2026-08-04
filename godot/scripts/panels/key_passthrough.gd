@@ -11,6 +11,13 @@ extends RefCounted
 
 class_name KeyPassthrough
 
+## True while any view's output body holds the pointer, which means every
+## keystroke belongs to the agent's tmux session. PanelManager checks this
+## before its _input()-time hotkeys, because those run BEFORE
+## _unhandled_key_input and would otherwise eat Escape (close panel), F
+## (fullscreen) and friends instead of letting them forward.
+static var hover_active: bool = false
+
 ## Multi-character tmux key names by Godot keycode. Everything else goes
 ## through the printable-character path.
 const NAMED_KEYS: Dictionary = {

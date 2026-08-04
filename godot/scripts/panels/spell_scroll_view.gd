@@ -72,6 +72,12 @@ func _ready() -> void:
 		_parchment.resized.connect(_apply_flutter_uniforms)
 
 
+func _exit_tree() -> void:
+	# A view freed mid-hover must not leave the global hotkey gate stuck.
+	if _body_hover:
+		KeyPassthrough.hover_active = false
+
+
 func _process(delta: float) -> void:
 	if _history == null:
 		return
@@ -148,6 +154,7 @@ func _on_input_submitted(text: String) -> void:
 ## amber. While the pointer sits over the input line, keys edit locally.
 func _set_body_hover(hovering: bool) -> void:
 	_body_hover = hovering
+	KeyPassthrough.hover_active = hovering
 	if _panel != null:
 		_panel.set_passthrough_active(hovering and not _agent_id.is_empty())
 	if _input_line == null:
@@ -448,7 +455,9 @@ func _on_screen_snapshot(agent_id: String, text: String) -> void:
 		return
 	if text == "":
 		return
-	var trimmed: String = AnsiSgrScanner.trim_blank_lines(text)
+	# The scroll is a reading surface: the CLI's input box and statusline at
+	# the pane bottom are chrome, so they go before the sepia render.
+	var trimmed: String = AnsiSgrScanner.trim_blank_lines(AnsiSgrScanner.strip_bottom_chrome(text))
 	if trimmed == "":
 		return
 	_history.clear()

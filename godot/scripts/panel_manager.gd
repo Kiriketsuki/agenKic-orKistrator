@@ -341,6 +341,11 @@ func _handle_hotkeys(event: InputEvent) -> void:
 	# _input(), before GUI focus consumes the key in _gui_input). Ctrl-chord
 	# and non-character actions below are left ungated, matching prior
 	# behavior.
+	# While the pointer sits over a terminal or scroll body, every keystroke
+	# belongs to the agent's tmux session. Escape must forward, not close the
+	# panel, so every hotkey stands down until the pointer leaves the body.
+	if KeyPassthrough.hover_active:
+		return
 	var typing: bool = _focus_owner_accepts_text()
 	if event.is_action_pressed("panel_fullscreen") and not typing and _active_panel != null:
 		_active_panel.toggle_fullscreen()
