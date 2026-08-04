@@ -139,7 +139,14 @@ func _on_settings_pressed() -> void:
 		grimoire.open_config_page()
 
 
+## OrbFlock.suspend_hotkeys is a static var, so it survives
+## change_scene_to_file. This flyout only reaches QUIT TO TITLE while the
+## flock is OPEN (suspend_hotkeys true), so without clearing it here the
+## title scene loads with hotkeys gated forever (panel_manager.gd's
+## _handle_hotkeys checks the same static var). See orb_flock.gd's own
+## _ready() reset for the matching defense on the other side of the swap.
 func _on_quit_pressed() -> void:
+	OrbFlock.suspend_hotkeys = false
 	get_tree().change_scene_to_file(TITLE_SCENE_PATH)
 
 

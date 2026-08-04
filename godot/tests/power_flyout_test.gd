@@ -18,6 +18,21 @@ const PowerFlyoutScript: Script = preload("res://scripts/ui/power_flyout.gd")
 ## loads the .gd file explicitly so this test fails loudly (missing file)
 ## rather than silently (unresolved global) if the script ever moves.
 
+## power_flyout.gd's QUIT TO TITLE handler references OrbFlock (a bare
+## static-var access, see orb_flock.gd), and OrbFlock._input references
+## GrimoireFlyout.is_placing the same way, and GrimoireFlyout._ready
+## touches the BridgeManager autoload directly. A headless `--script` run
+## does not resolve autoloads before compiling an arbitrary target script
+## (see tests/title_screen_focus_test.gd's doc-comment for the full
+## explanation), so that whole chain can fail to compile while this file's
+## own assertions still run against a stale cached PowerFlyout class and
+## report a false green. MIN_EXPECTED_ASSERTIONS guards against that: if a
+## compile error anywhere in the chain aborts execution early, ran_count
+## falls short and the suite fails closed instead.
+const MIN_EXPECTED_ASSERTIONS: int = 9
+
+var _ran_count: int = 0
+
 
 func _init() -> void:
 	var failures: Array[String] = []
@@ -27,6 +42,10 @@ func _init() -> void:
 	_run_despawn_path_case(failures)
 	_run_restart_path_case(failures)
 	_run_unrelated_path_case(failures)
+	if _ran_count < MIN_EXPECTED_ASSERTIONS:
+		failures.append(
+			"expected at least %d assertions to run, only %d ran — a script error likely aborted the suite early" % [MIN_EXPECTED_ASSERTIONS, _ran_count]
+		)
 	if failures.is_empty():
 		print("power_flyout_test: all cases passed")
 		quit(0)
@@ -37,6 +56,7 @@ func _init() -> void:
 
 
 func _assert(condition: bool, message: String, failures: Array[String]) -> void:
+	_ran_count += 1
 	if not condition:
 		failures.append(message)
 

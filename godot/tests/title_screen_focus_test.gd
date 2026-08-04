@@ -7,19 +7,41 @@
 #
 #   godot --headless --path godot --script tests/title_screen_focus_test.gd
 #
-# TitleScreen.next_focus_index() is the pure-function core of the menu's
-# arrow-key navigation, extracted so the wrap-around math can run without a
-# live Control tree or a viewport. This test exercises it directly, plus the
-# TitleMenuEntry enum ordering the menu and _activate_entry() rely on.
+# TitleFocusMath.next_focus_index() is the pure-function core of the menu's
+# arrow-key navigation. It lives in its own autoload-free script
+# (title_focus_math.gd) precisely so this test can preload it without also
+# preloading title_screen.gd, which preloads the BridgeManager autoload at
+# parse time and fails to compile under `--script` (BridgeManager is not
+# resolved outside a full Godot boot). Preloading title_screen.gd here
+# previously made every case in this file error out silently, while the
+# suite still printed "all cases passed" and exited 0 — this file's
+# case-count check below guards against that regressing again.
 #
-# Exits 1 on any failure so it can be wired into CI later.
+# TitleMenuEntry now lives on title_focus_math.gd too (TitleScreen mirrors
+# it), so the enum-ordering check below reads it off the same preloaded,
+# autoload-free script instead of touching the TitleScreen global class name
+# — referencing TitleScreen here would still force-compile title_screen.gd
+# and reintroduce the same hazard, even without a direct preload of it.
+#
+# Exits 1 on any failure, or if fewer cases ran than expected, so it can be
+# wired into CI later.
 
 extends SceneTree
 
-const TitleScreenScript: Script = preload("res://scripts/ui/title_screen.gd")
-## TitleScreen is a class_name-registered global. The preload above still
-## loads the .gd file explicitly so this test fails loudly (missing file)
-## rather than silently (unresolved global) if the script ever moves.
+const TitleFocusMathScript: Script = preload("res://scripts/ui/title_focus_math.gd")
+## TitleFocusMath carries no autoload dependency, unlike title_screen.gd. The
+## preload above still loads the .gd file explicitly so this test fails
+## loudly (missing file) rather than silently (unresolved global) if the
+## script ever moves.
+
+## Total number of individual assertions this suite is expected to run.
+## Each _run_*_case function below increments _ran_count once per case it
+## exercises. If a case is skipped (e.g. a script failed to compile and a
+## call errored out before incrementing), ran_count falls short of this
+## total and the suite fails closed instead of reporting a false green.
+const EXPECTED_CASE_COUNT: int = 9
+
+var _ran_count: int = 0
 
 
 func _init() -> void:
@@ -27,6 +49,10 @@ func _init() -> void:
 	_run_wrap_forward_cases(failures)
 	_run_wrap_backward_cases(failures)
 	_run_menu_entry_enum_cases(failures)
+	if _ran_count != EXPECTED_CASE_COUNT:
+		failures.append(
+			"expected %d cases to run, only %d ran — a script error likely aborted the suite early" % [EXPECTED_CASE_COUNT, _ran_count]
+		)
 	if failures.is_empty():
 		print("title_screen_focus_test: all cases passed")
 		quit(0)
@@ -45,7 +71,8 @@ func _run_wrap_forward_cases(failures: Array[String]) -> void:
 	for case: Array in cases:
 		var current: int = case[0]
 		var expected: int = case[1]
-		var actual: int = TitleScreen.next_focus_index(current, 3, 1)
+		var actual: int = TitleFocusMathScript.next_focus_index(current, 3, 1)
+		_ran_count += 1
 		if actual != expected:
 			failures.append(
 				"next_focus_index(%d, 3, +1): expected %d got %d" % [current, expected, actual]
@@ -61,7 +88,8 @@ func _run_wrap_backward_cases(failures: Array[String]) -> void:
 	for case: Array in cases:
 		var current: int = case[0]
 		var expected: int = case[1]
-		var actual: int = TitleScreen.next_focus_index(current, 3, -1)
+		var actual: int = TitleFocusMathScript.next_focus_index(current, 3, -1)
+		_ran_count += 1
 		if actual != expected:
 			failures.append(
 				"next_focus_index(%d, 3, -1): expected %d got %d" % [current, expected, actual]
@@ -72,9 +100,12 @@ func _run_wrap_backward_cases(failures: Array[String]) -> void:
 ## the scene wires _menu_entries in the same order, and a reorder here
 ## without a matching scene edit would silently misroute activation.
 func _run_menu_entry_enum_cases(failures: Array[String]) -> void:
-	if TitleScreen.TitleMenuEntry.ENTER != 0:
+	_ran_count += 1
+	if TitleFocusMathScript.TitleMenuEntry.ENTER != 0:
 		failures.append("TitleMenuEntry.ENTER expected 0")
-	if TitleScreen.TitleMenuEntry.GRIMOIRE != 1:
+	_ran_count += 1
+	if TitleFocusMathScript.TitleMenuEntry.GRIMOIRE != 1:
 		failures.append("TitleMenuEntry.GRIMOIRE expected 1")
-	if TitleScreen.TitleMenuEntry.DEPART != 2:
+	_ran_count += 1
+	if TitleFocusMathScript.TitleMenuEntry.DEPART != 2:
 		failures.append("TitleMenuEntry.DEPART expected 2")

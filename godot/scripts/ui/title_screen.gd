@@ -10,6 +10,8 @@ extends Control
 ## BridgeManager's connection state and shows a teal "connected" state or a
 ## dim "disconnected" state.
 
+const TitleFocusMath: Script = preload("res://scripts/ui/title_focus_math.gd")
+
 const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 const VERSION_FILE_PATH: String = "res://../VERSION"
 const FADE_DURATION: float = 0.6
@@ -20,8 +22,6 @@ const COLOR_TEAL: Color = Color(0.435, 0.722, 0.663, 1.0)      # #6fb8a8
 const COLOR_PARCHMENT: Color = Color(0.910, 0.835, 0.627, 1.0) # #e8d5a0
 const COLOR_BG: Color = Color(0.051, 0.039, 0.078, 1.0)        # #0d0a14
 const COLOR_DIM_GRAY: Color = Color(0.4, 0.4, 0.42, 1.0)
-
-enum TitleMenuEntry { ENTER, GRIMOIRE, DEPART }
 
 @onready var _menu_entries: Array[Button] = [
 	%EnterButton,
@@ -95,7 +95,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _move_focus(delta: int) -> void:
 	var count: int = _menu_entries.size()
-	_set_focus((_focused_index + delta + count) % count)
+	_set_focus(TitleFocusMath.next_focus_index(_focused_index, count, delta))
 
 
 func _set_focus(index: int) -> void:
@@ -113,11 +113,11 @@ func _on_entry_pressed(index: int) -> void:
 
 func _activate_entry(index: int) -> void:
 	match index:
-		TitleMenuEntry.ENTER:
+		TitleFocusMath.TitleMenuEntry.ENTER:
 			_activate_enter()
-		TitleMenuEntry.GRIMOIRE:
+		TitleFocusMath.TitleMenuEntry.GRIMOIRE:
 			_open_grimoire()
-		TitleMenuEntry.DEPART:
+		TitleFocusMath.TitleMenuEntry.DEPART:
 			_activate_depart()
 
 
@@ -179,12 +179,3 @@ func _read_version_label() -> String:
 	if version.is_empty():
 		return "dev"
 	return "v" + version
-
-
-## Pure focus-order helper for headless tests: given the current focused
-## index, the menu entry count, and a direction (+1/-1), returns the next
-## focused index, wrapping at both ends. Mirrors _move_focus/_set_focus
-## without touching any live Control, so tests/title_screen_focus_test.gd
-## can exercise the logic without a running Godot instance's viewport.
-static func next_focus_index(current: int, count: int, direction: int) -> int:
-	return (current + direction + count) % count

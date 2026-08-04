@@ -27,6 +27,21 @@ const PanelsFlyoutScript: Script = preload("res://scripts/ui/panels_flyout.gd")
 
 const TEST_PATH: String = "user://layout_presets_test.cfg"
 
+## PanelManager._handle_hotkeys reads OrbFlock.suspend_hotkeys (a bare
+## static-var access, see orb_flock.gd), and OrbFlock._input in turn
+## references GrimoireFlyout.is_placing the same way, and GrimoireFlyout's
+## _ready touches the BridgeManager autoload directly. A headless `--script`
+## run does not resolve autoloads before compiling an arbitrary target
+## script (see tests/title_screen_focus_test.gd's doc-comment for the full
+## explanation), so that whole chain can fail to compile while this file's
+## own assertions still run against a stale cached PanelManager/PanelsFlyout
+## class and report a false green. MIN_EXPECTED_ASSERTIONS guards against
+## that: if a compile error anywhere in the chain aborts execution early,
+## ran_count falls short and the suite fails closed instead.
+const MIN_EXPECTED_ASSERTIONS: int = 17
+
+var _ran_count: int = 0
+
 
 func _init() -> void:
 	var failures: Array[String] = []
@@ -40,6 +55,10 @@ func _init() -> void:
 	_run_build_agent_rows_case(failures)
 	_run_build_agent_rows_skips_non_agent_case(failures)
 	_cleanup()
+	if _ran_count < MIN_EXPECTED_ASSERTIONS:
+		failures.append(
+			"expected at least %d assertions to run, only %d ran — a script error likely aborted the suite early" % [MIN_EXPECTED_ASSERTIONS, _ran_count]
+		)
 	if failures.is_empty():
 		print("layout_presets_test: all cases passed")
 		quit(0)
@@ -55,6 +74,7 @@ func _cleanup() -> void:
 
 
 func _assert(condition: bool, message: String, failures: Array[String]) -> void:
+	_ran_count += 1
 	if not condition:
 		failures.append(message)
 

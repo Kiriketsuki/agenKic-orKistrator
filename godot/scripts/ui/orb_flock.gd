@@ -73,6 +73,12 @@ var _active_flyout_id: String = ""
 
 
 func _ready() -> void:
+	# suspend_hotkeys is a static var, so it survives change_scene_to_file
+	# (see the class doc-comment). A scene that quits to title while a flyout
+	# still holds it true would otherwise gate every hotkey forever after
+	# re-entering the tower. Reset it here so a fresh OrbFlock always starts
+	# from a clean gate, regardless of what the previous scene left behind.
+	suspend_hotkeys = false
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flyout_host = Control.new()
@@ -325,6 +331,14 @@ func _input(event: InputEvent) -> void:
 	if _state != State.OPEN:
 		return
 	if event.is_action_pressed("ui_cancel"):
+		# GrimoireFlyout's own _unhandled_input cancels an in-flight sigil
+		# placement on Escape. _input runs before _unhandled_input, so without
+		# this check the flock would collapse (hiding the flyout host) first
+		# and steal the event, leaving the drag stuck: _dragging still true,
+		# the ghost still drawn, modulate still dimmed. Defer to placement
+		# mode and let GrimoireFlyout's own handler cancel it instead.
+		if GrimoireFlyout.is_placing:
+			return
 		collapse()
 		get_viewport().set_input_as_handled()
 		return

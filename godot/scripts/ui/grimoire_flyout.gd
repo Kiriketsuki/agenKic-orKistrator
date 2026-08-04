@@ -13,6 +13,12 @@ extends Control
 
 signal spawn_requested(kind: String, floor: int)
 
+## True while a sigil drag has crossed the placement threshold. OrbFlock
+## reads this before it handles ui_cancel in its own _input(), so Escape
+## cancels an in-flight placement first instead of the flock collapsing out
+## from under it (see orb_flock.gd's _input doc-comment).
+static var is_placing: bool = false
+
 const DRAG_THRESHOLD_PX: float = 6.0
 const COLOR_ACCEPT: Color = Color(0.435, 0.722, 0.663, 0.35)
 const COLOR_REJECT: Color = Color(0.780, 0.267, 0.227, 0.35)
@@ -116,25 +122,27 @@ func _on_sigil_input(kind: String, event: InputEvent) -> void:
 
 func _begin_placement() -> void:
 	_dragging = true
+	is_placing = true
 	OrbFlock.suspend_hotkeys = true
 	modulate.a = 0.35
 	set_process(true)
 	set_process_unhandled_input(true)
 
 
-func _process(_delta: float) -> void:
-	if not _dragging:
+func _process(delta: float) -> void:
+	if not _dragging and _reject_shake_t < 0.0:
+		set_process(false)
 		return
-	var tower: Node = get_tree().get_first_node_in_group("tower_manager")
-	if tower == null:
-		queue_redraw()
-		return
-	var world_pos: Vector2 = tower.world_position_from_screen(_drag_pos)
-	_hit_result = tower.hit_test_floor(world_pos)
+	if _dragging:
+		var tower: Node = get_tree().get_first_node_in_group("tower_manager")
+		if tower != null:
+			var world_pos: Vector2 = tower.world_position_from_screen(_drag_pos)
+			_hit_result = tower.hit_test_floor(world_pos)
 	if _reject_shake_t >= 0.0:
-		_reject_shake_t -= _delta
+		_reject_shake_t -= delta
 		if _reject_shake_t < 0.0:
 			_reject_shake_t = -1.0
+			_hit_result = {}
 	queue_redraw()
 
 
@@ -171,18 +179,27 @@ func _cancel_placement() -> void:
 	_stop_dragging()
 
 
+## Symmetric with _begin_placement: that function turns both set_process and
+## set_process_unhandled_input on, so this turns both off. set_process stays
+## on past this point when a reject shake is still running (see _process's
+## own turn-off, once the shake timer runs out) — the shake must still
+## render even though dragging itself has already ended.
 func _stop_dragging() -> void:
 	_dragging = false
 	_drag_kind = ""
-	_hit_result = {}
+	is_placing = false
 	OrbFlock.suspend_hotkeys = false
 	modulate.a = 1.0
-	set_process(false)
+	set_process_unhandled_input(false)
+	if _reject_shake_t < 0.0:
+		_hit_result = {}
+		set_process(false)
 	queue_redraw()
 
 
 func _show_reject() -> void:
 	_reject_shake_t = REJECT_SHAKE_DUR
+	set_process(true)
 	queue_redraw()
 
 
@@ -195,14 +212,15 @@ func _spawn(kind: String, floor: int) -> void:
 
 
 func _draw() -> void:
-	if not _dragging:
+	if not _dragging and _reject_shake_t < 0.0:
 		return
-	# Sigil ghost following the cursor, drawn in this control's local space.
-	var local_pos: Vector2 = get_local_mouse_position()
-	var shake_offset: Vector2 = Vector2.ZERO
-	if _reject_shake_t >= 0.0:
-		shake_offset.x = sin(_reject_shake_t * 60.0) * REJECT_SHAKE_PX
-	draw_circle(local_pos + shake_offset, 14.0, Color(1.0, 1.0, 1.0, 0.6))
+	if _dragging:
+		# Sigil ghost following the cursor, drawn in this control's local space.
+		var local_pos: Vector2 = get_local_mouse_position()
+		var shake_offset: Vector2 = Vector2.ZERO
+		if _reject_shake_t >= 0.0:
+			shake_offset.x = sin(_reject_shake_t * 60.0) * REJECT_SHAKE_PX
+		draw_circle(local_pos + shake_offset, 14.0, Color(1.0, 1.0, 1.0, 0.6))
 
 	# Floor highlight overlay, drawn full-width at the hit floor's screen Y.
 	var tower: Node = get_tree().get_first_node_in_group("tower_manager")

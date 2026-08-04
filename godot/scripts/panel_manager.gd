@@ -961,12 +961,16 @@ func custom_preset_names() -> Array:
 	return LayoutPresets.load_from_file().preset_names()
 
 
-## GRID: tiles every open floating panel into an even grid across the
-## viewport. Deterministic panel order (sorted ids) keeps repeated calls
-## stable for the same open panel set.
+## GRID: tiles every open, undocked (floating) panel into an even grid
+## across the viewport. Docked panels are left out, matching
+## capture_arrangement()'s own docked-panel exclusion — a preset replays the
+## freeform floating case, not the dock layout. Deterministic panel order
+## (sorted ids) keeps repeated calls stable for the same open panel set.
 func _apply_grid_layout() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var ids: Array = panels_by_id.keys()
+	var ids: Array = panels_by_id.keys().filter(
+		func(id: Variant) -> bool: return (panels_by_id[id] as PanelBase).dock_side.is_empty()
+	)
 	ids.sort()
 	var count: int = ids.size()
 	if count == 0:
