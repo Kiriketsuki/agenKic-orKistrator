@@ -30,6 +30,7 @@ type Supervisor struct {
 	heartbeatInterval time.Duration
 	staleThreshold    time.Duration
 	taskPollInterval  time.Duration
+	reapInterval      time.Duration
 
 	mu            sync.RWMutex
 	agentMu       map[string]*sync.Mutex // per-agentID mutex for Machine.ApplyEvent serialization
@@ -82,6 +83,7 @@ func NewSupervisor(machine *agent.Machine, store state.StateStore, policy *Resta
 		store:             store,
 		policy:            policy,
 		heartbeatInterval: defaultHeartbeatInterval,
+		reapInterval:      defaultReapInterval,
 		staleThreshold:    defaultStaleThreshold,
 		taskPollInterval:  defaultTaskPollInterval,
 		agentMu:           make(map[string]*sync.Mutex),
@@ -229,6 +231,16 @@ func (sv *Supervisor) Run(ctx context.Context) error {
 		defer wg.Done()
 		sv.taskAssignLoop(ctx)
 	}()
+
+	// A non-positive interval disables the reaper, which keeps tests that
+	// construct a Supervisor without a substrate free of a background sweep.
+	if sv.reapInterval > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sv.reapLoop(ctx)
+		}()
+	}
 
 	wg.Wait()
 	return nil
