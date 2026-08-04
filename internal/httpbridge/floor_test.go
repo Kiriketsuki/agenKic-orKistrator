@@ -74,7 +74,7 @@ func TestSpawnAgent_WithFloor(t *testing.T) {
 	n := 0
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			n++
 			return fmt.Sprintf("agent-%d", n), nil
 		}))
@@ -121,7 +121,7 @@ func TestSpawnAgent_WithFloor(t *testing.T) {
 func TestSpawnAgent_FloorFullReturns409(t *testing.T) {
 	n := 0
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			n++
 			return fmt.Sprintf("agent-%d", n), nil
 		}))
@@ -146,7 +146,7 @@ func TestSpawnAgent_FloorFullReturns409(t *testing.T) {
 // because it is reserved for the future archmage and never a drop target.
 func TestSpawnAgent_GroundFloorReturns400(t *testing.T) {
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) { return "agent-x", nil }))
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) { return "agent-x", nil }))
 
 	w := spawnOnFloor(t, bridge, 0)
 	if w.Code != http.StatusBadRequest {
@@ -161,7 +161,7 @@ func TestSpawnAgent_GroundFloorReturns400(t *testing.T) {
 func TestSpawnAgent_OmittedFloorAutoAssigns(t *testing.T) {
 	n := 0
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			n++
 			return fmt.Sprintf("agent-auto-%d", n), nil
 		}))
@@ -191,7 +191,7 @@ func TestSpawnAgent_OmittedFloorAutoAssigns(t *testing.T) {
 func TestSpawnAgent_OmittedFloorCountsTowardCapacity(t *testing.T) {
 	n := 0
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			n++
 			return fmt.Sprintf("agent-auto-%d", n), nil
 		}))
@@ -230,7 +230,7 @@ func TestSpawnAgent_OmittedFloorCountsTowardCapacity(t *testing.T) {
 func TestSpawnAgent_EmptyAgentIDReleasesReservation(t *testing.T) {
 	n := 0
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			n++
 			if n == 1 {
 				// Simulate a spawner that reports success with no usable ID.
@@ -281,7 +281,7 @@ func TestSpawnAgent_ConcurrentSpawnsRespectFloorCapacity(t *testing.T) {
 	release.Store(&unblocked)
 
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			id := n.Add(1)
 			<-*release.Load()
 			return fmt.Sprintf("agent-race-%d", id), nil

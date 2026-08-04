@@ -178,6 +178,11 @@ type SpawnAgentRequest struct {
 	// (ground) is reserved for the future archmage and always rejects with
 	// 400, whether it arrives as an explicit request or a full floor.
 	Floor *int `json:"floor,omitempty"`
+	// Workdir is the project directory the agent starts in. Empty keeps the
+	// per-agent scratch directory under the OS temp dir. A non-empty value
+	// must be an absolute path to an existing directory or the spawn
+	// rejects with 400.
+	Workdir string `json:"workdir,omitempty"`
 }
 
 // SpawnAgentResponse echoes what was actually spawned.
@@ -187,4 +192,5 @@ type SpawnAgentResponse struct {
 	Name    string `json:"name"`
 	Tier    string `json:"tier"`
 	Floor   int    `json:"floor"`
+	Workdir string `json:"workdir,omitempty"`
 }

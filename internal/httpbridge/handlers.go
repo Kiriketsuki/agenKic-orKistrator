@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -734,6 +736,27 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		req.Tier = []string{"haiku", "sonnet", "opus"}[int(n)%3]
 	}
 
+	// Workdir is validated at the boundary: it must name an existing
+	// directory by absolute path, because the spawner cd's the agent's
+	// shell into it and a bad path would only surface as a broken pane.
+	if req.Workdir != "" {
+		if !filepath.IsAbs(req.Workdir) {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "workdir must be an absolute path",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		info, err := os.Stat(req.Workdir)
+		if err != nil || !info.IsDir() {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "workdir does not exist or is not a directory",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+	}
+
 	// Floor 0 (ground) is reserved for the future archmage and never accepts
 	// a spawn. A nonzero floor must have room under floorCapacity. An
 	// omitted floor makes the bridge pick the lowest non-full floor >= 1
@@ -771,7 +794,7 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		reserved = true
 	}
 
-	agentID, err := b.spawner(req.Kind, req.Name, req.Tier)
+	agentID, err := b.spawner(req.Kind, req.Name, req.Tier, req.Workdir)
 	if err != nil {
 		if reserved {
 			b.releaseFloorReservation(token)
@@ -798,5 +821,6 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		Name:    req.Name,
 		Tier:    req.Tier,
 		Floor:   floor,
+		Workdir: req.Workdir,
 	})
 }

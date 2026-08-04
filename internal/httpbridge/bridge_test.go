@@ -902,7 +902,7 @@ func TestListFloors_ExcludesAgentSessions(t *testing.T) {
 func TestSpawnAgent_NamePersistsInAgentList(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) {
 			return "agent-42", nil
 		}))
 

@@ -114,8 +114,10 @@ func WithCompletionRegistry(r *supervisor.CompletionRegistry) BridgeOption {
 }
 
 // AgentSpawner launches a new worker agent of the given kind ("sim",
-// "claude", "codex", "opencode") and returns its agent ID.
-type AgentSpawner func(kind, name, tier string) (string, error)
+// "claude", "codex", "opencode") and returns its agent ID. workdir is the
+// project directory the agent starts in — empty means the spawner's own
+// default (a per-agent scratch directory).
+type AgentSpawner func(kind, name, tier, workdir string) (string, error)
 
 // WithAgentSpawner enables POST /api/agents/spawn, letting the UI summon
 // simulated worker agents. Without it the endpoint returns 501.

@@ -482,7 +482,7 @@ func TestSSE_SkipsAgentSessionFloorEvents(t *testing.T) {
 func TestSSE_AgentEventsCarrySpawnName(t *testing.T) {
 	store := state.NewMockStore()
 	bridge := httpbridge.NewBridge(":0", store, nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) { return "agent-77", nil }))
+		httpbridge.WithAgentSpawner(func(_, _, _, _ string) (string, error) { return "agent-77", nil }))
 
 	server := httptest.NewServer(bridge)
 	defer server.Close()

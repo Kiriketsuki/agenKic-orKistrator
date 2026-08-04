@@ -114,13 +114,16 @@ func main() {
 		}
 		return fields.CurrentTaskID, meta.Description, nil
 	}
-	bridgeOpts = append(bridgeOpts, httpbridge.WithAgentSpawner(func(kind, name, tier string) (string, error) {
+	bridgeOpts = append(bridgeOpts, httpbridge.WithAgentSpawner(func(kind, name, tier, workdir string) (string, error) {
 		if kind == "sim" {
 			return simagent.Spawn(ctx, loopbackAddr, name, tier)
 		}
 		var cliOpts []cliagent.SpawnOption
 		if sub, ok := sv.Substrate(); ok {
 			cliOpts = append(cliOpts, cliagent.WithSubstrate(sub))
+		}
+		if workdir != "" {
+			cliOpts = append(cliOpts, cliagent.WithWorkdir(workdir))
 		}
 		return cliagent.Spawn(ctx, loopbackAddr, kind, name, tier, promptFn, cliOpts...)
 	}))
