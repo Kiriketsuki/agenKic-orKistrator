@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -136,9 +137,21 @@ func main() {
 	// which point NewBridge below has already assigned it.
 	var bridge *httpbridge.Bridge
 	restartFn := func() {
+		// Resolve the binary path before any shutdown step runs. os.Args[0]
+		// is often a bare name ("orchestrator") with no directory component,
+		// and syscall.Exec never consults PATH the way a shell does, so a
+		// bare-name invocation fails with ENOENT after shutdown has already
+		// stopped the servers, leaving the process simply exiting instead of
+		// restarting (finding 7). Resolving first and aborting on failure
+		// keeps the process serving.
+		bin, err := resolveRestartBinary()
+		if err != nil {
+			log.Printf("restart aborted: cannot resolve binary path: %v", err)
+			return
+		}
 		gracefulShutdown(cancel, server, httpHealth, bridge, executor, sv)
 		time.Sleep(200 * time.Millisecond)
-		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil { //nolint:gosec // re-exec of our own already-running binary
+		if err := syscall.Exec(bin, os.Args, os.Environ()); err != nil { //nolint:gosec // re-exec of our own already-running binary
 			log.Printf("re-exec failed: %v", err)
 		}
 	}
@@ -181,6 +194,22 @@ func main() {
 	if err := server.StartGRPC(addr); err != nil {
 		log.Fatalf("gRPC server failed: %v", err)
 	}
+}
+
+// resolveRestartBinary finds an absolute, executable path for the currently
+// running binary, for use with syscall.Exec. It tries os.Executable first,
+// then falls back to exec.LookPath(os.Args[0]) for a bare-name invocation
+// (os.Args[0] with no directory separator), which syscall.Exec cannot
+// resolve on its own because it never consults PATH the way a shell does.
+func resolveRestartBinary() (string, error) {
+	if bin, err := os.Executable(); err == nil {
+		return bin, nil
+	}
+	bin, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		return "", fmt.Errorf("resolve restart binary: %w", err)
+	}
+	return bin, nil
 }
 
 // gracefulShutdown drains and stops every long-running component in the

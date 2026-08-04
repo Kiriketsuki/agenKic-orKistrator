@@ -1079,6 +1079,119 @@ func TestDespawnAgent_PublishesAgentDeregisteredEvent(t *testing.T) {
 	}
 }
 
+// TestDespawnAgent_SignalsCompletionRegistry verifies finding 6: despawning
+// an agent with an active task must unblock a
+// dag.BlockingSubmitter.Wait(ctx, taskID) via CompletionRegistry.Complete,
+// mirroring TestCancelAgent_SignalsCompletionRegistry. Before the fix,
+// handleDespawnAgent cleared the task but never called Complete, stranding
+// the waiter forever.
+func TestDespawnAgent_SignalsCompletionRegistry(t *testing.T) {
+	store := state.NewMockStore()
+	registry := supervisor.NewCompletionRegistry()
+	bridge := httpbridge.NewBridge(":0", store, nil, httpbridge.WithCompletionRegistry(registry))
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+
+	waitErrCh := make(chan error, 1)
+	go func() {
+		waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		waitErrCh <- registry.Wait(waitCtx, "task-1")
+	}()
+
+	// Give the goroutine a moment to register as a waiter before despawning.
+	time.Sleep(20 * time.Millisecond)
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case err := <-waitErrCh:
+		if err != nil {
+			t.Fatalf("expected Wait to return nil (unblocked by despawn), got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("registry.Wait was never unblocked by despawn — DAG node would hang forever")
+	}
+}
+
+// TestDespawnAgent_ClearCurrentTaskFailure_StillDeregisters verifies the
+// log-and-continue branch at the ClearCurrentTask call inside
+// handleDespawnAgent: a store failure there must not stop the despawn from
+// deleting the agent and publishing agent_deregistered (finding 10).
+func TestDespawnAgent_ClearCurrentTaskFailure_StillDeregisters(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{
+		State:         "working",
+		CurrentTaskID: "task-1",
+	})
+	store.SetClearCurrentTaskError(errors.New("fake clear-current-task failure"))
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	store.SetClearCurrentTaskError(nil)
+	if _, err := store.GetAgentFields(ctx, "agent-1"); err == nil {
+		t.Errorf("expected the agent to be deleted despite the ClearCurrentTask failure")
+	}
+	assertDeregisteredEventPublished(t, store, "agent-1")
+}
+
+// TestDespawnAgent_DeleteAgentFailure_StillDeregisters verifies the
+// log-and-continue branch at the DeleteAgent call inside
+// handleDespawnAgent: a store failure there must not stop the handler from
+// publishing agent_deregistered and responding 200 (finding 10).
+func TestDespawnAgent_DeleteAgentFailure_StillDeregisters(t *testing.T) {
+	store := state.NewMockStore()
+	bridge := httpbridge.NewBridge(":0", store, nil)
+	ctx := context.Background()
+
+	_ = store.SetAgentFields(ctx, "agent-1", state.AgentFields{State: "idle"})
+	store.SetDeleteAgentError(errors.New("fake delete-agent failure"))
+
+	req := httptest.NewRequest("POST", "/api/agents/agent-1/despawn", nil)
+	w := httptest.NewRecorder()
+	bridge.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	assertDeregisteredEventPublished(t, store, "agent-1")
+}
+
+// assertDeregisteredEventPublished fails the test unless store recorded an
+// agent_deregistered event for agentID.
+func assertDeregisteredEventPublished(t *testing.T, store *state.MockStore, agentID string) {
+	t.Helper()
+	events, err := store.ReadEvents(context.Background(), "0", 50)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	for _, se := range events {
+		if se.Event.Type == "agent_deregistered" && se.Event.AgentID == agentID {
+			return
+		}
+	}
+	t.Fatalf("expected an agent_deregistered event for %s, got %+v", agentID, events)
+}
+
 func TestRestartAdmin_Returns202(t *testing.T) {
 	bridge, _ := newTestBridge(t)
 

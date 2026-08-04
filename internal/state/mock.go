@@ -30,6 +30,7 @@ type MockStore struct {
 	dequeueTaskErr        error
 	clearCurrentTaskErr   error
 	compareAndSetErr      error
+	deleteAgentErr        error
 }
 
 type agentRecord struct {
@@ -196,10 +197,22 @@ func (m *MockStore) GetAgentFields(ctx context.Context, agentID string) (AgentFi
 	return rec.fields, nil
 }
 
+// SetDeleteAgentError configures DeleteAgent to return err on its next call.
+// Pass nil to reset to healthy. Used to drive the despawn handler's
+// log-and-continue partial-failure branches in tests.
+func (m *MockStore) SetDeleteAgentError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deleteAgentErr = err
+}
+
 func (m *MockStore) DeleteAgent(ctx context.Context, agentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.deleteAgentErr != nil {
+		return m.deleteAgentErr
+	}
 	delete(m.agents, agentID)
 	return nil
 }

@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/httpbridge"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/state"
@@ -151,12 +154,17 @@ func TestSpawnAgent_GroundFloorReturns400(t *testing.T) {
 	}
 }
 
-// TestSpawnAgent_OmittedFloorKeepsAutoBehavior verifies a spawn request
-// without a floor field still succeeds and records no floor assignment,
-// preserving the pre-F3 auto-placement behavior.
-func TestSpawnAgent_OmittedFloorKeepsAutoBehavior(t *testing.T) {
+// TestSpawnAgent_OmittedFloorAutoAssigns verifies a spawn request without a
+// floor field is assigned the lowest non-full floor >= 1 by the bridge
+// itself, so the agent counts toward that floor's capacity exactly like an
+// explicit-floor spawn (finding 8).
+func TestSpawnAgent_OmittedFloorAutoAssigns(t *testing.T) {
+	n := 0
 	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
-		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) { return "agent-auto", nil }))
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			n++
+			return fmt.Sprintf("agent-auto-%d", n), nil
+		}))
 
 	req := httptest.NewRequest("POST", "/api/agents/spawn", bytes.NewReader([]byte(`{"kind":"sim"}`)))
 	w := httptest.NewRecorder()
@@ -170,7 +178,119 @@ func TestSpawnAgent_OmittedFloorKeepsAutoBehavior(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode spawn response: %v", err)
 	}
-	if resp.Floor != 0 {
-		t.Errorf("spawn response floor = %d, want 0 (unassigned)", resp.Floor)
+	if resp.Floor != 1 {
+		t.Errorf("spawn response floor = %d, want 1 (lowest available floor)", resp.Floor)
+	}
+}
+
+// TestSpawnAgent_OmittedFloorCountsTowardCapacity verifies auto-assigned
+// agents fill a floor to floorCapacity, and the fifth auto-assigned agent
+// spills onto the next floor rather than overfilling floor 1 (finding 8:
+// auto-assigned agents must be visible to the same capacity check as
+// explicit-floor ones).
+func TestSpawnAgent_OmittedFloorCountsTowardCapacity(t *testing.T) {
+	n := 0
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			n++
+			return fmt.Sprintf("agent-auto-%d", n), nil
+		}))
+
+	var floors []int
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/api/agents/spawn", bytes.NewReader([]byte(`{"kind":"sim"}`)))
+		w := httptest.NewRecorder()
+		bridge.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("spawn %d: expected 200, got %d: %s", i, w.Code, w.Body.String())
+		}
+		var resp httpbridge.SpawnAgentResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("spawn %d: decode: %v", i, err)
+		}
+		floors = append(floors, resp.Floor)
+	}
+
+	for i := 0; i < 4; i++ {
+		if floors[i] != 1 {
+			t.Errorf("spawn %d landed on floor %d, want 1", i, floors[i])
+		}
+	}
+	if floors[4] != 2 {
+		t.Errorf("fifth auto-assigned spawn landed on floor %d, want 2 (floor 1 full)", floors[4])
+	}
+}
+
+// TestSpawnAgent_ConcurrentSpawnsRespectFloorCapacity verifies two
+// concurrent spawns racing for the last slot on a floor at 3/4 never both
+// succeed — the TOCTOU window between the capacity read and the floor write
+// must be closed by reserving the slot atomically (finding 5). Before the
+// fix, both requests could read floorAgentCount == 3 under RLock before
+// either wrote its assignment under Lock, and both would land on the floor,
+// putting it at 5/4.
+func TestSpawnAgent_ConcurrentSpawnsRespectFloorCapacity(t *testing.T) {
+	var n atomic.Int64
+	// release gates the spawner so both racing requests are in flight past
+	// the capacity check at the same time before either returns from the
+	// spawner call. Seed spawns run before release is armed, so they never
+	// block.
+	var release atomic.Pointer[chan struct{}]
+	unblocked := make(chan struct{})
+	close(unblocked)
+	release.Store(&unblocked)
+
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			id := n.Add(1)
+			<-*release.Load()
+			return fmt.Sprintf("agent-race-%d", id), nil
+		}))
+
+	// Fill the floor to 3/4 first, sequentially, so the race below is only
+	// over the fourth and final slot.
+	for i := 0; i < 3; i++ {
+		w := spawnOnFloor(t, bridge, 3)
+		if w.Code != http.StatusOK {
+			t.Fatalf("seed spawn %d: expected 200, got %d: %s", i, w.Code, w.Body.String())
+		}
+	}
+
+	// Arm a blocking gate for the two racing spawns.
+	gate := make(chan struct{})
+	release.Store(&gate)
+
+	var wg sync.WaitGroup
+	results := make([]*httptest.ResponseRecorder, 2)
+	var wgStart sync.WaitGroup
+	wgStart.Add(2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			wgStart.Done()
+			wgStart.Wait()
+			results[i] = spawnOnFloor(t, bridge, 3)
+		}(i)
+	}
+	// Give both goroutines time to enter the handler and reach the spawner
+	// call before the gate opens.
+	time.Sleep(50 * time.Millisecond)
+	close(gate)
+	wg.Wait()
+
+	successes := 0
+	conflicts := 0
+	for _, w := range results {
+		switch w.Code {
+		case http.StatusOK:
+			successes++
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Errorf("unexpected status %d: %s", w.Code, w.Body.String())
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("concurrent spawns for the last floor slot: got %d successes and %d conflicts, want exactly 1 of each", successes, conflicts)
 	}
 }

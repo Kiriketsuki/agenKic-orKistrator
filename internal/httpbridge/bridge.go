@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/ipc"
@@ -56,12 +58,24 @@ type Bridge struct {
 	// handleSpawnAgent. providers maps agent ID to the spawn kind, such as
 	// "claude" or "codex". Both share namesMu and the same lifetime. See
 	// setAgentName for the scope and the limitation.
+	//
+	// Persistence stays deferred by design (finding 9): none of names,
+	// providers, or floors survives a process restart, including a
+	// GUI-triggered one via POST /api/admin/restart. The agents themselves
+	// survive in the store (state.StateStore is external), but a restart
+	// wipes every name, provider, and floor assignment this process
+	// remembered for them. A client reads back the bare agent UUID and floor
+	// 0 for every agent that existed before the restart, until it re-spawns
+	// or the registries gain real persistence.
 	namesMu   sync.RWMutex
 	names     map[string]string
 	providers map[string]string
-	// floors maps agent ID to the tower floor it spawned on. Populated only
-	// when a spawn request names a floor explicitly. Same in-process scope
-	// and reset-on-restart policy as names and providers.
+	// floors maps agent ID to the tower floor it spawned on, and also holds
+	// reservation placeholders (see reservationPrefix) between
+	// reserveFloorSlot/reserveNextAvailableFloor and their commit or
+	// release. Every spawn now records a floor, explicit or auto-assigned
+	// (finding 8). Same in-process scope and reset-on-restart policy as
+	// names and providers.
 	floors map[string]int
 
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
@@ -281,6 +295,96 @@ func (b *Bridge) floorAgentCount(floor int) int {
 		}
 	}
 	return count
+}
+
+// reservationPrefix marks a placeholder entry in b.floors: a slot claimed
+// before the spawner runs, not yet a real agent ID. reserveFloorSlot and
+// releaseFloorReservation use this prefix so a placeholder counts toward
+// floorAgentCount exactly like a real agent, closing the TOCTOU window
+// where two concurrent spawns both read the floor as having room.
+const reservationPrefix = "\x00reservation:"
+
+// reserveFloorSlot atomically checks floor's capacity and claims one slot
+// under a single lock, closing the gap between floorAgentCount's read and
+// setAgentFloor's later write. It returns a reservation token to pass to
+// commitFloorReservation on spawner success or releaseFloorReservation on
+// spawner failure. ok is false when the floor is already at floorCapacity,
+// in which case no slot was claimed.
+func (b *Bridge) reserveFloorSlot(floor int) (token string, ok bool) {
+	b.namesMu.Lock()
+	defer b.namesMu.Unlock()
+
+	count := 0
+	for _, f := range b.floors {
+		if f == floor {
+			count++
+		}
+	}
+	if count >= floorCapacity {
+		return "", false
+	}
+
+	n := reservationCounter.Add(1)
+	token = reservationPrefix + strconv.FormatInt(n, 10)
+	b.floors[token] = floor
+	return token, true
+}
+
+// commitFloorReservation converts a reservation token into the real agentID
+// once the spawner has succeeded, so agentFloor and floorAgentCount report
+// the agent under its actual ID from this point on.
+func (b *Bridge) commitFloorReservation(token, agentID string, floor int) {
+	if agentID == "" {
+		return
+	}
+	b.namesMu.Lock()
+	delete(b.floors, token)
+	b.floors[agentID] = floor
+	b.namesMu.Unlock()
+}
+
+// releaseFloorReservation frees a slot claimed by reserveFloorSlot when the
+// spawner call fails, so the floor's capacity count reflects reality again.
+func (b *Bridge) releaseFloorReservation(token string) {
+	b.namesMu.Lock()
+	delete(b.floors, token)
+	b.namesMu.Unlock()
+}
+
+// reservationCounter hands out unique reservation tokens for reserveFloorSlot.
+var reservationCounter atomic.Int64
+
+// reserveNextAvailableFloor picks the lowest floor >= 1 that has room under
+// floorCapacity, reserves a slot on it under one lock, and returns the floor
+// and its reservation token. When every floor in use is full, it opens the
+// next floor index (finding 8: an omitted floor must still land somewhere
+// the bridge tracks, so auto-assigned agents count toward capacity exactly
+// like explicit-floor ones).
+func (b *Bridge) reserveNextAvailableFloor() (floor int, token string) {
+	b.namesMu.Lock()
+	defer b.namesMu.Unlock()
+
+	counts := make(map[int]int)
+	highest := groundFloor
+	for _, f := range b.floors {
+		counts[f]++
+		if f > highest {
+			highest = f
+		}
+	}
+
+	floor = highest + 1
+	for f := 1; f <= highest; f++ {
+		if counts[f] < floorCapacity {
+			floor = f
+			break
+		}
+	}
+
+	n := reservationCounter.Add(1)
+	token = reservationPrefix + strconv.FormatInt(n, 10)
+	b.floors[token] = floor
+	return floor, token
 }
 
 // isAgentSession reports whether a terminal session name belongs to a single

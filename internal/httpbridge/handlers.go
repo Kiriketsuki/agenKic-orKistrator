@@ -568,6 +568,7 @@ func (b *Bridge) handleDespawnAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fields.CurrentTaskID != "" {
+		taskID := fields.CurrentTaskID
 		if b.substrate != nil {
 			if serr := b.substrate.SendCommand(ctx, "agent-"+agentID, "\x03"); serr != nil {
 				log.Printf("httpbridge: despawn agent %s: best-effort PTY interrupt failed: %v", agentID, serr)
@@ -575,6 +576,13 @@ func (b *Bridge) handleDespawnAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := b.store.ClearCurrentTask(ctx, agentID); err != nil {
 			log.Printf("httpbridge: despawn agent %s: ClearCurrentTask: %v", agentID, err)
+		}
+		if b.completionRegistry != nil {
+			// Unblock any dag.BlockingSubmitter.Wait(ctx, taskID), mirroring
+			// handleCancelAgent. Without this a DAG node waiting on a
+			// despawned agent's task hangs forever (finding 6, mirrors T14
+			// council finding #2).
+			b.completionRegistry.Complete(taskID)
 		}
 	}
 
@@ -612,6 +620,11 @@ func (b *Bridge) handleDespawnAgent(w http.ResponseWriter, r *http.Request) {
 // before the client reads the response otherwise (T4 risk in the spec).
 // With no restartFn wired (WithRestartFunc never called), the endpoint still
 // responds 202 but performs no restart.
+//
+// A GUI-triggered restart re-execs into a fresh process, so the Bridge's
+// names, providers, and floors registries start empty again even though the
+// agents themselves survive in the store (finding 9, persistence deferred by
+// design — see the Bridge struct field docs).
 func (b *Bridge) handleRestartAdmin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	if f, ok := w.(http.Flusher); ok {
@@ -723,9 +736,17 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Floor 0 (ground) is reserved for the future archmage and never accepts
 	// a spawn. A nonzero floor must have room under floorCapacity. An
-	// omitted floor keeps today's auto-assignment behavior and records no
-	// floor.
+	// omitted floor makes the bridge pick the lowest non-full floor >= 1
+	// itself (see nextAvailableFloor), so every agent ends up with a
+	// bridge-side floor and the capacity check counts everyone (finding 8).
+	//
+	// The slot is reserved atomically here, before the spawner call, and
+	// only committed to the real agent ID on spawner success. This closes
+	// the TOCTOU window where two concurrent spawns both read the floor as
+	// having room, then both write past floorCapacity (finding 5).
 	var floor int
+	var token string
+	var reserved bool
 	if req.Floor != nil {
 		floor = *req.Floor
 		if floor <= groundFloor {
@@ -735,17 +756,26 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		if b.floorAgentCount(floor) >= floorCapacity {
+		var ok bool
+		token, ok = b.reserveFloorSlot(floor)
+		if !ok {
 			writeJSON(w, http.StatusConflict, ErrorResponse{
 				Error: "floor is full",
 				Code:  "floor_full",
 			})
 			return
 		}
+		reserved = true
+	} else {
+		floor, token = b.reserveNextAvailableFloor()
+		reserved = true
 	}
 
 	agentID, err := b.spawner(req.Kind, req.Name, req.Tier)
 	if err != nil {
+		if reserved {
+			b.releaseFloorReservation(token)
+		}
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{
 			Error: err.Error(),
 			Code:  "spawn_failed",
@@ -759,8 +789,8 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	// The provider shown in the UI is the spawn kind. Same registry
 	// lifetime and gaps as the name.
 	b.setAgentProvider(agentID, req.Kind)
-	if floor > groundFloor {
-		b.setAgentFloor(agentID, floor)
+	if reserved {
+		b.commitFloorReservation(token, agentID, floor)
 	}
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
