@@ -55,3 +55,9 @@ godot/addons/godot_xterm/
 # Claude Code internal
 .claude/worktrees/
 .claude/handoffs/
+
+# Build artifacts
+/orchestrator
+
+# Stray tool files
+.codex
