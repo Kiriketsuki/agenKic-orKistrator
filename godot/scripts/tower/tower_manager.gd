@@ -140,13 +140,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.pressed:
 			if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				if mb.ctrl_pressed:
-					_zoom(-1)
+					# Ctrl+wheel up zooms IN (a larger camera zoom magnifies).
+					_zoom(1)
 				else:
 					_scroll_focus(1)
 				get_viewport().set_input_as_handled()
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.ctrl_pressed:
-					_zoom(1)
+					_zoom(-1)
 				else:
 					_scroll_focus(-1)
 				get_viewport().set_input_as_handled()

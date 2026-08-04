@@ -50,6 +50,14 @@ const MAX_FLICK_SPEED: float = 2200.0
 const FLICK_MIN_SPEED: float = 40.0
 const CHASE_RATE: float = 14.0
 
+## Dock-to-row and row-to-dock transition timing. The open uses a back
+## ease so orbs land with a small overshoot. The collapse is a plain
+## cubic ease out. The flyout fades in after the row starts moving.
+const OPEN_TWEEN_S: float = 0.28
+const COLLAPSE_TWEEN_S: float = 0.22
+const FLYOUT_FADE_S: float = 0.16
+const FLYOUT_RISE_PX: float = 10.0
+
 var _orbs: Array[Orb] = []
 var _flyouts: Dictionary = {}
 var _flyout_host: Control
@@ -62,6 +70,8 @@ var _dock_height: float = 0.0
 var _lead_position: Vector2 = Vector2.ZERO
 var _velocity: Vector2 = Vector2.ZERO
 var _trail_positions: Array[Vector2] = []
+
+var _transition_tween: Tween
 
 var _dragging_orb_index: int = -1
 var _has_dragged: bool = false
@@ -183,13 +193,13 @@ func _apply_positions() -> void:
 		_orbs[i].position = _trail_positions[i] - Vector2(ORB_RADIUS, ORB_RADIUS)
 
 
-func _snap_dock_positions() -> void:
+func _snap_dock_positions(animate: bool = false) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
 	var anchor: Vector2 = OrbPhysics.bottom_center_anchor(viewport_size, ORB_RADIUS)
+	var targets: Array[Vector2] = []
 	for i in _orbs.size():
-		var pos: Vector2 = anchor + OrbPhysics.stack_offset(i, _edge)
-		_trail_positions[i] = pos
-		_orbs[i].position = pos - Vector2(ORB_RADIUS, ORB_RADIUS)
+		targets.append(anchor + OrbPhysics.stack_offset(i, _edge))
+	_move_orbs_to(targets, animate, COLLAPSE_TWEEN_S, Tween.TRANS_CUBIC)
 	_lead_position = anchor
 	# Lead orb (index 0) draws on top of the stack.
 	if _orbs.size() > 0:
@@ -258,7 +268,7 @@ func _on_orb_tapped(orb: Orb) -> void:
 
 func _expand() -> void:
 	_set_state(State.OPEN)
-	_layout_row()
+	_layout_row(true)
 	_show_flyout(_orbs[0].orb_id if _orbs.size() > 0 else "")
 
 
@@ -269,7 +279,7 @@ func _expand() -> void:
 func switch_to(orb_id: String) -> void:
 	if _state != State.OPEN:
 		_set_state(State.OPEN)
-		_layout_row()
+		_layout_row(true)
 	_show_flyout(orb_id)
 
 
@@ -281,23 +291,46 @@ func collapse() -> void:
 	_flyout_host.visible = false
 	for id: String in _flyouts.keys():
 		(_flyouts[id] as Control).visible = false
-	_snap_dock_positions()
+	_snap_dock_positions(true)
 
 
-func _layout_row() -> void:
+## Lays out the open row. `animate` tweens each orb from where it stands
+## to its row slot; a viewport resize relayout passes false and snaps.
+func _layout_row(animate: bool = false) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
 	var count: int = _orbs.size()
 	var total_width: float = ORB_SPACING_PX * float(maxi(count - 1, 0))
 	var start_x: float = (viewport_size.x - total_width) * 0.5
 	var row_y: float = ROW_TOP_MARGIN_PX + ORB_RADIUS
+	var targets: Array[Vector2] = []
 	for i in count:
-		var pos: Vector2 = Vector2(start_x + ORB_SPACING_PX * float(i), row_y)
-		_trail_positions[i] = pos
-		_orbs[i].position = pos - Vector2(ORB_RADIUS, ORB_RADIUS)
+		targets.append(Vector2(start_x + ORB_SPACING_PX * float(i), row_y))
+	_move_orbs_to(targets, animate, OPEN_TWEEN_S, Tween.TRANS_BACK)
 	_row_rect = Rect2(
 		Vector2(start_x - ORB_RADIUS, row_y - ORB_RADIUS),
 		Vector2(total_width + ORB_RADIUS * 2.0, ORB_RADIUS * 2.0)
 	)
+
+
+## Moves every orb to its target center. Animated moves share one tween
+## (killed and rebuilt on each transition so a fast open-close-open never
+## stacks tweens). _trail_positions updates immediately either way, so the
+## chain and hit rects always describe the destination, not the flight.
+func _move_orbs_to(targets: Array[Vector2], animate: bool, duration: float, trans: Tween.TransitionType) -> void:
+	if _transition_tween != null and _transition_tween.is_valid():
+		_transition_tween.kill()
+	for i in _orbs.size():
+		_trail_positions[i] = targets[i]
+	if not animate:
+		for i in _orbs.size():
+			_orbs[i].position = targets[i] - Vector2(ORB_RADIUS, ORB_RADIUS)
+		return
+	_transition_tween = create_tween().set_parallel(true)
+	_transition_tween.set_trans(trans).set_ease(Tween.EASE_OUT)
+	for i in _orbs.size():
+		_transition_tween.tween_property(
+			_orbs[i], "position", targets[i] - Vector2(ORB_RADIUS, ORB_RADIUS), duration
+		)
 
 
 func _show_flyout(orb_id: String) -> void:
@@ -320,6 +353,15 @@ func _show_flyout(orb_id: String) -> void:
 	_flyout_rect = Rect2(_flyout_host.position, flyout_size)
 	if control != null:
 		control.position = Vector2.ZERO
+	# Fade the flyout in with a small rise while the row settles. The hit
+	# rect above already describes the final position, so input stays
+	# correct during the fade.
+	_flyout_host.modulate.a = 0.0
+	_flyout_host.position.y = flyout_top + FLYOUT_RISE_PX
+	var fade: Tween = create_tween().set_parallel(true)
+	fade.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	fade.tween_property(_flyout_host, "modulate:a", 1.0, FLYOUT_FADE_S)
+	fade.tween_property(_flyout_host, "position:y", flyout_top, FLYOUT_FADE_S)
 
 
 func _set_state(new_state: State) -> void:
