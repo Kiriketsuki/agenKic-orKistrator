@@ -30,6 +30,10 @@ const ADJACENT_SCALE: float = 0.4
 ## is the only magnifier. Zoom is always an integer from this set, so the pixel
 ## grid never shimmers. 6 is the 1080p base (1080 / 180 = 6).
 const ZOOM_LEVELS: Array[int] = [4, 5, 6, 8]
+## Free-zoom bounds for ctrl+wheel. ZOOM_LEVELS stays as the base-zoom
+## ladder for viewport sizing; the user's wheel roams the full range.
+const MIN_ZOOM: int = 1
+const MAX_ZOOM: int = 64
 const MAX_QUEUE_SIZE: int = 2
 ## Art-px world truth. These are absolute, never derived from viewport size.
 const BASE_FLOOR_WIDTH: float = 280.0
@@ -410,14 +414,21 @@ func _apply_base_zoom() -> void:
 	_camera.zoom = Vector2(z, z)
 
 
-## Steps one entry through ZOOM_LEVELS. Zoom is never fractional.
+## Steps the zoom multiplicatively between MIN_ZOOM and MAX_ZOOM. Zoom
+## stays integer so pixel art renders crisp, but the range is wide open:
+## MAX_ZOOM puts the camera right up against a single agent. Each wheel
+## step scales by about 25 percent, with a guaranteed minimum step of 1.
 func _zoom(direction: int) -> void:
-	var current: int = _nearest_zoom_index()
-	var next: int = clampi(current + signi(direction), 0, ZOOM_LEVELS.size() - 1)
+	var current: int = maxi(1, roundi(_camera.zoom.x))
+	var next: int = current
+	if direction > 0:
+		next = maxi(current + 1, roundi(float(current) * 1.25))
+	else:
+		next = mini(current - 1, roundi(float(current) / 1.25))
+	next = clampi(next, MIN_ZOOM, MAX_ZOOM)
 	if next == current:
 		return
-	var z: int = ZOOM_LEVELS[next]
-	_camera.zoom = Vector2(z, z)
+	_camera.zoom = Vector2(next, next)
 	_user_zoom_override = true
 	# The offset formula divides by zoom.x, so a new zoom invalidates the old offset.
 	_aim_camera_at_region()
