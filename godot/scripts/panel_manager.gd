@@ -79,7 +79,9 @@ var _tower_config: TowerConfig = null
 @onready var _right_divider: ColorRect = $Dividers/RightDivider
 @onready var _tower_manager: Node = get_node_or_null("../../Tower")
 @onready var _bridge_manager: Node = get_node_or_null("/root/BridgeManager")
-@onready var _panel_menu_button: Button = $PanelMenuButton
+# The old top-right "Panels" Button is gone (round 6 keeper feedback): the
+# Panels orb flyout covers the same agent list. The popup stays reachable
+# through the toggle_panel_menu hotkey only.
 @onready var _panel_menu_popup: PopupPanel = $PanelMenuPopup
 @onready var _panel_menu_list: ItemList = $PanelMenuPopup/PanelList
 
@@ -113,7 +115,6 @@ func _ready() -> void:
 		if _bridge_manager.has_method("get_registered_agents"):
 			for agent_data: BridgeData.AgentData in _bridge_manager.get_registered_agents():
 				_agent_list[agent_data.id] = agent_data
-	_panel_menu_button.pressed.connect(_toggle_panel_menu)
 	_panel_menu_list.item_selected.connect(_on_panel_menu_item_selected)
 	_rebuild_panel_menu()
 	_restore_layout()
