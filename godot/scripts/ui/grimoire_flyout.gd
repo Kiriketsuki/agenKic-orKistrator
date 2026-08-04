@@ -41,6 +41,9 @@ var _reject_shake_t: float = -1.0
 
 
 func _ready() -> void:
+	# Static var, no reset on scene reload otherwise. Mirrors
+	# OrbFlock.suspend_hotkeys's own _ready reset for the same reason.
+	is_placing = false
 	set_anchors_preset(Control.PRESET_TOP_WIDE)
 	custom_minimum_size = Vector2(420.0, 160.0)
 	size = Vector2(420.0, 160.0)
@@ -160,13 +163,22 @@ func _end_placement(screen_pos: Vector2) -> void:
 	var result: Dictionary = {}
 	if tower != null:
 		result = tower.hit_test_floor(tower.world_position_from_screen(screen_pos))
+	# Keep the final hit result live before _stop_dragging runs, so a reject
+	# shake has a floor to highlight instead of an empty dictionary.
+	_hit_result = result
 	var kind: String = _drag_kind
+	var zone_type: int = result.get("type", FloorHitTest.ZoneType.NONE)
+	var is_reject: bool = zone_type == FloorHitTest.ZoneType.FLOOR and result.get("is_full", false)
+	# _show_reject raises the shake timer before _stop_dragging runs, so its
+	# `_reject_shake_t < 0.0` guard sees the timer already armed and leaves
+	# _hit_result alone instead of clearing it.
+	if is_reject:
+		_show_reject()
 	_stop_dragging()
-	match result.get("type", FloorHitTest.ZoneType.NONE):
+	if is_reject:
+		return
+	match zone_type:
 		FloorHitTest.ZoneType.FLOOR:
-			if result.get("is_full", false):
-				_show_reject()
-				return
 			_spawn(kind, int(result["index"]))
 		FloorHitTest.ZoneType.NEW_FLOOR:
 			_spawn(kind, int(result["index"]))

@@ -221,6 +221,47 @@ func TestSpawnAgent_OmittedFloorCountsTowardCapacity(t *testing.T) {
 	}
 }
 
+// TestSpawnAgent_EmptyAgentIDReleasesReservation verifies a spawner call that
+// returns a nil error but an empty agent ID does not leak its floor
+// reservation. Before the fix, commitFloorReservation returned early on
+// agentID == "" without deleting the reservation token, so the slot stayed
+// claimed forever and one real agent's worth of capacity was lost from the
+// floor for the rest of the bridge's lifetime.
+func TestSpawnAgent_EmptyAgentIDReleasesReservation(t *testing.T) {
+	n := 0
+	bridge := httpbridge.NewBridge(":0", state.NewMockStore(), nil,
+		httpbridge.WithAgentSpawner(func(_, _, _ string) (string, error) {
+			n++
+			if n == 1 {
+				// Simulate a spawner that reports success with no usable ID.
+				return "", nil
+			}
+			return fmt.Sprintf("agent-%d", n), nil
+		}))
+
+	w := spawnOnFloor(t, bridge, 4)
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty-id spawn: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// If the empty-id reservation leaked, only 3 of these 4 real spawns
+	// would fit before the floor reports full.
+	for i := 0; i < 4; i++ {
+		w := spawnOnFloor(t, bridge, 4)
+		if w.Code != http.StatusOK {
+			t.Fatalf("real spawn %d after empty-id spawn: expected 200, got %d: %s", i, w.Code, w.Body.String())
+		}
+	}
+
+	// The floor is now at its real capacity of 4. A further spawn must
+	// still be rejected, confirming the fix frees the leaked slot without
+	// disabling the capacity check itself.
+	w = spawnOnFloor(t, bridge, 4)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("spawn past real capacity: expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // TestSpawnAgent_ConcurrentSpawnsRespectFloorCapacity verifies two
 // concurrent spawns racing for the last slot on a floor at 3/4 never both
 // succeed — the TOCTOU window between the capacity read and the floor write

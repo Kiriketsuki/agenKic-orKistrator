@@ -887,19 +887,12 @@ func capture_arrangement() -> Dictionary:
 
 ## Drops any arrangement entry whose agent_id names an agent absent from
 ## `known_agent_ids`. An empty agent_id (the quest board, say) always
-## survives, since it names no agent. Pulled out as a static pure function so
-## the "restore skips a banished agent without error" rule is testable
-## headlessly (tests/layout_presets_test.gd), mirroring power_flyout.gd's
-## banish_all_ids.
+## survives, since it names no agent. Delegates to PanelManagerMath, an
+## autoload-free script, so the "restore skips a banished agent without
+## error" rule is testable headlessly (tests/layout_presets_test.gd) without
+## preloading this file's own autoload-bound OrbFlock reference.
 static func filter_arrangement_for_agents(arrangement: Dictionary, known_agent_ids: Array) -> Dictionary:
-	var kept: Array[Dictionary] = []
-	for entry: Variant in arrangement.get("panels", []):
-		if not (entry is Dictionary):
-			continue
-		var agent_id: String = (entry as Dictionary).get("agent_id", "")
-		if agent_id.is_empty() or known_agent_ids.has(agent_id):
-			kept.append(entry as Dictionary)
-	return {"panels": kept}
+	return PanelManagerMath.filter_arrangement_for_agents(arrangement, known_agent_ids)
 
 
 ## Restores a captured (or preset) arrangement, opening or moving each panel

@@ -119,27 +119,12 @@ func _rebuild_agent_list() -> void:
 
 
 ## Pure extraction step: turns a snapshot Array of BridgeData.AgentData into
-## the ordered row list {agent_id, label, accent}. Split out from
-## _rebuild_agent_list so the row-building logic is testable headlessly
-## without a live BridgeManager or ItemList, mirroring power_flyout.gd's
-## banish_all_ids.
+## the ordered row list {agent_id, label, accent}. Delegates to
+## PanelsFlyoutMath, an autoload-free script, so the row-building logic is
+## testable headlessly without a live BridgeManager or ItemList, and without
+## preloading this file's own autoload-bound OrbFlock reference.
 static func build_agent_rows(agents: Array) -> Array[Dictionary]:
-	var typed: Array[BridgeData.AgentData] = []
-	for agent: Variant in agents:
-		if agent is BridgeData.AgentData:
-			typed.append(agent as BridgeData.AgentData)
-	typed.sort_custom(func(a: BridgeData.AgentData, b: BridgeData.AgentData) -> bool: return a.id < b.id)
-	var rows: Array[Dictionary] = []
-	for agent: BridgeData.AgentData in typed:
-		var label: String = "%s — %s" % [agent.display_name(), agent.state]
-		if not agent.provider.is_empty():
-			label = "%s · %s — %s" % [agent.display_name(), agent.provider, agent.state]
-		rows.append({
-			"agent_id": agent.id,
-			"label": label,
-			"accent": ProviderPalette.get_accent_color(agent.provider),
-		})
-	return rows
+	return PanelsFlyoutMath.build_agent_rows(agents)
 
 
 func _on_agent_row_selected(index: int) -> void:

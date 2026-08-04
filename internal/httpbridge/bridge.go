@@ -334,13 +334,18 @@ func (b *Bridge) reserveFloorSlot(floor int) (token string, ok bool) {
 // once the spawner has succeeded, so agentFloor and floorAgentCount report
 // the agent under its actual ID from this point on.
 func (b *Bridge) commitFloorReservation(token, agentID string, floor int) {
+	b.namesMu.Lock()
+	defer b.namesMu.Unlock()
+	// An empty agentID means the spawner produced no usable agent. Delete
+	// the reservation token outright instead of leaving it in b.floors,
+	// otherwise the slot it claimed leaks forever and floorAgentCount
+	// counts a floor as occupied by an agent that does not exist.
 	if agentID == "" {
+		delete(b.floors, token)
 		return
 	}
-	b.namesMu.Lock()
 	delete(b.floors, token)
 	b.floors[agentID] = floor
-	b.namesMu.Unlock()
 }
 
 // releaseFloorReservation frees a slot claimed by reserveFloorSlot when the

@@ -100,15 +100,13 @@ func _on_banish_all_confirmed() -> void:
 
 
 ## Pure extraction step for banish-all: turns a snapshot Array of
-## BridgeData.AgentData into the ordered list of ids to despawn. Split out
-## from _on_banish_all_confirmed so the snapshot behavior is testable
-## headlessly without a live BridgeManager (see tests/power_flyout_test.gd).
+## BridgeData.AgentData into the ordered list of ids to despawn. Delegates
+## to PowerFlyoutMath, an autoload-free script, so the snapshot behavior is
+## testable headlessly without a live BridgeManager (see
+## tests/power_flyout_test.gd) and without preloading this file's own
+## autoload-bound OrbFlock reference.
 static func banish_all_ids(agents: Array) -> Array[String]:
-	var ids: Array[String] = []
-	for agent: Variant in agents:
-		if agent is BridgeData.AgentData:
-			ids.append((agent as BridgeData.AgentData).id)
-	return ids
+	return PowerFlyoutMath.banish_all_ids(agents)
 
 
 func _on_restart_pressed() -> void:
@@ -162,15 +160,16 @@ func _on_command_failed(path: String, _code: int, reason: String) -> void:
 		_toast_message(reason, ERROR_COLOR)
 
 
-## Path-matching helpers, split out as static functions so the toast wiring
-## is testable headlessly without a live command_succeeded/command_failed
-## emission (see tests/power_flyout_test.gd).
+## Path-matching helpers, delegating to PowerFlyoutMath (autoload-free) so
+## the toast wiring is testable headlessly without a live
+## command_succeeded/command_failed emission (see tests/power_flyout_test.gd)
+## and without preloading this file's own autoload-bound OrbFlock reference.
 static func is_despawn_path(path: String) -> bool:
-	return path.ends_with("/despawn")
+	return PowerFlyoutMath.is_despawn_path(path)
 
 
 static func is_restart_path(path: String) -> bool:
-	return path.ends_with("/admin/restart")
+	return PowerFlyoutMath.is_restart_path(path)
 
 
 func _toast_message(text: String, color: Color) -> void:

@@ -1,49 +1,63 @@
 # layout_presets_test.gd — Regression guard for the Panels Orb and Restyle
 # (F5) layout preset system: LayoutPresets round-trips to
-# user://orki_settings.cfg, PanelManager.filter_arrangement_for_agents skips
-# a banished agent without error, and PanelsFlyout.build_agent_rows extracts
+# user://orki_settings.cfg, PanelManagerMath.filter_arrangement_for_agents skips
+# a banished agent without error, and PanelsFlyoutMath.build_agent_rows extracts
 # a stable, accent-colored row list from a BridgeManager snapshot.
 #
 # Standalone headless script:
 #   godot --headless --path godot --script tests/layout_presets_test.gd
 #
 # PanelManager and PanelsFlyout talk to a live scene tree and BridgeManager
-# autoload for most of their behavior, so this test exercises the pure
-# static helpers they delegate to (filter_arrangement_for_agents,
-# build_agent_rows) rather than driving a live scene tree, matching the
-# pattern in power_flyout_test.gd and sigil_config_test.gd.
+# autoload for most of their behavior. PanelManager.filter_arrangement_for_agents
+# and PanelsFlyout.build_agent_rows delegate to PanelManagerMath and
+# PanelsFlyoutMath respectively, two autoload-free scripts holding the pure
+# logic (mirroring title_focus_math.gd's split from title_screen.gd). This
+# test preloads and calls the Math scripts directly instead of preloading
+# panel_manager.gd/panels_flyout.gd, which sit in the OrbFlock ->
+# GrimoireFlyout -> BridgeManager preload chain and fail to compile outside
+# a full Godot boot (see tests/title_screen_focus_test.gd's doc-comment for
+# the full explanation).
 #
 # Exits 1 on any failure. Uses a dedicated user:// path (not the real
 # orki_settings.cfg) so the test never clobbers a keeper's actual config.
 
 extends SceneTree
 
-const PanelManagerScript: Script = preload("res://scripts/panel_manager.gd")
-const PanelsFlyoutScript: Script = preload("res://scripts/ui/panels_flyout.gd")
-## Both flyout and manager scripts are class_name-registered globals. The
-## preloads above still load the .gd files explicitly so this test fails
-## loudly (missing file) rather than silently (unresolved global) if either
-## script ever moves.
-
 const TEST_PATH: String = "user://layout_presets_test.cfg"
 
-## PanelManager._handle_hotkeys reads OrbFlock.suspend_hotkeys (a bare
-## static-var access, see orb_flock.gd), and OrbFlock._input in turn
-## references GrimoireFlyout.is_placing the same way, and GrimoireFlyout's
-## _ready touches the BridgeManager autoload directly. A headless `--script`
-## run does not resolve autoloads before compiling an arbitrary target
-## script (see tests/title_screen_focus_test.gd's doc-comment for the full
-## explanation), so that whole chain can fail to compile while this file's
-## own assertions still run against a stale cached PanelManager/PanelsFlyout
-## class and report a false green. MIN_EXPECTED_ASSERTIONS guards against
-## that: if a compile error anywhere in the chain aborts execution early,
-## ran_count falls short and the suite fails closed instead.
+## Every res:// script this suite's assertions depend on, loaded and
+## verified at runtime instead of via a parse-time preload const. A
+## dependency's own compile failure (e.g. one that reaches an unresolved
+## autoload identifier) makes load() return null or the script report
+## can_instantiate() == false; either case aborts the suite with quit(1)
+## before any assertion runs, instead of letting a stale cached class serve
+## a false green.
+const REQUIRED_DEPENDENCIES: Array[String] = [
+	"res://scripts/layout_presets.gd",
+	"res://scripts/panel_manager_math.gd",
+	"res://scripts/ui/panels_flyout_math.gd",
+]
+
+
+func _verify_dependencies() -> void:
+	for path: String in REQUIRED_DEPENDENCIES:
+		var dep: Script = load(path) as Script
+		if dep == null or not dep.can_instantiate():
+			printerr("layout_presets_test: FAIL — dependency failed to compile: %s" % path)
+			quit(1)
+
+
+## Kept as a second, defense-in-depth guard behind _verify_dependencies: if
+## an assertion helper itself errors out mid-run for a reason the dependency
+## check does not cover, ran_count still falls short and the suite still
+## fails closed.
 const MIN_EXPECTED_ASSERTIONS: int = 17
 
 var _ran_count: int = 0
 
 
 func _init() -> void:
+	_verify_dependencies()
 	var failures: Array[String] = []
 	_cleanup()
 	_run_missing_file_defaults_case(failures)
@@ -132,7 +146,7 @@ func _run_filter_keeps_known_agents_case(failures: Array[String]) -> void:
 			{"panel_id": "spell-scroll", "agent_id": "agent-a", "position": [0.0, 0.0], "size": [400.0, 600.0]},
 		],
 	}
-	var filtered: Dictionary = PanelManager.filter_arrangement_for_agents(arrangement, ["agent-a", "agent-b"])
+	var filtered: Dictionary = PanelManagerMath.filter_arrangement_for_agents(arrangement, ["agent-a", "agent-b"])
 	_assert(filtered.get("panels", []).size() == 1, "a known agent's entry should survive the filter", failures)
 
 
@@ -146,7 +160,7 @@ func _run_filter_skips_banished_agent_case(failures: Array[String]) -> void:
 			{"panel_id": "old-scroll", "agent_id": "agent-banished", "position": [10.0, 10.0], "size": [200.0, 200.0]},
 		],
 	}
-	var filtered: Dictionary = PanelManager.filter_arrangement_for_agents(arrangement, ["agent-a"])
+	var filtered: Dictionary = PanelManagerMath.filter_arrangement_for_agents(arrangement, ["agent-a"])
 	var kept: Array = filtered.get("panels", [])
 	_assert(kept.size() == 2, "the banished agent's entry should be dropped, expected 2 survivors, got %d" % kept.size(), failures)
 	var kept_ids: Array = []
@@ -161,7 +175,7 @@ func _run_filter_skips_banished_agent_case(failures: Array[String]) -> void:
 ## never dropped regardless of the known-agent list.
 func _run_filter_keeps_agentless_entries_case(failures: Array[String]) -> void:
 	var arrangement: Dictionary = {"panels": [{"panel_id": "quest-board", "agent_id": "", "position": [0.0, 0.0], "size": [1.0, 1.0]}]}
-	var filtered: Dictionary = PanelManager.filter_arrangement_for_agents(arrangement, [])
+	var filtered: Dictionary = PanelManagerMath.filter_arrangement_for_agents(arrangement, [])
 	_assert(filtered.get("panels", []).size() == 1, "an agentless entry should survive even an empty known-agent list", failures)
 
 
@@ -170,7 +184,7 @@ func _run_filter_keeps_agentless_entries_case(failures: Array[String]) -> void:
 ## listing.
 func _run_build_agent_rows_case(failures: Array[String]) -> void:
 	var agents: Array = [_make_agent("agent-b", "gemini", "working"), _make_agent("agent-a", "claude", "idle")]
-	var rows: Array[Dictionary] = PanelsFlyout.build_agent_rows(agents)
+	var rows: Array[Dictionary] = PanelsFlyoutMath.build_agent_rows(agents)
 	_assert(rows.size() == 2, "expected 2 rows extracted, got %d" % rows.size(), failures)
 	if rows.size() == 2:
 		_assert(rows[0].get("agent_id", "") == "agent-a", "rows should be sorted by agent id, expected agent-a first, got %s" % rows[0].get("agent_id", ""), failures)
@@ -181,5 +195,5 @@ func _run_build_agent_rows_case(failures: Array[String]) -> void:
 ## A malformed snapshot entry must never crash the row-building step.
 func _run_build_agent_rows_skips_non_agent_case(failures: Array[String]) -> void:
 	var agents: Array = [_make_agent("agent-a"), "not an agent", null]
-	var rows: Array[Dictionary] = PanelsFlyout.build_agent_rows(agents)
+	var rows: Array[Dictionary] = PanelsFlyoutMath.build_agent_rows(agents)
 	_assert(rows.size() == 1, "expected malformed entries skipped, got %d rows" % rows.size(), failures)
