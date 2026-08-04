@@ -43,6 +43,7 @@ func (b *Bridge) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			CurrentTaskID: fields.CurrentTaskID,
 			LastHeartbeat: fields.LastHeartbeat,
 			RegisteredAt:  fields.RegisteredAt,
+			Floor:         b.agentFloor(id),
 		})
 	}
 
@@ -569,6 +570,25 @@ var spawnNames = []string{
 	"Ashveil", "Runeholt", "Duskmantle", "Brightforge", "Stormvellum",
 }
 
+// providerRoster is the single source of truth for the spawn-kind sigils the
+// Grimoire flyout draws from. It shares its kind list with the switch in
+// handleSpawnAgent, so a new adapter here appears in the GUI with no GUI
+// change, per the Grimoire Summoning spec.
+var providerRoster = []ProviderJSON{
+	{Kind: "sim", Display: "Simulacrum", Accent: "#8892b0"},
+	{Kind: "claude", Display: "Claude", Accent: "#cc785c"},
+	{Kind: "codex", Display: "Codex", Accent: "#10a37f"},
+	{Kind: "opencode", Display: "OpenCode", Accent: "#4f8cff"},
+	{Kind: "pi", Display: "Pi", Accent: "#b967ff"},
+}
+
+// handleListProviders returns the spawn-kind roster the Grimoire flyout uses
+// to build its sigil grid. The Godot config page filters and orders this
+// list locally, so the bridge always serves the full set.
+func (b *Bridge) handleListProviders(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{"providers": providerRoster})
+}
+
 var spawnCounter atomic.Int64
 
 // handleSpawnAgent launches a simulated in-process worker agent (demo
@@ -609,6 +629,29 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 		req.Tier = []string{"haiku", "sonnet", "opus"}[int(n)%3]
 	}
 
+	// Floor 0 (ground) is reserved for the future archmage and never accepts
+	// a spawn. A nonzero floor must have room under floorCapacity. An
+	// omitted floor keeps today's auto-assignment behavior and records no
+	// floor.
+	var floor int
+	if req.Floor != nil {
+		floor = *req.Floor
+		if floor <= groundFloor {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Error: "floor 0 is reserved for the archmage and never accepts a spawn",
+				Code:  "invalid_argument",
+			})
+			return
+		}
+		if b.floorAgentCount(floor) >= floorCapacity {
+			writeJSON(w, http.StatusConflict, ErrorResponse{
+				Error: "floor is full",
+				Code:  "floor_full",
+			})
+			return
+		}
+	}
+
 	agentID, err := b.spawner(req.Kind, req.Name, req.Tier)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{
@@ -624,10 +667,14 @@ func (b *Bridge) handleSpawnAgent(w http.ResponseWriter, r *http.Request) {
 	// The provider shown in the UI is the spawn kind. Same registry
 	// lifetime and gaps as the name.
 	b.setAgentProvider(agentID, req.Kind)
+	if floor > groundFloor {
+		b.setAgentFloor(agentID, floor)
+	}
 	writeJSON(w, http.StatusOK, SpawnAgentResponse{
 		AgentID: agentID,
 		Kind:    req.Kind,
 		Name:    req.Name,
 		Tier:    req.Tier,
+		Floor:   floor,
 	})
 }

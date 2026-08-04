@@ -91,6 +91,14 @@ type AgentJSON struct {
 	CurrentTaskID string `json:"current_task_id,omitempty"`
 	LastHeartbeat int64  `json:"last_heartbeat"`
 	RegisteredAt  int64  `json:"registered_at"`
+	Floor         int    `json:"floor,omitempty"`
+}
+
+// ProviderJSON describes one spawn-kind sigil for the Grimoire flyout.
+type ProviderJSON struct {
+	Kind    string `json:"kind"`
+	Display string `json:"display"`
+	Accent  string `json:"accent"`
 }
 
 // FloorJSON represents a terminal session (floor) with its metadata.
@@ -159,6 +167,11 @@ type SpawnAgentRequest struct {
 	Kind string `json:"kind,omitempty"`
 	Name string `json:"name,omitempty"`
 	Tier string `json:"tier,omitempty"`
+	// Floor requests placement on a specific tower floor. A nil Floor keeps
+	// today's auto-assignment behavior and records no floor. Floor 0
+	// (ground) is reserved for the future archmage and always rejects with
+	// 400, whether it arrives as an explicit request or a full floor.
+	Floor *int `json:"floor,omitempty"`
 }
 
 // SpawnAgentResponse echoes what was actually spawned.
@@ -167,4 +180,5 @@ type SpawnAgentResponse struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Tier    string `json:"tier"`
+	Floor   int    `json:"floor"`
 }

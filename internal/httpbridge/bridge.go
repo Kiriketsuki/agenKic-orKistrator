@@ -45,6 +45,10 @@ type Bridge struct {
 	namesMu   sync.RWMutex
 	names     map[string]string
 	providers map[string]string
+	// floors maps agent ID to the tower floor it spawned on. Populated only
+	// when a spawn request names a floor explicitly. Same in-process scope
+	// and reset-on-restart policy as names and providers.
+	floors map[string]int
 
 	broker         *Broker // shared SSE fan-out broker; owns the single poll goroutine
 	brokerInterval time.Duration
@@ -106,6 +110,7 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 		dag:       dag,
 		names:     make(map[string]string),
 		providers: make(map[string]string),
+		floors:    make(map[string]int),
 		mux:       http.NewServeMux(),
 	}
 	for _, opt := range opts {
@@ -124,6 +129,7 @@ func NewBridge(addr string, store state.StateStore, dag ipc.DAGEngine, opts ...B
 	b.mux.HandleFunc("GET /api/agents", b.handleListAgents)
 	b.mux.HandleFunc("GET /api/agents/{id}/output", b.handleAgentOutput)
 	b.mux.HandleFunc("GET /api/floors", b.handleListFloors)
+	b.mux.HandleFunc("GET /api/providers", b.handleListProviders)
 	b.mux.HandleFunc("POST /api/tasks", b.handleSubmitTask)
 	b.mux.HandleFunc("POST /api/dags", b.handleSubmitDAG)
 	b.mux.HandleFunc("POST /api/agents/{id}/input", b.handleSendInput)
@@ -197,6 +203,49 @@ func (b *Bridge) agentProvider(agentID string) string {
 	b.namesMu.RLock()
 	defer b.namesMu.RUnlock()
 	return b.providers[agentID]
+}
+
+// floorCapacity is the maximum number of desks EdgeLayout renders per floor.
+// The Godot side reads the same value from floor_scene.gd's own constant, so
+// keep both in step per the original floor spec.
+const floorCapacity = 4
+
+// groundFloor is reserved for the future orKistrator archmage. It never
+// accepts a spawn and never counts toward any floor's desk capacity.
+const groundFloor = 0
+
+// setAgentFloor records the tower floor agentID spawned on. Same in-process
+// scope and reset-on-restart policy as setAgentName.
+func (b *Bridge) setAgentFloor(agentID string, floor int) {
+	if agentID == "" {
+		return
+	}
+	b.namesMu.Lock()
+	b.floors[agentID] = floor
+	b.namesMu.Unlock()
+}
+
+// agentFloor returns the recorded floor for agentID, or 0 when the Bridge
+// never assigned one (auto-placement was used, or the agent registered
+// outside POST /api/agents/spawn).
+func (b *Bridge) agentFloor(agentID string) int {
+	b.namesMu.RLock()
+	defer b.namesMu.RUnlock()
+	return b.floors[agentID]
+}
+
+// floorAgentCount returns how many agents the Bridge has assigned to floor,
+// used to enforce floorCapacity at spawn time.
+func (b *Bridge) floorAgentCount(floor int) int {
+	b.namesMu.RLock()
+	defer b.namesMu.RUnlock()
+	count := 0
+	for _, f := range b.floors {
+		if f == floor {
+			count++
+		}
+	}
+	return count
 }
 
 // isAgentSession reports whether a terminal session name belongs to a single
