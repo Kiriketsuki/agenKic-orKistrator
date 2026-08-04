@@ -16,6 +16,11 @@ const MAIN_SCENE_PATH: String = "res://scenes/main.tscn"
 const VERSION_FILE_PATH: String = "res://../VERSION"
 const FADE_DURATION: float = 0.6
 const RUNE_POLL_INTERVAL: float = 0.5
+## Blurred tower backdrop (T-item-1). Bakes for this many frames — long
+## enough for the tower's floors, camera, and idle sprites to settle into a
+## representative frame — then the SubViewport switches to UPDATE_ONCE so
+## the backdrop stops costing a render pass every frame.
+const BACKDROP_BAKE_FRAMES: int = 12
 
 const COLOR_GOLD: Color = Color(0.788, 0.635, 0.153, 1.0)      # #c9a227
 const COLOR_TEAL: Color = Color(0.435, 0.722, 0.663, 1.0)      # #6fb8a8
@@ -36,8 +41,11 @@ const COLOR_DIM_GRAY: Color = Color(0.4, 0.4, 0.42, 1.0)
 @onready var _grimoire_back_button: Button = %GrimoireBackButton
 @onready var _grimoire_body: Label = %GrimoireBody
 @onready var _menu_root: Control = %MenuRoot
+@onready var _backdrop_container: SubViewportContainer = %BackdropContainer
+@onready var _backdrop_viewport: SubViewport = %BackdropViewport
 
 var _focused_index: int = 0
+var _backdrop_bake_frames_left: int = BACKDROP_BAKE_FRAMES
 var _rune_poll_timer: float = 0.0
 var _transitioning: bool = false
 ## Grimoire Summoning (F3) — the sigil config page replaces the F1
@@ -81,6 +89,20 @@ func _process(delta: float) -> void:
 		return
 	_rune_poll_timer = 0.0
 	_update_rune(BridgeManager.get_connection_state_name())
+	_tick_backdrop_bake()
+
+
+## Bakes the blurred tower backdrop once, then freezes it (T-item-1). The
+## SubViewport starts at UPDATE_ALWAYS (set in title_screen.tscn) so the
+## tower's boot layout settles before the freeze frame is captured; after
+## BACKDROP_BAKE_FRAMES render polls it drops to UPDATE_ONCE so the backdrop
+## costs nothing per frame afterward, matching the boot-time budget.
+func _tick_backdrop_bake() -> void:
+	if _backdrop_bake_frames_left <= 0 or _backdrop_viewport == null:
+		return
+	_backdrop_bake_frames_left -= 1
+	if _backdrop_bake_frames_left <= 0:
+		_backdrop_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 func _unhandled_input(event: InputEvent) -> void:

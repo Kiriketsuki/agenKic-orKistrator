@@ -52,6 +52,16 @@ const MAX_FLICK_SPEED: float = 4400.0
 const FLICK_MIN_SPEED: float = 80.0
 const CHASE_RATE: float = 14.0
 
+## Idle bob (keeper feedback, item 4c): a slow vertical sine applied to each
+## DOCKED orb's drawn position only — never to _trail_positions, which stays
+## the physics/dock-math truth _apply_positions and _snap_dock_positions
+## read. Doubled alongside every other screen-space UI size in this file
+## (see ORB_RADIUS's doc-comment) from the pre-2x base of 3px.
+const DOCK_BOB_AMPLITUDE_PX: float = 6.0
+const DOCK_BOB_PERIOD_SEC: float = 2.6
+## Per-orb phase stagger so the stack does not bob in lockstep.
+const DOCK_BOB_PHASE_STEP: float = 0.9
+
 ## Dock-to-row and row-to-dock transition timing. The open uses a back
 ## ease so orbs land with a small overshoot. The collapse is a plain
 ## cubic ease out. The flyout fades in after the row starts moving.
@@ -82,6 +92,15 @@ var _drag_previous_position: Vector2 = Vector2.ZERO
 var _drag_previous_time: float = 0.0
 
 var _active_flyout_id: String = ""
+
+## Accumulates while DOCKED, driving the idle bob (item 4c).
+var _bob_time: float = 0.0
+## The release-position axis value along the current dock edge (screen y for
+## LEFT/RIGHT, screen x for BOTTOM), fed to OrbPhysics.edge_dock_anchor().
+## -1.0 means "never released yet" — _snap_dock_positions() then centers the
+## dock instead of clamping toward a stale zero, keeping the boot dock at
+## bottom-center (item 4a).
+var _dock_release_along_edge: float = -1.0
 
 
 func _ready() -> void:
@@ -163,15 +182,30 @@ func _process(delta: float) -> void:
 			_update_flying(delta)
 			_update_chain(delta)
 			_apply_positions()
+		State.DOCKED:
+			_bob_time += delta
+			_apply_docked_positions()
 		_:
 			pass
 
 
+## Item 4d — the lone-orb bug. Chasing always rooted at index 0 regardless of
+## which orb the keeper actually grabbed: dragging a trailing orb wrote
+## _lead_position into _trail_positions[0] (via the two callers below), so
+## the visible Orb_grimoire (index 0) jumped to the pointer while the orb
+## really under the pointer never moved, and on release the flock reformed
+## around the wrong anchor, leaving the true dragged orb stranded off to one
+## side (see screenshot 12). Chasing now roots at whichever orb is actually
+## being dragged (_dragging_orb_index) and cascades outward both ways, so
+## every orb — lead or trailing — reunifies the same way once released.
 func _update_chain(delta: float) -> void:
-	_trail_positions[0] = _lead_position
+	var root: int = _dragging_orb_index if _dragging_orb_index != -1 else 0
+	_trail_positions[root] = _lead_position
 	var rate: float = clampf(CHASE_RATE * delta, 0.0, 1.0)
-	for i in range(1, _trail_positions.size()):
+	for i in range(root + 1, _trail_positions.size()):
 		_trail_positions[i] = _trail_positions[i].lerp(_trail_positions[i - 1], rate)
+	for i in range(root - 1, -1, -1):
+		_trail_positions[i] = _trail_positions[i].lerp(_trail_positions[i + 1], rate)
 
 
 func _update_flying(delta: float) -> void:
@@ -181,8 +215,12 @@ func _update_flying(delta: float) -> void:
 		_lead_position = result["position"]
 		_velocity = result["velocity"]
 		return
-	_edge = OrbPhysics.Edge.BOTTOM
-	var target: Vector2 = OrbPhysics.bottom_center_anchor(viewport_size, ORB_RADIUS)
+	# Item 4a — the flock docks to the nearest of LEFT/RIGHT/BOTTOM (never
+	# TOP), biased toward BOTTOM, chosen once here when momentum first
+	# settles so the spring has a stable target for the whole approach.
+	_edge = OrbPhysics.choose_dock_edge(_lead_position, viewport_size)
+	_dock_release_along_edge = OrbPhysics.dock_release_coordinate(_edge, _lead_position)
+	var target: Vector2 = OrbPhysics.edge_dock_anchor(_edge, viewport_size, ORB_RADIUS, _dock_release_along_edge)
 	var spring: Dictionary = OrbPhysics.spring_step(_lead_position, target, _velocity, delta)
 	_lead_position = spring["position"]
 	_velocity = spring["velocity"]
@@ -196,9 +234,32 @@ func _apply_positions() -> void:
 		_orbs[i].position = _trail_positions[i] - Vector2(ORB_RADIUS, ORB_RADIUS)
 
 
+## Idle bob (item 4c): draws each DOCKED orb offset from its stored
+## _trail_positions entry by a per-orb sine, without touching
+## _trail_positions itself. _snap_dock_positions() and stack_offset() keep
+## reading the un-bobbed dock position, so the bob is purely visual. Skipped
+## while the collapse-to-dock tween is still running — that tween owns
+## `position` directly (_move_orbs_to), and a per-frame bob write here would
+## fight it and cut the animation short.
+func _apply_docked_positions() -> void:
+	if _transition_tween != null and _transition_tween.is_valid() and _transition_tween.is_running():
+		return
+	for i in _orbs.size():
+		var phase: float = float(i) * DOCK_BOB_PHASE_STEP
+		var bob: float = sin((_bob_time * TAU / DOCK_BOB_PERIOD_SEC) + phase) * DOCK_BOB_AMPLITUDE_PX
+		_orbs[i].position = _trail_positions[i] - Vector2(ORB_RADIUS, ORB_RADIUS) + Vector2(0.0, bob)
+
+
 func _snap_dock_positions(animate: bool = false) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var anchor: Vector2 = OrbPhysics.bottom_center_anchor(viewport_size, ORB_RADIUS)
+	# Item 4a — before the first release, there is no recorded dock
+	# coordinate yet, so the boot dock stays bottom-center (per the keeper's
+	# rule) rather than clamping toward a stale zero on the BOTTOM edge.
+	var along_edge: float = (
+		_dock_release_along_edge if _dock_release_along_edge >= 0.0
+		else viewport_size.x * 0.5
+	)
+	var anchor: Vector2 = OrbPhysics.edge_dock_anchor(_edge, viewport_size, ORB_RADIUS, along_edge)
 	var targets: Array[Vector2] = []
 	for i in _orbs.size():
 		targets.append(anchor + OrbPhysics.stack_offset(i, _edge))
@@ -242,11 +303,14 @@ func _on_orb_press_moved(orb: Orb, at_position: Vector2) -> void:
 			return
 		_has_dragged = true
 		_set_state(State.DRAGGING)
+		# The grabbed orb reads on top of the stack for the whole drag,
+		# matching the dock's "lead orb drawn on top" rule (item 4d).
+		move_child(_orbs[_dragging_orb_index], _orbs.size() - 1)
 	var now: float = Time.get_ticks_msec() / 1000.0
 	_drag_previous_position = _lead_position
 	_drag_previous_time = now
 	_lead_position = at_position
-	_trail_positions[0] = _lead_position
+	_trail_positions[_dragging_orb_index] = _lead_position
 	_apply_positions()
 
 
@@ -259,7 +323,7 @@ func _on_orb_press_ended(orb: Orb, at_position: Vector2) -> void:
 		var velocity: Vector2 = OrbPhysics.flick_velocity(_drag_previous_position, at_position, dt, MAX_FLICK_SPEED)
 		_velocity = velocity if velocity.length() >= FLICK_MIN_SPEED else Vector2.ZERO
 		_lead_position = at_position
-		_trail_positions[0] = _lead_position
+		_trail_positions[_dragging_orb_index] = _lead_position
 		_set_state(State.FLYING)
 	else:
 		_on_orb_tapped(orb)

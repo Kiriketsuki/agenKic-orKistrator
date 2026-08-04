@@ -19,6 +19,16 @@ const DOCK_PREVIEW_WIDTH: float = 144.0
 const SCROLL_PANEL_ID: String = "spell-scroll"
 const SCROLL_WIDTH_RATIO: float = 0.4
 const SCROLL_SLIDE_DURATION: float = 0.28
+## Minimum terminal columns the scroll's default open width must fit without
+## wrapping, at spell_scroll_view.gd's terminal font (Monospace family,
+## SCROLL_TERMINAL_FONT_SIZE). Matches spell_scroll_view.gd's
+## _configure_font() font size (28) and family list — kept in sync by hand
+## since the two scripts have no shared constant module.
+const SCROLL_MIN_COLUMNS: int = 100
+const SCROLL_TERMINAL_FONT_SIZE: int = 28
+## RichTextLabel content margin plus the panel's own left/right chrome
+## (title bar padding, border, scrollbar gutter).
+const SCROLL_CHROME_PADDING_PX: float = 96.0
 
 ## Singleton panel id for the quest board (#118) — a non-agent panel (empty
 ## agent_id) mounted via PanelContentRouter's "quest" mode.
@@ -703,7 +713,7 @@ func _validated_mode(value: String) -> String:
 ## PanelBase's own materialize fade/scale (already playing from _ready()).
 func _place_scroll_panel(panel: PanelBase) -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var width: float = maxf(panel.custom_minimum_size.x, viewport_size.x * SCROLL_WIDTH_RATIO)
+	var width: float = maxf(_scroll_min_open_width(), maxf(panel.custom_minimum_size.x, viewport_size.x * SCROLL_WIDTH_RATIO))
 	var target_rect: Rect2 = Rect2(Vector2(viewport_size.x - width, 0.0), Vector2(width, viewport_size.y))
 	panel.set_floating_at(target_rect)
 	panel.position = Vector2(viewport_size.x + 24.0, target_rect.position.y)
@@ -716,6 +726,24 @@ func _place_scroll_panel(panel: PanelBase) -> void:
 	# the persisted layout reflects the actual right-anchored placement
 	# instead of the stale default floating rect.
 	tween.finished.connect(_save_layout)
+
+
+## The scroll panel's default open width, wide enough that
+## SCROLL_MIN_COLUMNS of the terminal's monospace font render without
+## wrapping. Measures the font's actual character advance rather than
+## assuming one, so the width tracks the real glyph metrics on this system.
+## Only feeds the DEFAULT width in _place_scroll_panel — a keeper who
+## resizes the panel afterward is bound only by panel_base.gd's
+## _scaled_minimum_size floor, not by this column count.
+func _scroll_min_open_width() -> float:
+	var font: SystemFont = SystemFont.new()
+	font.font_names = PackedStringArray(["Monospace", "DejaVu Sans Mono", "Courier New", "Consolas"])
+	font.allow_system_fallback = true
+	var sample: String = "M".repeat(SCROLL_MIN_COLUMNS)
+	var advance_total: float = font.get_string_size(
+		sample, HORIZONTAL_ALIGNMENT_LEFT, -1.0, SCROLL_TERMINAL_FONT_SIZE
+	).x
+	return advance_total + SCROLL_CHROME_PADDING_PX
 
 
 ## Builds the human title for an agent-scoped panel: fantasy name plus the

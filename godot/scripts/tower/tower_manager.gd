@@ -45,6 +45,13 @@ const FLOOR_SPACING: float = 56.0
 const REFOCUS_DUR: float = 0.55
 
 @export var config_path: String = "res://config/tower.json"
+## True when this TowerManager renders a display-only copy of the tower (the
+## title-screen backdrop, T-item-1). A display-only instance never connects
+## to BridgeManager's signals, since the real Tower in main.tscn already
+## owns that connection. Two live listeners on the same bridge signal would
+## double-handle every agent event. It also never reads input, so the title
+## menu keeps sole ownership of the keyboard and mouse.
+@export var display_only: bool = false
 
 var _config: TowerConfig
 var _floors: Array[Node2D] = []  # ordered bottom to top
@@ -115,6 +122,8 @@ func _ready() -> void:
 	_load_recompute_timer.autostart = true
 	_load_recompute_timer.timeout.connect(_on_load_recompute_timer_timeout)
 	add_child(_load_recompute_timer)
+	if display_only:
+		return
 	var bridge: Node = Engine.get_singleton("BridgeManager") if Engine.has_singleton("BridgeManager") else get_node_or_null("/root/BridgeManager")
 	if bridge:
 		bridge.connect("floor_created", _on_floor_created)
@@ -127,6 +136,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if display_only:
+		return
 	if event.is_action_pressed("rotate_left"):
 		_rotate_focused_edge(-1)
 		get_viewport().set_input_as_handled()

@@ -1,7 +1,17 @@
-[gd_scene load_steps=8 format=3 uid="uid://title_screen"]
+[gd_scene load_steps=11 format=3 uid="uid://title_screen"]
 
 [ext_resource type="Script" path="res://scripts/ui/title_screen.gd" id="1"]
 [ext_resource type="Theme" path="res://themes/orki_theme.tres" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/tower_backdrop.tscn" id="3"]
+[ext_resource type="Shader" path="res://shaders/backdrop_blur.gdshader" id="4"]
+
+[sub_resource type="ViewportTexture" id="ViewportTexture_backdrop"]
+viewport_path = NodePath("BackdropContainer/BackdropViewport")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_backdrop_blur"]
+shader = ExtResource("4")
+shader_parameter/blur_radius_px = 10.0
+shader_parameter/pass_count = 2
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_normal"]
 bg_color = Color(0.043, 0.035, 0.067, 0.0)
@@ -68,6 +78,52 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.051, 0.039, 0.078, 1.0)
 mouse_filter = 2
+
+[node name="BackdropContainer" type="SubViewportContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stretch = true
+visible = false
+
+[node name="BackdropViewport" type="SubViewport" parent="BackdropContainer"]
+unique_name_in_owner = true
+transparent_bg = false
+handle_input_locally = false
+size = Vector2i(480, 270)
+render_target_update_mode = 4
+
+[node name="TowerBackdropInstance" parent="BackdropContainer/BackdropViewport" instance=ExtResource("3")]
+
+[node name="BackdropBlur" type="TextureRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("ViewportTexture_backdrop")
+expand_mode = 1
+stretch_mode = 6
+material = SubResource("ShaderMaterial_backdrop_blur")
+
+[node name="BackdropDim" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.02, 0.015, 0.03, 0.55)
 
 [node name="LeftHalf" type="Control" parent="."]
 layout_mode = 1

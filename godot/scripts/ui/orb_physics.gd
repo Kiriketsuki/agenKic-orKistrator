@@ -27,8 +27,11 @@ const DEFAULT_RICOCHET_FRACTION: float = 0.62
 
 ## Momentum decays over time so a flick eventually settles instead of
 ## bouncing forever. Expressed as speed lost per second, multiplicative.
-const MOMENTUM_DRAG_PER_SEC: float = 0.35
-const MOMENTUM_STOP_SPEED: float = 6.0
+## Raised sharply (keeper feedback, item 4b) from the original 0.35/6.0 so a
+## flick bleeds off and hands control to the spring-to-edge phase in about a
+## second, instead of drifting freely around the screen.
+const MOMENTUM_DRAG_PER_SEC: float = 4.0
+const MOMENTUM_STOP_SPEED: float = 60.0
 
 ## Dock stack: each trailing orb sits this many pixels behind the lead orb,
 ## both toward screen center and slightly down, so the lead orb reads on
@@ -71,6 +74,30 @@ static func edge_dock_anchor(edge: Edge, viewport_size: Vector2, radius: float, 
 			return Vector2(clampf(height, radius + DOCK_MARGIN_PX, viewport_size.x - radius - DOCK_MARGIN_PX), viewport_size.y - radius - DOCK_MARGIN_PX)
 		_:
 			return Vector2(radius + DOCK_MARGIN_PX, clamped_height)
+
+
+## Picks the flock's dock edge for a release at `position` (keeper feedback,
+## item 4a): LEFT, RIGHT, or BOTTOM only — never TOP, so a flick toward the
+## top of the screen still docks somewhere reachable. BOTTOM is the default
+## unless the nearer of LEFT/RIGHT sits under half the distance to the
+## bottom edge, matching the keeper's rule that a release has to land
+## clearly closer to a side before the flock cedes the bottom-center home.
+static func choose_dock_edge(position: Vector2, viewport_size: Vector2) -> Edge:
+	var dist_left: float = position.x
+	var dist_right: float = viewport_size.x - position.x
+	var dist_bottom: float = viewport_size.y - position.y
+	var side_min: float = minf(dist_left, dist_right)
+	if side_min < dist_bottom * 0.5:
+		return Edge.LEFT if dist_left <= dist_right else Edge.RIGHT
+	return Edge.BOTTOM
+
+
+## The along-edge release coordinate to pass into edge_dock_anchor() for
+## `edge`: the release y for a side dock (LEFT/RIGHT), the release x for a
+## bottom dock. Pure companion to choose_dock_edge() so OrbFlock never has
+## to duplicate the "which axis matters for this edge" branch itself.
+static func dock_release_coordinate(edge: Edge, position: Vector2) -> float:
+	return position.y if (edge == Edge.LEFT or edge == Edge.RIGHT) else position.x
 
 
 ## The flock's resting dock: centered horizontally, resting on the bottom
