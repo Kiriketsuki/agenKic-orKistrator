@@ -125,7 +125,10 @@ void fragment() {
 	// This is an in-silhouette rim/bloom approximation, not a true outer
 	// halo (canvas_item fragment shaders cannot draw outside the node's own
 	// quad) — a scaled-back glow node is deferred to T22 with real sprites.
-	float pulse = 0.6 + 0.4 * sin(TIME * pulse_speed);
+	// Steady light. 0.6 is the mean of the old `0.6 + 0.4 * sin(TIME)`
+	// pulse, so brightness matches what the pulse averaged to rather than
+	// pinning at its peak (which read as a permanent over-bright glare).
+	float pulse = 0.6;
 	vec3 emissive = vec3(1.0) * glow_amount * pulse * 0.35;
 
 	// `base` (and therefore everything derived from it) already carries the
