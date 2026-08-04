@@ -1,10 +1,10 @@
-# Feature: Tower Post (agent-to-agent messaging)
+# Feature: Tower Post (agent-to-agent messaging and the Archmage hub)
 
 ## Overview
 
-**User Story**: As a tower operator, I want agents to pass results and messages to each other through the orchestrator so that multi-agent pipelines run without me relaying output by hand.
+**User Story**: As a tower operator, I want agents to pass results and messages to each other through the orchestrator, and I want a resident Archmage on floor 0 who receives my requests and dispatches them to the spokes, so that multi-agent pipelines run without me relaying output by hand.
 
-**Problem**: Agents coordinate only by DAG ordering today. Task B waits for task A but never sees A's output. Agents have no way to address each other, so every cross-agent handoff routes through the user.
+**Problem**: Agents coordinate only by DAG ordering today. Task B waits for task A but never sees A's output. Agents have no way to address each other, so every cross-agent handoff routes through the user. The hub of the hub-and-spoke design has no persona: nobody plays the orchestrator, so there is no one to talk to about the work itself.
 
 **Out of Scope**:
 - Peer-to-peer gRPC between agents. All traffic stays hub-mediated.
@@ -24,8 +24,9 @@
 
 | # | Question | Raised By | Resolved |
 |:--|:---------|:----------|:---------|
-| 1 | Does an interactive CLI agent send mail via a sentinel line in the pane or via an `orkctl send` helper binary on PATH? Spec assumes `orkctl` (cleaner, no pane parsing). | Claude | [ ] |
-| 2 | Maximum stored output size per task before truncation (default 64 KiB, head+tail)? | Claude | [ ] |
+| 1 | orkctl helper vs pane sentinel for agent sends | Claude | [x] `orkctl` helper, per keeper decision 2026-08-04 |
+| 2 | Maximum stored output size per task before truncation | Claude | [x] 64 KiB, head plus tail retention |
+| 3 | What powers the Archmage | keeper | [x] A permanent CLI agent (claude) on floor 0 with a dispatcher system prompt |
 
 ---
 
@@ -38,6 +39,8 @@
 - **Mailbox delivery**: the orchestrator delivers inbox messages to an interactive agent by typing `[post from <name>]: <body>` into its tmux session via the existing send-keys path. Headless agents receive pending mail prepended to their next prompt. Acceptance: text visible in the target pane.
 - **`orkctl send` helper**: a small CLI (`cmd/orkctl`) an agent can call to send mail: `orkctl send --to <name-or-id> "body"`. It resolves fantasy names to IDs via the bridge. Acceptance: a claude agent instructed to run it delivers mail.
 - **SSE + speech bubbles**: every delivered message emits an `agent.message` SSE event. The Godot UI renders a temporary speech bubble near the sender's character with the body (truncated ~80 chars), and the quest board logs it. Acceptance: bubble appears on send in the GUI.
+- **The Archmage**: at boot the orchestrator spawns a permanent claude agent named the orKistrator on the reserved floor 0. Its system prompt makes it the dispatcher: it receives keeper requests through its own spell scroll, breaks them into tasks, and routes them to spoke agents via `orkctl send` and task submission. It is not despawnable (the despawn endpoint returns 403 for it), does not count toward floor capacity, and respawns with the orchestrator. Acceptance: the keeper types a request into the Archmage scroll, and a spoke agent receives resulting mail or a task.
+- **Archmage visuals**: the Archmage character sprite sits on floor 0 with a distinct gold nameplate. Hub-to-spoke sends render as speech bubbles from floor 0 to the target floor. Acceptance: dispatch visible in the GUI.
 
 ### Should-Have
 - **Redis-backed inboxes**: when the orchestrator runs with `RedisStore` (`internal/state/redis.go` already implements Streams via `PublishEvent`/`ReadEvents`), inboxes become per-agent streams with consumer-group delivery, surviving restarts.
@@ -59,6 +62,8 @@
 - `internal/cliagent/cliagent.go` — store settled pane snapshot as task output. prepend pending mail for headless runs.
 - `internal/httpbridge/` — `POST /api/agents/{id}/message`, `GET /api/tasks/{id}/output`, `agent.message` SSE event (broker.go pattern), name-to-ID resolution reuse (`bridge.go agentName`).
 - `cmd/orkctl/` — new tiny CLI, HTTP client of the bridge.
+- `internal/supervisor/` and `cmd/orchestrator/main.go` — boot-time Archmage spawn (cliagent claude with the dispatcher prompt), reserved-agent flag threaded through the store, despawn guard (403), floor 0 assignment.
+- `config/` — dispatcher system prompt file for the Archmage, editable without a rebuild.
 - Godot: `bridge_client` event wiring, new `speech_bubble.gd` on the UILayer (follow `world_labels.gd` projection pattern), quest board log line.
 
 **Data Model Changes**:
@@ -80,6 +85,8 @@
 | `{{output:X}}` cycles or references an incomplete task | Low | DAG validation rejects references outside declared dependencies |
 | Huge outputs bloat prompts | Medium | Truncation cap with head+tail retention (open question 2) |
 | Sentinel/injection: mail body containing tmux-hostile text | Medium | Reuse `send-keys -l --` literal path, strip control chars |
+| Archmage dies or wedges, hub goes silent | Medium | Supervisor restart policy applies to it like any agent. A dead Archmage respawns with its prompt, and the GUI shows its state |
+| Archmage dispatch loops (mails itself or re-dispatches its own mail) | Low | The dispatcher prompt forbids self-sends, and the bridge rejects a message whose from and to are both the Archmage |
 
 ---
 
@@ -127,6 +134,23 @@ Feature: Tower Post
       When a message is posted to agent "nobody"
       Then the bridge returns 404
 
+  Rule: The Archmage is the hub
+
+    Scenario: Archmage present at boot
+      When the orchestrator starts
+      Then an agent named the orKistrator exists on floor 0
+      And its provider is claude and its nameplate is gold
+
+    Scenario: Keeper request dispatched to a spoke
+      Given the keeper opens the Archmage's spell scroll
+      When the keeper types "have Thornquill summarize the repo"
+      Then the Archmage sends mail or a task to "Thornquill"
+      And a speech bubble travels from floor 0 to Thornquill's floor
+
+    Scenario: The Archmage cannot be banished
+      When despawn is called for the Archmage's id
+      Then the bridge returns 403 and the agent survives
+
   Rule: The GUI shows the conversation
 
     Scenario: Speech bubble on message delivery
@@ -150,8 +174,10 @@ Feature: Tower Post
 | T6   | Delivery loop: idle-gated tmux typing, headless prompt prepend | High | T5 | pending |
 | T7   | `cmd/orkctl` send helper + name resolution | Med | T5 | pending |
 | T8   | Godot: speech bubbles + quest board log | High | T5 | pending |
-| T9   | Redis inbox streams (should-have) | Med | T4 | pending |
-| T10  | Message history endpoint + GUI backfill (should-have) | Med | T5 | pending |
+| T9   | Archmage: boot spawn, dispatcher prompt file, reserved flag, despawn 403 | High | T5, T7 | pending |
+| T10  | Archmage GUI: floor 0 residency, gold nameplate, hub-to-spoke bubble routing | High | T8, T9 | pending |
+| T11  | Redis inbox streams (should-have) | Med | T4 | pending |
+| T12  | Message history endpoint + GUI backfill (should-have) | Med | T5 | pending |
 
 ---
 
@@ -162,6 +188,7 @@ Feature: Tower Post
 - [ ] API contracts match implementation
 - [ ] `go test -race ./...` green, Godot headless suites green
 - [ ] Manual: two live claude agents exchange mail end to end in the GUI
+- [ ] Manual: a keeper request typed into the Archmage scroll reaches a spoke agent
 
 ---
 
