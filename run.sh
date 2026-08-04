@@ -26,9 +26,18 @@ done
 
 # --- Build orchestrator if missing or stale ---------------------------------
 
-if [[ ! -x "$ORCH_BIN" ]]; then
-    log "orchestrator binary missing — building"
-    make -C "$REPO_ROOT" generate build
+stale_bin() {
+    [[ ! -x "$ORCH_BIN" ]] && return 0
+    # Any Go source/module file newer than the binary means it is stale.
+    [[ -n "$(find "$REPO_ROOT/cmd" "$REPO_ROOT/internal" "$REPO_ROOT/go.mod" \
+        -name '*.go' -newer "$ORCH_BIN" -print -quit 2>/dev/null)" ]]
+}
+
+if stale_bin; then
+    log "orchestrator binary missing or stale — building"
+    # protoc-gen-go / protoc-gen-go-grpc live in ~/go/bin, which is not on
+    # PATH in every shell.
+    PATH="$PATH:$HOME/go/bin" make -C "$REPO_ROOT" generate build
 fi
 
 # --- Cleanup: one handler for Ctrl-C and normal exit ------------------------
