@@ -668,7 +668,31 @@ func _open_agent_panel(agent_id: String) -> void:
 ## mode_preferences entry for it, and _validated_mode() (which only allows
 ## "scroll"/"terminal") is never consulted for this panel's mode.
 func open_quest_board() -> PanelBase:
-	return open_panel(QUEST_BOARD_PANEL_ID, "Quest Board", "", "quest")
+	var panel: PanelBase = open_panel(QUEST_BOARD_PANEL_ID, "Quest Board", "", "quest")
+	_fit_panel_to_content(panel)
+	return panel
+
+
+## Grows `panel` so its ContentRoot can hold the injected view's minimum
+## size (plus the title bar), clamped to the viewport. The quest board's
+## form is taller than the 560 px default panel, and without this the form
+## overflows the panel body.
+func _fit_panel_to_content(panel: PanelBase) -> void:
+	if panel == null:
+		return
+	var content_root: MarginContainer = panel.get_content_root()
+	if content_root == null:
+		return
+	var view: Control = content_root.get_node_or_null("InjectedContent") as Control
+	if view == null:
+		return
+	# ContentRoot anchors full-rect below the title bar; offset_top is the
+	# title bar height and stays valid even before the first layout pass.
+	var title_h: float = content_root.offset_top
+	var needed: Vector2 = view.get_combined_minimum_size()
+	var viewport_size: Vector2 = get_viewport_rect().size
+	panel.size.y = clampf(maxf(panel.size.y, needed.y + title_h), panel.size.y, viewport_size.y - 40.0)
+	panel.position.y = clampf(panel.position.y, 0.0, maxf(0.0, viewport_size.y - panel.size.y))
 
 
 ## F5 Panels Orb — public wrapper so panels_flyout.gd's QUEST BOARD toggle

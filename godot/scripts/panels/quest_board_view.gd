@@ -27,31 +27,32 @@ const ERROR_COLOR: Color = Color(0.55, 0.12, 0.1, 1.0)
 const SUCCESS_COLOR: Color = Color(0.16, 0.4, 0.16, 1.0)
 const FIELD_BG: Color = Color(0.88, 0.79, 0.62, 1.0)
 const FIELD_BORDER: Color = Color(0.45, 0.32, 0.16, 1.0)
+const PLACEHOLDER_COLOR: Color = Color(0.28, 0.18, 0.08, 0.55)
 
 const PATH_SUBMIT_TASK: String = "/api/tasks"
 const PATH_SUBMIT_DAG: String = "/api/dags"
 
 @onready var _parchment: ColorRect = $Parchment
-@onready var _single_mode_button: Button = $Margin/Root/ModeToggle/SingleModeButton
-@onready var _chain_mode_button: Button = $Margin/Root/ModeToggle/ChainModeButton
-@onready var _status_label: Label = $Margin/Root/StatusLabel
-@onready var _single_form: VBoxContainer = $Margin/Root/SingleForm
-@onready var _chain_form: VBoxContainer = $Margin/Root/ChainForm
+@onready var _single_mode_button: Button = $Margin/Scroll/Root/ModeToggle/SingleModeButton
+@onready var _chain_mode_button: Button = $Margin/Scroll/Root/ModeToggle/ChainModeButton
+@onready var _status_label: Label = $Margin/Scroll/Root/StatusLabel
+@onready var _single_form: VBoxContainer = $Margin/Scroll/Root/SingleForm
+@onready var _chain_form: VBoxContainer = $Margin/Scroll/Root/ChainForm
 
-@onready var _description_edit: TextEdit = $Margin/Root/SingleForm/DescriptionEdit
-@onready var _floor_option: OptionButton = $Margin/Root/SingleForm/RowFloorProject/FloorOption
-@onready var _project_edit: LineEdit = $Margin/Root/SingleForm/RowFloorProject/ProjectEdit
-@onready var _priority_option: OptionButton = $Margin/Root/SingleForm/RowPriorityId/PriorityOption
-@onready var _quest_id_edit: LineEdit = $Margin/Root/SingleForm/RowPriorityId/IdEdit
-@onready var _single_seal: WaxSeal = $Margin/Root/SingleForm/SingleSubmitRow/SingleSeal
+@onready var _description_edit: TextEdit = $Margin/Scroll/Root/SingleForm/DescriptionEdit
+@onready var _floor_option: OptionButton = $Margin/Scroll/Root/SingleForm/RowFloorProject/FloorOption
+@onready var _project_edit: LineEdit = $Margin/Scroll/Root/SingleForm/RowFloorProject/ProjectEdit
+@onready var _priority_option: OptionButton = $Margin/Scroll/Root/SingleForm/RowPriorityId/PriorityOption
+@onready var _quest_id_edit: LineEdit = $Margin/Scroll/Root/SingleForm/RowPriorityId/IdEdit
+@onready var _single_seal: WaxSeal = $Margin/Scroll/Root/SingleForm/SingleSubmitRow/SingleSeal
 
-@onready var _task_rows: VBoxContainer = $Margin/Root/ChainForm/TaskRows
-@onready var _add_task_button: Button = $Margin/Root/ChainForm/AddTaskButton
-@onready var _edge_from_option: OptionButton = $Margin/Root/ChainForm/EdgeRow/EdgeFromOption
-@onready var _edge_to_option: OptionButton = $Margin/Root/ChainForm/EdgeRow/EdgeToOption
-@onready var _link_button: Button = $Margin/Root/ChainForm/EdgeRow/LinkButton
-@onready var _edge_list: VBoxContainer = $Margin/Root/ChainForm/EdgeList
-@onready var _chain_seal: WaxSeal = $Margin/Root/ChainForm/ChainSubmitRow/ChainSeal
+@onready var _task_rows: VBoxContainer = $Margin/Scroll/Root/ChainForm/TaskRows
+@onready var _add_task_button: Button = $Margin/Scroll/Root/ChainForm/AddTaskButton
+@onready var _edge_from_option: OptionButton = $Margin/Scroll/Root/ChainForm/EdgeRow/EdgeFromOption
+@onready var _edge_to_option: OptionButton = $Margin/Scroll/Root/ChainForm/EdgeRow/EdgeToOption
+@onready var _link_button: Button = $Margin/Scroll/Root/ChainForm/EdgeRow/LinkButton
+@onready var _edge_list: VBoxContainer = $Margin/Scroll/Root/ChainForm/EdgeList
+@onready var _chain_seal: WaxSeal = $Margin/Scroll/Root/ChainForm/ChainSubmitRow/ChainSeal
 
 var _panel: PanelBase = null
 var _bridge: Node = null
@@ -118,6 +119,11 @@ func _configure_parchment_material() -> void:
 	var material: ShaderMaterial = _parchment.material as ShaderMaterial
 	if material == null:
 		return
+	# The shader defaults suit the large spell scroll. On the smaller quest
+	# board the vignette and curl bands cover most of the surface and crush
+	# the ink labels' contrast. Soften both for this panel only.
+	material.set_shader_parameter("vignette_strength", 0.12)
+	material.set_shader_parameter("curl_height", 0.03)
 	if material.get_shader_parameter("fibre_noise") != null:
 		return
 	var noise: FastNoiseLite = FastNoiseLite.new()
@@ -607,6 +613,9 @@ func _style_line_edit(edit: LineEdit) -> void:
 	edit.add_theme_stylebox_override("normal", style)
 	edit.add_theme_stylebox_override("focus", style)
 	edit.add_theme_color_override("font_color", INK_COLOR)
+	# The inherited theme placeholder color is a light grey meant for dark
+	# fields. On the cream FIELD_BG it is near invisible, so use faded ink.
+	edit.add_theme_color_override("font_placeholder_color", PLACEHOLDER_COLOR)
 
 
 func _style_text_edit(edit: TextEdit) -> void:
@@ -622,3 +631,6 @@ func _style_text_edit(edit: TextEdit) -> void:
 	edit.add_theme_stylebox_override("normal", style)
 	edit.add_theme_stylebox_override("focus", style)
 	edit.add_theme_color_override("font_color", INK_COLOR)
+	# The inherited theme placeholder color is a light grey meant for dark
+	# fields. On the cream FIELD_BG it is near invisible, so use faded ink.
+	edit.add_theme_color_override("font_placeholder_color", PLACEHOLDER_COLOR)

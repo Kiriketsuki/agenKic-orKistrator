@@ -29,6 +29,11 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			_set_content_margins(content_root, 0)
 			var view: Control = SPELL_SCROLL_SCENE.instantiate() as Control
 			view.name = INJECTED_CONTENT_NAME
+			# The view scenes author their root with full-rect anchors. Inside
+			# a MarginContainer those anchors fight the container's sort and
+			# leave the view misplaced until the next resize re-sorts it, so
+			# zero the anchors and let the container own the rect.
+			view.set_anchors_preset(Control.PRESET_TOP_LEFT)
 			content_root.add_child(view)
 			if view.has_method("setup"):
 				view.call("setup", panel, agent_data, bridge)
@@ -38,6 +43,11 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			_set_content_margins(content_root, 0)
 			var terminal_view: Control = TERMINAL_SCENE.instantiate() as Control
 			terminal_view.name = INJECTED_CONTENT_NAME
+			# The view scenes author their root with full-rect anchors. Inside
+			# a MarginContainer those anchors fight the container's sort and
+			# leave the view misplaced until the next resize re-sorts it, so
+			# zero the anchors and let the container own the rect.
+			terminal_view.set_anchors_preset(Control.PRESET_TOP_LEFT)
 			content_root.add_child(terminal_view)
 			if terminal_view.has_method("setup"):
 				terminal_view.call("setup", panel, agent_data, bridge)
@@ -47,6 +57,11 @@ static func mount(panel: PanelBase, mode: String, bridge: Node, agent_data: Brid
 			_set_content_margins(content_root, 0)
 			var quest_view: Control = QUEST_BOARD_SCENE.instantiate() as Control
 			quest_view.name = INJECTED_CONTENT_NAME
+			# The view scenes author their root with full-rect anchors. Inside
+			# a MarginContainer those anchors fight the container's sort and
+			# leave the view misplaced until the next resize re-sorts it, so
+			# zero the anchors and let the container own the rect.
+			quest_view.set_anchors_preset(Control.PRESET_TOP_LEFT)
 			content_root.add_child(quest_view)
 			if quest_view.has_method("setup"):
 				# agent_data is always null for the quest board — it is not
