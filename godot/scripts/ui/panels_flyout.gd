@@ -34,8 +34,6 @@ func _ready() -> void:
 	size = Vector2(600.0, 840.0)
 
 	_bridge = get_node_or_null("/root/BridgeManager")
-	_panel_manager = get_tree().get_first_node_in_group("panel_manager")
-	_minimap = get_tree().get_first_node_in_group("minimap")
 
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -94,6 +92,21 @@ func _ready() -> void:
 	_rebuild_preset_list()
 
 
+## PanelManager and Minimap sit after this flyout in main.tscn tree order, so
+## their groups are empty during this node's _ready. Resolve lazily on first
+## use instead of caching at _ready.
+func _get_panel_manager() -> Node:
+	if _panel_manager == null or not is_instance_valid(_panel_manager):
+		_panel_manager = get_tree().get_first_node_in_group("panel_manager")
+	return _panel_manager
+
+
+func _get_minimap() -> Node:
+	if _minimap == null or not is_instance_valid(_minimap):
+		_minimap = get_tree().get_first_node_in_group("minimap")
+	return _minimap
+
+
 func _on_visibility_changed() -> void:
 	if visible:
 		_rebuild_agent_list()
@@ -129,10 +142,11 @@ static func build_agent_rows(agents: Array) -> Array[Dictionary]:
 
 func _on_agent_row_selected(index: int) -> void:
 	var agent_id: String = String(_agent_list.get_item_metadata(index))
-	if agent_id.is_empty() or _panel_manager == null:
+	var manager: Node = _get_panel_manager()
+	if agent_id.is_empty() or manager == null:
 		return
-	if _panel_manager.has_method("open_scroll_panel"):
-		_panel_manager.call("open_scroll_panel", agent_id)
+	if manager.has_method("open_scroll_panel"):
+		manager.call("open_scroll_panel", agent_id)
 
 
 func _on_agent_registered(_agent_data: BridgeData.AgentData) -> void:
@@ -150,15 +164,17 @@ func _on_agent_state_changed(_agent_id: String, _old_state: String, _new_state: 
 ## Mirrors PanelManager's "toggle_quest_board" hotkey path exactly — same
 ## public method the hotkey handler calls internally.
 func _on_quest_board_pressed() -> void:
-	if _panel_manager != null and _panel_manager.has_method("toggle_quest_board"):
-		_panel_manager.call("toggle_quest_board")
+	var manager: Node = _get_panel_manager()
+	if manager != null and manager.has_method("toggle_quest_board"):
+		manager.call("toggle_quest_board")
 
 
 ## Mirrors minimap.gd's own "toggle_minimap" hotkey handler (visible = not
 ## visible) rather than duplicating a second toggle path.
 func _on_minimap_pressed() -> void:
-	if _minimap != null and _minimap is CanvasItem:
-		(_minimap as CanvasItem).visible = not (_minimap as CanvasItem).visible
+	var minimap: Node = _get_minimap()
+	if minimap != null and minimap is CanvasItem:
+		(minimap as CanvasItem).visible = not (minimap as CanvasItem).visible
 
 
 func _rebuild_preset_list() -> void:
@@ -167,24 +183,27 @@ func _rebuild_preset_list() -> void:
 	_preset_list.clear()
 	_preset_list.add_item(PanelManager.GRID_PRESET_NAME)
 	_preset_list.add_item(PanelManager.FOCUS_PRESET_NAME)
-	if _panel_manager != null and _panel_manager.has_method("custom_preset_names"):
-		for preset_name: String in _panel_manager.call("custom_preset_names"):
+	var manager: Node = _get_panel_manager()
+	if manager != null and manager.has_method("custom_preset_names"):
+		for preset_name: String in manager.call("custom_preset_names"):
 			_preset_list.add_item(CUSTOM_PRESET_LABEL_PREFIX + preset_name)
 
 
 func _on_preset_row_selected(index: int) -> void:
-	if _panel_manager == null or not _panel_manager.has_method("apply_named_preset"):
+	var manager: Node = _get_panel_manager()
+	if manager == null or not manager.has_method("apply_named_preset"):
 		return
 	var label: String = _preset_list.get_item_text(index)
 	var preset_name: String = label.trim_prefix(CUSTOM_PRESET_LABEL_PREFIX)
-	_panel_manager.call("apply_named_preset", preset_name)
+	manager.call("apply_named_preset", preset_name)
 
 
 func _on_save_layout_pressed() -> void:
 	var preset_name: String = _preset_name_field.text.strip_edges()
-	if preset_name.is_empty() or _panel_manager == null:
+	var manager: Node = _get_panel_manager()
+	if preset_name.is_empty() or manager == null:
 		return
-	if _panel_manager.has_method("save_named_preset"):
-		_panel_manager.call("save_named_preset", preset_name)
+	if manager.has_method("save_named_preset"):
+		manager.call("save_named_preset", preset_name)
 	_preset_name_field.text = ""
 	_rebuild_preset_list()
