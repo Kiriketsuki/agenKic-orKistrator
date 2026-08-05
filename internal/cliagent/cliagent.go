@@ -26,7 +26,9 @@ import (
 	pb "github.com/Kiriketsuki/agenKic-orKistrator/gen/pb/orchestrator"
 	"github.com/Kiriketsuki/agenKic-orKistrator/internal/terminal"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -223,6 +225,14 @@ func run(ctx context.Context, client pb.OrchestratorServiceClient, agentID, kind
 		case <-poll.C:
 			st, err := client.GetAgentState(ctx, &pb.GetAgentStateRequest{AgentId: agentID})
 			if err != nil {
+				// NotFound means the orchestrator despawned this agent
+				// (banish / F4 power controls). The worker loop must stop
+				// here: nothing re-registers the agent, so polling on would
+				// spam NotFound errors forever.
+				if status.Code(err) == codes.NotFound {
+					log.Printf("cliagent [%s] agent removed by orchestrator, worker exiting", name)
+					return
+				}
 				log.Printf("cliagent [%s] state: %v", name, err)
 				continue
 			}
