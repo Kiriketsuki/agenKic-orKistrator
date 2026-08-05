@@ -10,6 +10,9 @@ const BRACKET_COLOR: Color = Color(0.95, 0.85, 0.45, 1.0)  # bright rune gold
 const BAND_TINT: Color = Color(1.0, 1.0, 1.0, 0.12)
 const ACTIVITY_SCALE: float = 3.0
 const CELL_MARGIN: float = 2.0
+## Inner inset between the control's border and the drawn cells, so the
+## bracket outline and cells never sit flush against the panel edge.
+const PADDING: float = 6.0
 const BRACKET_WIDTH: float = 4.0
 
 var _tower: Node = null
@@ -45,21 +48,23 @@ func _draw() -> void:
 	if count <= 0:
 		return
 	var focus: int = _tower.get_focus_index()
-	var cell_h: float = size.y / float(count)
+	var inner_w: float = size.x - PADDING * 2.0
+	var inner_h: float = size.y - PADDING * 2.0
+	var cell_h: float = inner_h / float(count)
 	for info: Dictionary in infos:
 		var idx: int = info.get("index", 0)
 		var active_count: int = info.get("active_count", 0)
 		var row: int = count - 1 - idx  # topmost floor (highest index) drawn first
-		var y: float = row * cell_h
+		var y: float = PADDING + row * cell_h
 		var t: float = clampf(float(active_count) / ACTIVITY_SCALE, 0.0, 1.0)
 		var fill_color: Color = DIM_COLOR.lerp(ACTIVE_COLOR, t)
 		var distance: int = absi(idx - focus)
 		if distance == 1:
 			fill_color = fill_color.lerp(Color.WHITE, 0.12)
-		draw_rect(Rect2(0.0, y + CELL_MARGIN, size.x, cell_h - CELL_MARGIN * 2.0), fill_color, true)
+		draw_rect(Rect2(PADDING, y + CELL_MARGIN, inner_w, cell_h - CELL_MARGIN * 2.0), fill_color, true)
 		if idx == focus:
 			draw_rect(
-				Rect2(0.0, y + CELL_MARGIN, size.x, cell_h - CELL_MARGIN * 2.0),
+				Rect2(PADDING, y + CELL_MARGIN, inner_w, cell_h - CELL_MARGIN * 2.0),
 				BRACKET_COLOR,
 				false,
 				BRACKET_WIDTH
@@ -76,8 +81,8 @@ func _gui_input(event: InputEvent) -> void:
 			var count: int = infos.size()
 			if count <= 0:
 				return
-			var cell_h: float = size.y / float(count)
-			var row: int = floori(mb.position.y / cell_h)
+			var cell_h: float = (size.y - PADDING * 2.0) / float(count)
+			var row: int = floori((mb.position.y - PADDING) / cell_h)
 			var idx: int = clampi(count - 1 - row, 0, count - 1)
 			_tower.jump_to_floor(idx)
 			accept_event()
