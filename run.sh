@@ -40,6 +40,17 @@ if stale_bin; then
     PATH="$PATH:$HOME/go/bin" make -C "$REPO_ROOT" generate build
 fi
 
+# --- Rebuild Godot import cache if a script is newer than the class cache ---
+# A stale .godot/global_script_class_cache.cfg makes new class_name scripts
+# fail to parse at runtime.
+
+CLASS_CACHE="$REPO_ROOT/godot/.godot/global_script_class_cache.cfg"
+if [[ ! -f "$CLASS_CACHE" ]] || [[ -n "$(find "$REPO_ROOT/godot/scripts" \
+    -name '*.gd' -newer "$CLASS_CACHE" -print -quit 2>/dev/null)" ]]; then
+    log "Godot class cache missing or stale — reimporting"
+    "$GODOT" --headless --path "$REPO_ROOT/godot" --import >/dev/null 2>&1 || true
+fi
+
 # --- Cleanup: one handler for Ctrl-C and normal exit ------------------------
 
 ORCH_PID=""
